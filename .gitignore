@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# Dependencies
+# ------------------------------------------------------------
+node_modules/
+
+# ------------------------------------------------------------
+# Build / package outputs (Electron + Vite + TS)
+# ------------------------------------------------------------
+.vite/
+out/*
+dist/
+build/
+*.tsbuildinfo
+
+# ------------------------------------------------------------
+# Test and coverage artifacts
+# ------------------------------------------------------------
+test-results/
+playwright-report/
+.playwright/
+coverage/
+
+# ------------------------------------------------------------
+# Runtime database/state artifacts (regeneratable)
+# ------------------------------------------------------------
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.wal
+*.shm
+
+# ------------------------------------------------------------
+# Logs, caches, temp files, OS noise
+# ------------------------------------------------------------
+*.log
+*.tmp
+*.temp
+.cache/
+.DS_Store
+
+# ------------------------------------------------------------
+# Secrets and local environment files
+# ------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.crt
+
+# ------------------------------------------------------------
+# Local IDE/agent metadata and local-only folders
+# ------------------------------------------------------------
+.cursor/
+.claude/
+.playwright-mcp/
+Ref/
+wos-current.png
+
+# ------------------------------------------------------------
+# Planning docs not intended for repo
+# ------------------------------------------------------------
+plan/
+
+# ------------------------------------------------------------
+# Swift helper build artifacts (generated from source in electron/main/transcription/swift-helper/)
+# ------------------------------------------------------------
+electron/main/transcription/swift-helper/.build/
+electron/main/transcription/swift-helper/.swiftpm/
+*.xcbuilddata
+*.xcuserstate
+xcuserdata/
+
+# ------------------------------------------------------------
+# Runtime credential/token files that may be generated in-project
+# ------------------------------------------------------------
+*.token
+google-credentials.json
+service-account*.json
+
+# ------------------------------------------------------------
+# Drizzle: ignore generated metadata, keep migrations tracked
+# ------------------------------------------------------------
+drizzle/meta/
+drizzle/**/*.snapshot.json
+drizzle/**/*.snap
+!drizzle/**/*.sql

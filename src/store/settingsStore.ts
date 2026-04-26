@@ -1,0 +1,67 @@
+import { create } from 'zustand'
+import type { Settings } from '../types'
+import { useAgentStore } from './agentStore'
+
+interface SettingsStore extends Settings {
+  loaded: boolean
+  loadSettings: () => Promise<void>
+  saveSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => Promise<void>
+}
+
+export const useSettingsStore = create<SettingsStore>((set) => ({
+  loaded: false,
+  defaultModel: '',
+  reasoningEffort: 'medium',
+  defaultMode: 'default',
+  theme: 'dark',
+  activeWorkspaceId: null,
+
+  loadSettings: async () => {
+    try {
+      const settings = (await window.wos.getSettings()) as Partial<Settings>
+      const defaultModel = (settings.defaultModel as string) ?? ''
+      const defaultMode = (settings.defaultMode as Settings['defaultMode']) ?? 'default'
+      set({
+        loaded: true,
+        defaultModel,
+        reasoningEffort: (settings.reasoningEffort as Settings['reasoningEffort']) ?? 'medium',
+        defaultMode,
+        theme: (settings.theme as Settings['theme']) ?? 'dark',
+        activeWorkspaceId: (settings.activeWorkspaceId as string | null) ?? null,
+      })
+      // Mirror defaults into the agent store only if the user hasn't already
+      // overridden them on an active conversation.
+      const agent = useAgentStore.getState()
+      if (!agent.activeConversationId) {
+        useAgentStore.setState({
+          currentModel: defaultModel,
+          currentMode: defaultMode,
+        })
+      }
+    } catch (err) {
+      console.error('[wos:settings] loadSettings failed', err)
+    }
+  },
+
+  saveSetting: async (key, value) => {
+    set({ [key]: value } as Partial<Settings>)
+    await window.wos.setSetting(key, value)
+    // Keep the active conversation in sync because the runner reads its model/mode
+    // from the DB row, not directly from Settings.
+    const agent = useAgentStore.getState()
+    if (key === 'defaultModel') {
+      if (agent.activeConversationId) {
+        await agent.setModel(value as string)
+      } else {
+        useAgentStore.setState({ currentModel: value as string })
+      }
+    }
+    if (key === 'defaultMode') {
+      if (agent.activeConversationId) {
+        await agent.setMode(value as string)
+      } else {
+        useAgentStore.setState({ currentMode: value as string })
+      }
+    }
+  },
+}))

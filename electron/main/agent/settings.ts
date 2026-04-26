@@ -1,0 +1,146 @@
+import { eq } from 'drizzle-orm'
+import { decryptApiKey } from '../crypto'
+import { getDb, schema } from '../db'
+import { getDecryptedApiKeyOrNull } from '../providers/keystore'
+import { getProviderNameForModel } from '../providers'
+
+export type AgentKey = 'wos' | 'meeting' | string
+
+export interface AgentRuntimeSettings {
+  agentKey: string
+  inheritFrom: string | null
+  model: string
+  mode: 'default' | 'plan' | 'yolo'
+  systemPrompt: string
+  config: AgentConfig
+  apiKeyOverride?: string
+}
+
+export interface AgentConfig {
+  // v1 ships captions-only. The other values are kept as types so existing
+  // DB rows from earlier builds still parse — they're treated as 'captions'
+  // by liveSession (see notes there).
+  liveSource?: 'captions' | 'captions-webrtc' | 'webrtc'
+  autoSummarize?: boolean
+  defaultSlackChannel?: string
+  openaiApiKeyEncrypted?: string
+  openaiApiKeyIv?: string
+  anthropicApiKeyEncrypted?: string
+  anthropicApiKeyIv?: string
+  [key: string]: unknown
+}
+
+export const DEFAULT_MEETING_SYSTEM_PROMPT = `You are WOS Meeting Agent, a focused meeting specialist.
+You help users join Google Meet sessions, capture consented transcripts, summarize discussions, extract decisions, and prepare follow-up actions.
+Be concise, preserve names and dates exactly when present, and never invent commitments that are not grounded in the transcript.`
+
+function parseSettingValue(value: unknown): string {
+  if (typeof value !== 'string') return ''
+  try {
+    const parsed = JSON.parse(value)
+    return typeof parsed === 'string' ? parsed : ''
+  } catch {
+    return value.replace(/^"|"$/g, '')
+  }
+}
+
+function parseConfig(value: unknown): AgentConfig {
+  if (!value) return {}
+  if (typeof value === 'object') return value as AgentConfig
+  if (typeof value !== 'string') return {}
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' ? parsed as AgentConfig : {}
+  } catch {
+    return {}
+  }
+}
+
+function getGlobalDefaults() {
+  const db = getDb()
+  const modelRow = db.select().from(schema.settings).where(eq(schema.settings.key, 'defaultModel')).get()
+  const modeRow = db.select().from(schema.settings).where(eq(schema.settings.key, 'defaultMode')).get()
+  const model = parseSettingValue(modelRow?.value) || ''
+  const mode = parseSettingValue(modeRow?.value) || 'default'
+  return {
+    model,
+    mode: (mode === 'plan' || mode === 'yolo' ? mode : 'default') as 'default' | 'plan' | 'yolo',
+  }
+}
+
+function decryptAgentKey(config: AgentConfig, provider: 'openai' | 'anthropic'): string | undefined {
+  const encrypted = provider === 'openai' ? config.openaiApiKeyEncrypted : config.anthropicApiKeyEncrypted
+  const iv = provider === 'openai' ? config.openaiApiKeyIv : config.anthropicApiKeyIv
+  if (!encrypted || !iv) return undefined
+  return decryptApiKey(String(encrypted), String(iv))
+}
+
+export async function resolveAgent(agentKey: AgentKey): Promise<AgentRuntimeSettings> {
+  const db = getDb()
+  const defaults = getGlobalDefaults()
+  const chain: Array<typeof schema.agentSettings.$inferSelect> = []
+  const seen = new Set<string>()
+  let current: string | null = agentKey
+
+  while (current && !seen.has(current)) {
+    seen.add(current)
+    const row = db.select().from(schema.agentSettings).where(eq(schema.agentSettings.agentKey, current)).get()
+    if (row) {
+      chain.unshift(row)
+      current = row.inheritFrom
+    } else {
+      current = null
+    }
+  }
+
+  if (current && seen.has(current)) {
+    throw new Error(`Agent settings inheritance cycle detected at "${current}"`)
+  }
+
+  let model = defaults.model
+  let mode = defaults.mode
+  let systemPrompt = agentKey === 'meeting' ? DEFAULT_MEETING_SYSTEM_PROMPT : ''
+  let config: AgentConfig = {}
+  let inheritFrom: string | null = agentKey === 'meeting' ? 'wos' : null
+
+  for (const row of chain) {
+    inheritFrom = row.inheritFrom
+    const rowConfig = parseConfig(row.configJson)
+    config = { ...config, ...rowConfig }
+    if (row.model) model = row.model
+    if (row.mode === 'default' || row.mode === 'plan' || row.mode === 'yolo') mode = row.mode
+    if (row.systemPrompt) systemPrompt = row.systemPrompt
+  }
+
+  if (agentKey === 'meeting') {
+    config = {
+      liveSource: 'captions',
+      autoSummarize: true,
+      defaultSlackChannel: '',
+      ...config,
+    }
+  }
+
+  if (!model) model = defaults.model
+  const provider = getProviderNameForModel(model)
+  const apiKeyOverride = decryptAgentKey(config, provider) ?? await getDecryptedApiKeyOrNull(provider) ?? undefined
+
+  return {
+    agentKey,
+    inheritFrom,
+    model,
+    mode,
+    systemPrompt,
+    config,
+    apiKeyOverride,
+  }
+}
+
+export function redactAgentConfig(config: AgentConfig): AgentConfig & { openaiApiKeySet?: boolean; anthropicApiKeySet?: boolean } {
+  const { openaiApiKeyEncrypted, openaiApiKeyIv, anthropicApiKeyEncrypted, anthropicApiKeyIv, ...rest } = config
+  return {
+    ...rest,
+    openaiApiKeySet: Boolean(openaiApiKeyEncrypted && openaiApiKeyIv),
+    anthropicApiKeySet: Boolean(anthropicApiKeyEncrypted && anthropicApiKeyIv),
+  }
+}

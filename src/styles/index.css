@@ -1,0 +1,178 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+@custom-variant light (&:is(.light *));
+
+/* ── Dark mode (default) ── */
+:root {
+  --background: #131315;
+  --foreground: #ededef;
+  --card: #1c1c20;
+  --card-foreground: #ededef;
+  --popover: #242428;
+  --popover-foreground: #ededef;
+  /* amber is brand accent — use only for active highlights, primary CTA, critical badges */
+  --primary: #f59e0b;
+  --primary-foreground: #0e0e10;
+  --secondary: #28282c;
+  --secondary-foreground: #b0b0b8;
+  --muted: #242428;
+  --muted-foreground: #8a8a94;
+  --accent: #f59e0b;
+  --accent-foreground: #0e0e10;
+  --destructive: #ef4444;
+  --destructive-foreground: #fff;
+  --border: #2a2a2e;
+  --border-strong: #3a3a3e;
+  --input: #1c1c20;
+  --ring: #f59e0b;
+  --radius: 0.5rem;
+  --sidebar: #141416;
+  --topbar: #141416;
+  /* brand palette */
+  --amber: #f59e0b;
+  --amber-hover: #fbbf24;
+  --amber-muted: rgba(245, 158, 11, 0.10);
+  --terracotta: #c1714f;
+  --terracotta-hover: #d4845e;
+  --terracotta-muted: rgba(193, 113, 79, 0.10);
+  /* zinc shades for inactive/neutral states */
+  --zinc-900: #18181b;
+  --zinc-800: #27272a;
+  --zinc-700: #3f3f46;
+  --zinc-600: #52525b;
+  --zinc-500: #71717a;
+  --zinc-400: #a1a1aa;
+  --zinc-300: #d4d4d8;
+}
+
+/* ── Light mode ── */
+.light {
+  --background: #f4f4f6;
+  --foreground: #111113;
+  --card: #ffffff;
+  --card-foreground: #111113;
+  --popover: #ffffff;
+  --popover-foreground: #111113;
+  --primary: #d97706;
+  --primary-foreground: #ffffff;
+  --secondary: #f0f0f2;
+  --secondary-foreground: #52525b;
+  --muted: #f0f0f2;
+  --muted-foreground: #6b6b74;
+  --accent: #d97706;
+  --accent-foreground: #ffffff;
+  --destructive: #dc2626;
+  --destructive-foreground: #fff;
+  --border: #e2e2e6;
+  --border-strong: #cacace;
+  --input: #ffffff;
+  --ring: #d97706;
+  --sidebar: #e8e8ec;
+  --topbar: #e8e8ec;
+  --amber: #d97706;
+  --amber-hover: #b45309;
+  --amber-muted: rgba(217, 119, 6, 0.10);
+  --terracotta: #a8523a;
+  --terracotta-hover: #b85e44;
+  --terracotta-muted: rgba(168, 82, 58, 0.10);
+  --zinc-900: #f4f4f5;
+  --zinc-800: #e4e4e7;
+  --zinc-700: #d4d4d8;
+  --zinc-600: #a1a1aa;
+  --zinc-500: #71717a;
+  --zinc-400: #52525b;
+  --zinc-300: #3f3f46;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 6px);
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body, #root {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* macOS vibrancy support */
+  body {
+    background: transparent;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 2px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--secondary-foreground);
+  }
+
+  /* Light mode scrollbar */
+  .light ::-webkit-scrollbar-thumb {
+    background: #d4d4d8;
+  }
+  .light ::-webkit-scrollbar-thumb:hover {
+    background: #a1a1aa;
+  }
+
+  /* Drag region for macOS titlebar */
+  .titlebar-drag {
+    -webkit-app-region: drag;
+  }
+  .titlebar-no-drag {
+    -webkit-app-region: no-drag;
+  }
+}
+
+@keyframes wos-fade-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes wos-blink {
+  0%, 50%  { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
