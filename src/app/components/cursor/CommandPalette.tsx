@@ -64,22 +64,23 @@ export function CommandPalette({ open, onClose, commands }: Props) {
       <div
         onClick={(e) => e.stopPropagation()}
         className="w-[560px] max-w-[90vw] rounded-xl overflow-hidden shadow-2xl"
-        style={{ background: '#181818', border: '1px solid #2a2a2a' }}
+        style={{ background: 'var(--popover)', border: '1px solid var(--border-strong)' }}
       >
-        <div className="flex items-center gap-2 px-3 py-2.5 border-b border-[#2a2a2a]">
-          <Search size={14} className="text-[#666]" />
+        <div className="flex items-center gap-2 px-3 py-2.5" style={{ borderBottom: '1px solid var(--border)' }}>
+          <Search size={14} style={{ color: 'var(--muted-foreground)' }} />
           <input
             ref={inputRef}
             value={query}
             onChange={(e) => { setQuery(e.target.value); setSelected(0) }}
             placeholder="Type a command…"
-            className="flex-1 bg-transparent outline-none text-sm text-[#eee] placeholder:text-[#555]"
+            className="flex-1 bg-transparent outline-none text-sm"
+            style={{ color: 'var(--foreground)' }}
           />
-          <span className="text-[10px] text-[#555] font-mono">ESC</span>
+          <span className="text-[10px] font-mono" style={{ color: 'var(--muted-foreground)' }}>ESC</span>
         </div>
         <div className="max-h-[40vh] overflow-y-auto">
           {filtered.length === 0 && (
-            <div className="px-4 py-6 text-center text-xs text-[#555]">No matching commands</div>
+            <div className="px-4 py-6 text-center text-xs" style={{ color: 'var(--muted-foreground)' }}>No matching commands</div>
           )}
           {filtered.map((c, i) => (
             <button
@@ -87,10 +88,10 @@ export function CommandPalette({ open, onClose, commands }: Props) {
               onMouseEnter={() => setSelected(i)}
               onClick={() => { c.run(); onClose() }}
               className="w-full flex items-center gap-2 px-3 py-2 text-left transition-colors"
-              style={{ background: i === selected ? '#252525' : 'transparent' }}
+              style={{ background: i === selected ? 'var(--secondary)' : 'transparent' }}
             >
-              <span className="text-sm text-[#e8e8e8] flex-1">{c.label}</span>
-              {c.hint && <span className="text-[10px] text-[#666] font-mono">{c.hint}</span>}
+              <span className="text-sm flex-1" style={{ color: 'var(--foreground)' }}>{c.label}</span>
+              {c.hint && <span className="text-[10px] font-mono" style={{ color: 'var(--muted-foreground)' }}>{c.hint}</span>}
             </button>
           ))}
         </div>

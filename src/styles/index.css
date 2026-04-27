@@ -197,6 +197,22 @@
   }
 }
 
+/* ── Success / error semantic helpers (used in badges and notices) ── */
+:root {
+  --success: #22c55e;
+  --success-muted: rgba(34, 197, 94, 0.12);
+  --error-bg: rgba(239, 68, 68, 0.10);
+  --error-border: rgba(239, 68, 68, 0.28);
+  --error-fg: #f87171;
+}
+.light {
+  --success: #16a34a;
+  --success-muted: rgba(22, 163, 74, 0.10);
+  --error-bg: rgba(220, 38, 38, 0.08);
+  --error-border: rgba(220, 38, 38, 0.22);
+  --error-fg: #dc2626;
+}
+
 @keyframes wos-fade-in {
   from { opacity: 0; transform: translateY(2px); }
   to   { opacity: 1; transform: translateY(0); }

@@ -222,7 +222,7 @@ function MarketplaceTab({
                     </div>
                   </div>
                   {isConnected ? (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: '#1b3a2a', color: '#6ee7b7' }}>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'var(--success-muted)', color: 'var(--success)' }}>
                       Connected
                     </span>
                   ) : a.authType === 'oauth' ? (
@@ -292,7 +292,7 @@ function InstalledAppsTab({
                 <div className="flex items-center gap-2">
                   <div className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>{c.name}</div>
                   <span className={cn('text-[10px] px-2 py-0.5 rounded-full', c.enabled ? '' : 'opacity-60')}
-                    style={{ background: c.enabled ? '#1b3a2a' : 'var(--muted)', color: c.enabled ? '#6ee7b7' : 'var(--secondary-foreground)' }}>
+                    style={{ background: c.enabled ? 'var(--success-muted)' : 'var(--muted)', color: c.enabled ? 'var(--success)' : 'var(--secondary-foreground)' }}>
                     {c.enabled ? 'Connected' : 'Paused'}
                   </span>
                 </div>
@@ -442,7 +442,7 @@ function AppDetailPanel({
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-semibold" style={{ color: 'var(--foreground)' }}>{manifest.name}</h2>
               {isConnected && (
-                <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: '#1b3a2a', color: '#6ee7b7' }}>Connected</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'var(--success-muted)', color: 'var(--success)' }}>Connected</span>
               )}
               {isOAuth && !isConnected && (
                 <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'var(--amber-muted)', color: 'var(--amber)' }}>OAuth 2.0</span>
@@ -490,9 +490,9 @@ function AppDetailPanel({
 
               {error && (
                 <div className="text-xs p-2 rounded" style={{
-                  background: error.startsWith('✓') ? 'var(--terracotta-muted)' : '#1f1512',
-                  color: error.startsWith('✓') ? '#6ee7b7' : '#fca5a5',
-                  border: `1px solid ${error.startsWith('✓') ? 'rgba(110,231,183,0.2)' : '#3a1c18'}`,
+                  background: error.startsWith('✓') ? 'var(--success-muted)' : 'var(--error-bg)',
+                  color: error.startsWith('✓') ? 'var(--success)' : 'var(--error-fg)',
+                  border: `1px solid ${error.startsWith('✓') ? 'rgba(34,197,94,0.25)' : 'var(--error-border)'}`,
                 }}>
                   {error}
                 </div>
@@ -567,7 +567,7 @@ function AppDetailPanel({
               <button
                 onClick={() => disconnect(manifest.id)}
                 className="text-xs px-3 py-2 rounded transition-colors"
-                style={{ border: '1px solid #3a1c18', color: '#fca5a5' }}
+                style={{ border: '1px solid var(--error-border)', color: 'var(--error-fg)' }}
               >
                 Disconnect
               </button>
@@ -729,7 +729,7 @@ function McpDetailPanel({
               <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: 'var(--muted)', color: 'var(--secondary-foreground)' }}>{server.transport}</span>
             </div>
             <div className="text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>{server.command ?? server.url}</div>
-            {server.lastError && <div className="text-xs mt-1" style={{ color: '#fca5a5' }}>{server.lastError}</div>}
+            {server.lastError && <div className="text-xs mt-1" style={{ color: 'var(--error-fg)' }}>{server.lastError}</div>}
           </div>
         </div>
 
@@ -755,7 +755,7 @@ function McpDetailPanel({
               onBack()
             }}
             className="text-xs px-3 py-2 rounded"
-            style={{ border: '1px solid #3a1c18', color: '#fca5a5' }}
+            style={{ border: '1px solid var(--error-border)', color: 'var(--error-fg)' }}
           >
             Remove
           </button>
@@ -890,7 +890,7 @@ function AddMcpForm({ onBack, onAdded }: { onBack: () => void; onAdded: () => vo
           </Field>
 
           {error && (
-            <div className="text-xs p-2 rounded" style={{ background: '#1f1512', color: '#fca5a5', border: '1px solid #3a1c18' }}>
+            <div className="text-xs p-2 rounded" style={{ background: 'var(--error-bg)', color: 'var(--error-fg)', border: '1px solid var(--error-border)' }}>
               {error}
             </div>
           )}
