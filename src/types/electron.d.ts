@@ -13,6 +13,7 @@ interface WosAPI {
   openWorkspace: () => Promise<import('./index').Workspace | null>
   getWorkspaces: () => Promise<import('./index').Workspace[]>
   removeWorkspace: (id: string) => Promise<void>
+  globWorkspace: (params: { workspaceId: string; query: string }) => Promise<{ files: string[] }>
   saveWorkspaceFile: (params: { workspaceId: string; relPath: string; content: string }) =>
     Promise<{ ok: boolean; absPath?: string; error?: string }>
 

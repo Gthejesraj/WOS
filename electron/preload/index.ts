@@ -64,6 +64,10 @@ contextBridge.exposeInMainWorld('wos', {
     Promise<{ ok: boolean; absPath?: string; error?: string }> =>
     safeInvoke('workspace:save-file', { ok: false, error: 'workspace:save-file not ready' }, params),
 
+  globWorkspace: (params: { workspaceId: string; query: string }):
+    Promise<{ files: string[]; error?: string }> =>
+    safeInvoke('workspace:glob', { files: [] }, params),
+
   // Settings
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSetting: (key: string, value: unknown) => ipcRenderer.invoke('settings:set', { key, value }),

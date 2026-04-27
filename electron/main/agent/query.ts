@@ -154,6 +154,7 @@ export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEve
 
     const pendingToolCalls: Array<{ id: string; name: string; input: unknown }> = []
     let hasText = false
+    let accumulatedText = ''
     let planExitRequested: { id: string; plan: string } | null = null
 
     for await (const event of stream) {
@@ -165,6 +166,7 @@ export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEve
           // by the agent calling ExitPlanMode rather than by a text sentinel.
           yield { type: 'text_delta', content: event.content }
           hasText = true
+          accumulatedText += event.content
           break
         }
 
@@ -206,6 +208,18 @@ export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEve
           break
 
         case 'message_stop': {
+          // In plan mode: if the model ended the turn with text but never called
+          // ExitPlanMode, synthesise a plan-exit so the approval UI fires anyway.
+          if (
+            mode === 'plan' && !planApproved && hasText &&
+            !planExitRequested && pendingToolCalls.length === 0
+          ) {
+            planExitRequested = {
+              id: `synthetic-plan-${Date.now()}`,
+              plan: accumulatedText.trim(),
+            }
+            break
+          }
           if ((event.stopReason === 'end_turn' || pendingToolCalls.length === 0) && !planExitRequested) {
             yield {
               type: 'turn_complete',
@@ -219,9 +233,12 @@ export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEve
       }
     }
 
-    // Plan-mode approval gate: if the agent called ExitPlanMode, pause and ask.
+    // Plan-mode approval gate: if the agent called ExitPlanMode (or wrote a text
+    // plan without calling the tool), pause and ask the user what to do.
     if (planExitRequested) {
       const exit = planExitRequested
+      // Detect synthetic exits (model wrote text but did not call ExitPlanMode tool).
+      const isSynthetic = exit.id.startsWith('synthetic-plan-')
       yield { type: 'plan_ready' }
       // Embed the plan markdown so the renderer can show it in the approval block.
       // Format: `__plan_approval__\n\n<plan markdown>`
@@ -250,34 +267,41 @@ export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEve
           if (systemPromptCustom) systemPrompt += `\n\n## Custom Instructions\n${systemPromptCustom}`
           if (systemPromptAppend) systemPrompt += `\n\n${systemPromptAppend}`
         }
-        history.push({
-          role: 'assistant',
-          content: [
-            { type: 'tool_use', id: exit.id, name: 'ExitPlanMode', input: { plan: exit.plan } },
-          ],
-        })
-        history.push({
-          role: 'user',
-          content: [
-            { type: 'tool_result', tool_use_id: exit.id, content: 'Plan approved. Proceed to execute.' },
-          ],
-        })
+        if (isSynthetic) {
+          // The model wrote text — just inject a user turn to proceed.
+          history.push({ role: 'user', content: 'Plan approved. Please proceed to execute the plan.' })
+        } else {
+          history.push({
+            role: 'assistant',
+            content: [
+              { type: 'tool_use', id: exit.id, name: 'ExitPlanMode', input: { plan: exit.plan } },
+            ],
+          })
+          history.push({
+            role: 'user',
+            content: [
+              { type: 'tool_result', tool_use_id: exit.id, content: 'Plan approved. Proceed to execute.' },
+            ],
+          })
+        }
         continue
       } else if (decision.startsWith('save')) {
         // User chose to save plan and exit. The renderer is responsible for the
         // actual file write (it has workspace context via IPC); we just end here.
-        history.push({
-          role: 'assistant',
-          content: [
-            { type: 'tool_use', id: exit.id, name: 'ExitPlanMode', input: { plan: exit.plan } },
-          ],
-        })
-        history.push({
-          role: 'user',
-          content: [
-            { type: 'tool_result', tool_use_id: exit.id, content: 'Plan saved by user. Ending run.' },
-          ],
-        })
+        if (!isSynthetic) {
+          history.push({
+            role: 'assistant',
+            content: [
+              { type: 'tool_use', id: exit.id, name: 'ExitPlanMode', input: { plan: exit.plan } },
+            ],
+          })
+          history.push({
+            role: 'user',
+            content: [
+              { type: 'tool_result', tool_use_id: exit.id, content: 'Plan saved by user. Ending run.' },
+            ],
+          })
+        }
         yield { type: 'turn_complete', usage: { inputTokens: 0, outputTokens: 0 }, reason: 'end_turn' }
         return
       } else {
@@ -288,18 +312,22 @@ export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEve
         const rejectMsg = feedback
           ? `Plan rejected. User feedback: ${feedback}\n\nPlease revise the plan and propose a new one.`
           : 'Plan rejected. Please revise and propose a new plan.'
-        history.push({
-          role: 'assistant',
-          content: [
-            { type: 'tool_use', id: exit.id, name: 'ExitPlanMode', input: { plan: exit.plan } },
-          ],
-        })
-        history.push({
-          role: 'user',
-          content: [
-            { type: 'tool_result', tool_use_id: exit.id, content: rejectMsg },
-          ],
-        })
+        if (isSynthetic) {
+          history.push({ role: 'user', content: rejectMsg })
+        } else {
+          history.push({
+            role: 'assistant',
+            content: [
+              { type: 'tool_use', id: exit.id, name: 'ExitPlanMode', input: { plan: exit.plan } },
+            ],
+          })
+          history.push({
+            role: 'user',
+            content: [
+              { type: 'tool_result', tool_use_id: exit.id, content: rejectMsg },
+            ],
+          })
+        }
         continue
       }
     }

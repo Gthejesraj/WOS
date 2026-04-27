@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, memo, useMemo } from '
 import {
   Plus, ChevronDown, ChevronRight, ChevronLeft, Copy, Check,
   RefreshCw, ArrowDown, AlertCircle, Shield, Zap, BookOpen,
-  File, Loader2, X, FileEdit, Pencil, Brain, HelpCircle,
+  File, Loader2, X, FileEdit, Pencil, Brain, HelpCircle, Search, Globe,
 } from 'lucide-react'
 import type { MessageBlock, DisplayMessage, FileAttachment } from '../../../types'
 import { useAgentStore } from '../../../store/agentStore'
@@ -11,6 +11,7 @@ import { blocksHaveInterruption } from '../../../lib/blockAccumulator'
 import { cn } from '../../../lib/utils'
 import { toast } from 'sonner'
 import { MicButton } from './MicButton'
+import { MODEL_LIST, ModelPickerModal } from './ModelPickerModal'
 
 const MODES = [
   { id: 'default', label: 'Default', icon: Shield, description: 'Asks for permission on each action' },
@@ -1172,14 +1173,14 @@ function AssistantMessage({ message, isStreaming }: { message: DisplayMessage; i
 type MeetingChip = { id: string; title: string; date?: string }
 
 const SLASH_COMMANDS = [
-  { id: 'plan',    hint: '/plan',    desc: 'Switch to plan mode' },
+  { id: 'plan',    hint: '/plan',    desc: 'Switch to plan mode — agent plans before executing' },
   { id: 'yolo',   hint: '/yolo',    desc: 'Fully autonomous — no interruptions' },
   { id: 'default',hint: '/default', desc: 'Switch to default mode' },
-  { id: 'model',  hint: '/model',   desc: 'Open mode picker' },
+  { id: 'model',  hint: '/model',   desc: 'Choose AI model (provider + model selection)' },
   { id: 'new',    hint: '/new',     desc: 'Start a new conversation' },
   { id: 'clear',  hint: '/clear',   desc: 'Clear input and attachments' },
   { id: 'meeting',hint: '/meeting', desc: 'Attach an analyzed meeting as context' },
-  { id: 'file',   hint: '/file',    desc: 'Attach a file' },
+  { id: 'file',   hint: '/file',    desc: 'Attach a file from your workspace or computer' },
   { id: 'help',   hint: '/help',    desc: 'Show all commands' },
 ] as const
 
@@ -1194,6 +1195,7 @@ function Composer() {
   const [input, setInput] = useState('')
   const [mode, setMode] = useState('default')
   const [showModeDropdown, setShowModeDropdown] = useState(false)
+  const [showModelPicker, setShowModelPicker] = useState(false)
   const [attachments, setAttachments] = useState<FileAttachment[]>([])
   const [meetingChips, setMeetingChips] = useState<MeetingChip[]>([])
   const [isDragOver, setIsDragOver] = useState(false)
@@ -1212,12 +1214,20 @@ function Composer() {
   const [atFilter, setAtFilter] = useState('')
   const [atIndex, setAtIndex] = useState(0)
 
+  // File fuzzy-search sub-picker state
+  const [filePickerOpen, setFilePickerOpen] = useState(false)
+  const [filePickerQuery, setFilePickerQuery] = useState('')
+  const [filePickerResults, setFilePickerResults] = useState<string[]>([])
+  const [filePickerIndex, setFilePickerIndex] = useState(0)
+  const filePickerSearchRef = useRef<HTMLInputElement>(null)
+
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const dropRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const partialStartRef = useRef<number>(-1)
 
-  const { isStreaming, sendMessage, cancelAgent, currentMode, setMode: storeSetMode, startNewConversation } = useAgentStore()
+  const { isStreaming, sendMessage, cancelAgent, currentMode, setMode: storeSetMode, startNewConversation, currentModel, setModel } = useAgentStore()
+  const { workspaces } = useWorkspaceStore()
 
   useEffect(() => { setMode(currentMode) }, [currentMode])
 
@@ -1239,7 +1249,38 @@ function Composer() {
     setSlashOpen(false)
     setAtOpen(false)
     setMeetingSubOpen(false)
+    setFilePickerOpen(false)
   }
+
+  const openFilePicker = useCallback(async (query = '') => {
+    setFilePickerQuery(query)
+    setFilePickerIndex(0)
+    setFilePickerOpen(true)
+    const wsId = workspaces[0]?.id
+    if (!wsId) { setFilePickerResults([]); return }
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await (window.wos as any).globWorkspace({ workspaceId: wsId, query })
+      setFilePickerResults(result?.files ?? [])
+    } catch {
+      setFilePickerResults([])
+    }
+    setTimeout(() => filePickerSearchRef.current?.focus(), 50)
+  }, [workspaces])
+
+  const refreshFileSearch = useCallback(async (q: string) => {
+    setFilePickerQuery(q)
+    setFilePickerIndex(0)
+    const wsId = workspaces[0]?.id
+    if (!wsId) { setFilePickerResults([]); return }
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await (window.wos as any).globWorkspace({ workspaceId: wsId, query: q })
+      setFilePickerResults(result?.files ?? [])
+    } catch {
+      setFilePickerResults([])
+    }
+  }, [workspaces])
 
   const handleModeChange = (id: string) => {
     setMode(id)
@@ -1256,8 +1297,8 @@ function Composer() {
       case 'plan':    handleModeChange('plan');    break
       case 'yolo':   handleModeChange('yolo');   break
       case 'default': handleModeChange('default'); break
-      case 'model':  setShowModeDropdown(true);  break
-      case 'file':   fileInputRef.current?.click(); break
+      case 'model':  setShowModelPicker(true);  break
+      case 'file':   void openFilePicker(''); break
       case 'new': {
         try {
           await startNewConversation()
@@ -1291,7 +1332,7 @@ function Composer() {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [openFilePicker])
 
   const executeAt = useCallback(async (cmdId: string) => {
     // Remove the @word trigger from input
@@ -1300,7 +1341,7 @@ function Composer() {
     setTimeout(resizeTextarea, 0)
 
     switch (cmdId) {
-      case 'file': fileInputRef.current?.click(); break
+      case 'file': void openFilePicker(''); break
       case 'meeting': {
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1314,12 +1355,12 @@ function Composer() {
         break
       }
       case 'web':
-        // Web chip: add a placeholder attachment; real search handled by agent on send
-        setAttachments(prev => [...prev, { name: '@web', content: '[web search]', type: 'web' }])
+        // @web: add chip that signals agent to search the web — handled in handleSend
+        setAttachments(prev => [...prev, { name: '@web', content: '__web_search__', type: 'web' }])
         break
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [openFilePicker])
 
   const addMeetingChip = (meeting: MeetingChip) => {
     setMeetingChips(prev => prev.some(m => m.id === meeting.id) ? prev : [...prev, meeting])
@@ -1394,7 +1435,14 @@ function Composer() {
       text += '\n\n[Attached meeting context: ' + meetingChips.map(m => m.title).join(', ') + ']'
     }
 
-    sendMessage(text, attachments)
+    // @web chip: inject web-search instruction so the agent knows to use web search
+    const hasWebChip = attachments.some(a => a.type === 'web')
+    if (hasWebChip) {
+      text = `[Web search enabled — please search the web as needed to answer this query]\n\n${text}`
+    }
+    const nonWebAttachments = attachments.filter(a => a.type !== 'web')
+
+    sendMessage(text, nonWebAttachments)
     setInput('')
     setAttachments([])
     setMeetingChips([])
@@ -1481,6 +1529,92 @@ function Composer() {
                 </button>
               ))
             )}
+          </div>
+        )}
+
+        {/* File fuzzy-search sub-picker */}
+        {filePickerOpen && (
+          <div className="absolute bottom-full mb-2 left-0 right-0 z-50 rounded-xl overflow-hidden"
+            style={{ background: 'var(--popover)', border: '1px solid var(--border)', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', maxHeight: '280px', display: 'flex', flexDirection: 'column' }}>
+            <div className="flex items-center gap-2 px-3 py-2 sticky top-0" style={{ background: 'var(--popover)', borderBottom: '1px solid var(--border)' }}>
+              <Search size={12} style={{ color: 'var(--muted-foreground)' }} />
+              <input
+                ref={filePickerSearchRef}
+                value={filePickerQuery}
+                onChange={e => void refreshFileSearch(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'ArrowDown') { e.preventDefault(); setFilePickerIndex(i => Math.min(i + 1, filePickerResults.length)); return }
+                  if (e.key === 'ArrowUp') { e.preventDefault(); setFilePickerIndex(i => Math.max(i - 1, 0)); return }
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    const f = filePickerResults[filePickerIndex]
+                    if (f) {
+                      void (async () => {
+                        const wsId = workspaces[0]?.id
+                        if (wsId) {
+                          try {
+                            const res = await window.wos.saveWorkspaceFile({ workspaceId: wsId, relPath: f, content: '' })
+                            const absPath = res.absPath
+                            if (absPath) {
+                              const fs = { readFile: async (p: string) => {
+                                // Read via IPC instead — just use path as content reference
+                                return { path: p }
+                              }}
+                              void fs.readFile(absPath)
+                            }
+                          } catch { /* ok */ }
+                        }
+                        setAttachments(prev => [...prev, { name: f, content: `[File: ${f}]`, type: 'text/plain' }])
+                      })()
+                      setFilePickerOpen(false)
+                    } else if (filePickerIndex === filePickerResults.length) {
+                      fileInputRef.current?.click()
+                      setFilePickerOpen(false)
+                    }
+                    return
+                  }
+                  if (e.key === 'Escape') { setFilePickerOpen(false); textareaRef.current?.focus(); return }
+                }}
+                placeholder="Search files…"
+                className="flex-1 bg-transparent outline-none text-xs"
+                style={{ color: 'var(--foreground)' }}
+              />
+              <button onMouseDown={() => setFilePickerOpen(false)} style={{ color: 'var(--muted-foreground)' }}>
+                <X size={11} />
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {filePickerResults.length === 0 && filePickerQuery !== '' && (
+                <div className="px-3 py-4 text-center text-xs" style={{ color: 'var(--muted-foreground)' }}>No files found</div>
+              )}
+              {filePickerResults.map((f, i) => (
+                <button
+                  key={f}
+                  onMouseDown={() => {
+                    setAttachments(prev => [...prev, { name: f, content: `[File: ${f}]`, type: 'text/plain' }])
+                    setFilePickerOpen(false)
+                    textareaRef.current?.focus()
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left transition-colors"
+                  style={{ background: i === filePickerIndex ? 'rgba(255,255,255,0.06)' : 'transparent' }}
+                >
+                  <File size={11} style={{ color: 'var(--muted-foreground)', flexShrink: 0 }} />
+                  <span className="text-xs truncate" style={{ color: 'var(--foreground)' }}>{f}</span>
+                </button>
+              ))}
+              {/* Browse fallback */}
+              <button
+                onMouseDown={() => { fileInputRef.current?.click(); setFilePickerOpen(false) }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left transition-colors"
+                style={{
+                  background: filePickerIndex === filePickerResults.length ? 'rgba(255,255,255,0.06)' : 'transparent',
+                  borderTop: '1px solid var(--border)',
+                }}
+              >
+                <Plus size={11} style={{ color: 'var(--muted-foreground)', flexShrink: 0 }} />
+                <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Browse computer…</span>
+              </button>
+            </div>
           </div>
         )}
 
@@ -1579,10 +1713,10 @@ function Composer() {
           <div className="flex items-center gap-1.5 px-3 pb-2.5 pt-0.5">
             {/* Attach file */}
             <button
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => void openFilePicker('')}
               className="w-5 h-5 rounded flex items-center justify-center wos-hover transition-colors"
               style={{ color: 'var(--muted-foreground)' }}
-              title="Attach file"
+              title="Attach file from workspace"
             >
               <Plus size={13} />
             </button>
@@ -1693,6 +1827,15 @@ function Composer() {
           </div>
         </div>
       </div>
+
+      {/* Model picker modal — rendered outside the inner div so it can be full-screen */}
+      {showModelPicker && (
+        <ModelPickerModal
+          current={currentModel}
+          onSelect={async (modelId) => { await setModel(modelId) }}
+          onClose={() => setShowModelPicker(false)}
+        />
+      )}
     </div>
   )
 }

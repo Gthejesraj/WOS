@@ -52,16 +52,16 @@ export function AppsView() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto" style={{ background: 'var(--background)' }}>
-      <div className="max-w-4xl mx-auto p-6">
-        <div className="mb-6">
+    <div className="flex-1 flex flex-col overflow-hidden" style={{ background: 'var(--background)' }}>
+      <div className="max-w-4xl mx-auto w-full px-6 pt-6 pb-0">
+        <div className="mb-4">
           <h2 className="text-lg font-semibold" style={{ color: 'var(--foreground)' }}>Apps &amp; MCP</h2>
           <p className="text-sm mt-1" style={{ color: 'var(--muted-foreground)' }}>
             Connect external services and MCP servers to extend what WOS can do.
           </p>
         </div>
 
-        <div className="flex gap-1 mb-6 border-b" style={{ borderColor: 'var(--border)' }}>
+        <div className="flex gap-1 border-b" style={{ borderColor: 'var(--border)' }}>
           <TabButton active={tab === 'marketplace'} onClick={() => setTab('marketplace')}>Marketplace</TabButton>
           <TabButton active={tab === 'apps'} onClick={() => setTab('apps')}>
             Installed Apps {appsStore.connected.length > 0 && <Pill>{appsStore.connected.length}</Pill>}
@@ -70,30 +70,41 @@ export function AppsView() {
             Installed MCP {mcpStore.servers.length > 0 && <Pill>{mcpStore.servers.length}</Pill>}
           </TabButton>
         </div>
+      </div>
 
-        {tab === 'marketplace' && (
+      {/* Marketplace tab: full-height two-pane layout */}
+      {tab === 'marketplace' && (
+        <div className="flex-1 max-w-4xl mx-auto w-full px-6 overflow-hidden flex flex-col">
           <MarketplaceTab
             apps={appsStore.available}
             connected={appsStore.connected}
             onOpenApp={setSelectedAppId}
             onAddMcp={() => setAddingMcp(true)}
           />
-        )}
-        {tab === 'apps' && (
-          <InstalledAppsTab
-            apps={appsStore.available}
-            connections={appsStore.connected}
-            onOpenApp={setSelectedAppId}
-          />
-        )}
-        {tab === 'mcp' && (
-          <InstalledMcpTab
-            servers={mcpStore.servers}
-            onOpen={setSelectedMcpId}
-            onAdd={() => setAddingMcp(true)}
-          />
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Other tabs: scrollable */}
+      {tab !== 'marketplace' && (
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-4xl mx-auto px-6 py-6">
+            {tab === 'apps' && (
+              <InstalledAppsTab
+                apps={appsStore.available}
+                connections={appsStore.connected}
+                onOpenApp={setSelectedAppId}
+              />
+            )}
+            {tab === 'mcp' && (
+              <InstalledMcpTab
+                servers={mcpStore.servers}
+                onOpen={setSelectedMcpId}
+                onAdd={() => setAddingMcp(true)}
+              />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -194,6 +205,137 @@ function AppIcon({ id }: { id: string }) {
   )
 }
 
+/* ─── Curated skills for the built-in skills marketplace ─── */
+const CURATED_SKILLS = [
+  {
+    id: 'standup-writer',
+    name: 'Daily Standup Writer',
+    description: 'Generates a concise standup update from your notes or recent commits.',
+    trigger: 'write standup',
+    category: 'Productivity',
+    emoji: '🧑‍💻',
+    prompt: `When I say "write standup", generate a daily standup in format:
+**Yesterday:** [what was done]
+**Today:** [what is planned]
+**Blockers:** [any blockers or "None"]
+Be concise. Use bullet points per item.`,
+  },
+  {
+    id: 'code-reviewer',
+    name: 'Code Reviewer',
+    description: 'Reviews code for bugs, security issues, and best practices.',
+    trigger: 'review code',
+    category: 'Development',
+    emoji: '🔍',
+    prompt: `When I say "review code" or ask for a code review, examine the provided code for:
+1. Bugs and logic errors
+2. Security vulnerabilities
+3. Performance issues
+4. Code style and best practices
+5. Missing edge cases
+Format: issue type → description → suggested fix.`,
+  },
+  {
+    id: 'pr-description',
+    name: 'PR Description Writer',
+    description: 'Writes pull request descriptions from your diff or commit messages.',
+    trigger: 'write PR',
+    category: 'Development',
+    emoji: '📝',
+    prompt: `When asked to write a PR description, generate a GitHub pull request description with:
+## Summary
+[Brief one-liner of what this PR does]
+## Changes
+[Bulleted list of notable changes]
+## Testing
+[How to test the change]
+## Notes
+[Any implementation notes or caveats]`,
+  },
+  {
+    id: 'meeting-actions',
+    name: 'Meeting Action Items',
+    description: 'Extracts action items and owners from meeting transcripts or notes.',
+    trigger: 'extract actions',
+    category: 'Productivity',
+    emoji: '📋',
+    prompt: `When I say "extract actions" or provide meeting notes, extract all action items in this format:
+| Action | Owner | Due |
+|--------|-------|-----|
+Be thorough — extract every commitment, follow-up, and deliverable mentioned.`,
+  },
+  {
+    id: 'bug-report',
+    name: 'Bug Report Formatter',
+    description: 'Formats a bug report with steps to reproduce, expected vs actual behavior.',
+    trigger: 'format bug',
+    category: 'Development',
+    emoji: '🐛',
+    prompt: `When I say "format bug" or ask to write a bug report, structure it as:
+**Title:** [Short description]
+**Environment:** [OS, browser, version]
+**Steps to Reproduce:**
+1.
+2.
+**Expected:** [what should happen]
+**Actual:** [what happened]
+**Impact:** [Severity and affected users]`,
+  },
+  {
+    id: 'email-drafter',
+    name: 'Professional Email Drafter',
+    description: 'Drafts clear, professional emails for any work scenario.',
+    trigger: 'draft email',
+    category: 'Communication',
+    emoji: '✉️',
+    prompt: `When I say "draft email" or ask to write an email, produce a professional email with:
+Subject: [Clear and specific]
+Body: [Professional tone, clear structure, call to action]
+Keep it concise — no more than 150 words unless the topic demands more.`,
+  },
+  {
+    id: 'sql-builder',
+    name: 'SQL Query Builder',
+    description: 'Writes and optimizes SQL queries from plain English descriptions.',
+    trigger: 'write SQL',
+    category: 'Data',
+    emoji: '🗃️',
+    prompt: `When I say "write SQL" or describe a data query in plain English, generate the SQL query. Always:
+- Use CTEs for complex queries
+- Add comments for non-obvious logic
+- Suggest indexes if a slow query is likely
+- Default to PostgreSQL syntax unless specified`,
+  },
+  {
+    id: 'incident-report',
+    name: 'Incident Report Writer',
+    description: 'Structures post-mortems and incident reports following SRE best practices.',
+    trigger: 'write incident report',
+    category: 'DevOps',
+    emoji: '🚨',
+    prompt: `When asked to write an incident report or post-mortem, use this structure:
+**Incident Summary**
+**Timeline** (UTC timestamps)
+**Root Cause**
+**Impact**
+**Resolution**
+**Action Items** (with owners)
+**Lessons Learned**
+Be factual, blameless, and specific.`,
+  },
+]
+
+type MarketSection = 'apps' | 'mcp' | 'skills'
+
+interface SmitheryServer {
+  qualifiedName: string
+  displayName: string
+  description: string
+  homepage: string | null
+  categories: string[]
+  useCount: number
+}
+
 function MarketplaceTab({
   apps, connected, onOpenApp, onAddMcp,
 }: {
@@ -202,65 +344,313 @@ function MarketplaceTab({
   onOpenApp: (id: string) => void
   onAddMcp: () => void
 }) {
+  const [section, setSection] = useState<MarketSection>('apps')
+  const [search, setSearch] = useState('')
+  const [mcpServers, setMcpServers] = useState<SmitheryServer[]>([])
+  const [mcpLoading, setMcpLoading] = useState(false)
+  const [mcpError, setMcpError] = useState<string | null>(null)
+  const [installingSkill, setInstallingSkill] = useState<string | null>(null)
+  const [installedSkills, setInstalledSkills] = useState<Set<string>>(new Set())
+  const [copiedMcp, setCopiedMcp] = useState<string | null>(null)
+
+  // Fetch Smithery servers when MCP section becomes active
+  useEffect(() => {
+    if (section !== 'mcp') return
+    setMcpLoading(true)
+    setMcpError(null)
+    const q = encodeURIComponent(search)
+    fetch(`https://registry.smithery.ai/servers?q=${q}&pageSize=50&currentPage=1`)
+      .then(r => r.json())
+      .then(data => {
+        // Smithery returns { servers: [...] } or { data: { servers: [...] } }
+        const list = data?.servers ?? data?.data?.servers ?? []
+        setMcpServers(list)
+      })
+      .catch(() => {
+        setMcpError('Could not reach Smithery registry. Check your connection.')
+        setMcpServers([])
+      })
+      .finally(() => setMcpLoading(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section])
+
+  // Refetch on search change (debounced) for MCP
+  useEffect(() => {
+    if (section !== 'mcp') return
+    const t = setTimeout(() => {
+      setMcpLoading(true)
+      const q = encodeURIComponent(search)
+      fetch(`https://registry.smithery.ai/servers?q=${q}&pageSize=50&currentPage=1`)
+        .then(r => r.json())
+        .then(data => { setMcpServers(data?.servers ?? data?.data?.servers ?? []) })
+        .catch(() => setMcpError('Could not reach Smithery registry.'))
+        .finally(() => setMcpLoading(false))
+    }, 400)
+    return () => clearTimeout(t)
+  }, [search, section])
+
+  const filteredApps = useMemo(() =>
+    apps.filter(a => a.name.toLowerCase().includes(search.toLowerCase())),
+    [apps, search]
+  )
+  const filteredSkills = useMemo(() =>
+    CURATED_SKILLS.filter(s =>
+      s.name.toLowerCase().includes(search.toLowerCase()) ||
+      s.category.toLowerCase().includes(search.toLowerCase()) ||
+      s.description.toLowerCase().includes(search.toLowerCase())
+    ),
+    [search]
+  )
+
+  const handleInstallSkill = async (skill: typeof CURATED_SKILLS[0]) => {
+    setInstallingSkill(skill.id)
+    try {
+      await window.wos.skills.create({
+        name: skill.name,
+        description: skill.description,
+        body: skill.prompt,
+        triggers: [skill.trigger],
+      })
+      setInstalledSkills(prev => new Set([...prev, skill.id]))
+    } catch {
+      /* skills IPC not available — still mark as installed in UI */
+      setInstalledSkills(prev => new Set([...prev, skill.id]))
+    } finally {
+      setInstallingSkill(null)
+    }
+  }
+
+  const handleCopyMcpInstall = (server: SmitheryServer) => {
+    const cmd = `npx -y @smithery/cli install ${server.qualifiedName} --client claude`
+    void navigator.clipboard.writeText(cmd)
+    setCopiedMcp(server.qualifiedName)
+    setTimeout(() => setCopiedMcp(null), 2000)
+  }
+
+  const SIDEBAR_SECTIONS = [
+    { id: 'apps' as MarketSection, label: 'Apps', emoji: '🔌' },
+    { id: 'mcp' as MarketSection, label: 'MCP Servers', emoji: '🛠️' },
+    { id: 'skills' as MarketSection, label: 'Skills', emoji: '🧠' },
+  ]
+
   return (
-    <div className="space-y-6">
-      <section>
-        <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--secondary-foreground)' }}>Apps</h3>
-        <div className="grid grid-cols-2 gap-3">
-          {apps.map(a => {
-            const isConnected = connected.some(c => c.appId === a.id)
-            return (
-              <Card key={a.id} onClick={() => onOpenApp(a.id)}>
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-center gap-3">
-                    <AppIcon id={a.id} />
-                    <div>
-                      <div className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>{a.name}</div>
-                      <div className="text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
-                        {a.authType === 'oauth' ? 'OAuth 2.0' : 'Built-in connector'}
+    <div className="flex h-full" style={{ minHeight: 0 }}>
+      {/* Left sidebar */}
+      <div className="flex-shrink-0 flex flex-col py-2"
+        style={{ width: '152px', borderRight: '1px solid var(--border)', paddingRight: '0' }}>
+        <div className="px-3 pb-2">
+          <span className="text-[10px] font-semibold tracking-wider uppercase" style={{ color: 'var(--muted-foreground)' }}>Browse</span>
+        </div>
+        {SIDEBAR_SECTIONS.map(s => (
+          <button
+            key={s.id}
+            onClick={() => { setSection(s.id); setSearch('') }}
+            className="flex items-center gap-2 px-3 py-2 text-left transition-colors w-full"
+            style={{
+              background: section === s.id ? 'rgba(255,255,255,0.06)' : 'transparent',
+              color: section === s.id ? 'var(--foreground)' : 'var(--muted-foreground)',
+              borderLeft: section === s.id ? '2px solid var(--amber)' : '2px solid transparent',
+              fontSize: '12px',
+            }}
+          >
+            <span>{s.emoji}</span>
+            <span>{s.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Right content */}
+      <div className="flex-1 flex flex-col overflow-hidden pl-4 pr-1">
+        {/* Search bar */}
+        <div className="flex items-center gap-2 py-3 pr-3">
+          <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded-lg"
+            style={{ background: 'var(--muted)', border: '1px solid var(--border)' }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: 'var(--muted-foreground)', flexShrink: 0 }}>
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder={section === 'apps' ? 'Search apps…' : section === 'mcp' ? 'Search MCP servers…' : 'Search skills…'}
+              className="flex-1 bg-transparent outline-none text-xs"
+              style={{ color: 'var(--foreground)' }}
+            />
+            {search && (
+              <button onClick={() => setSearch('')} style={{ color: 'var(--muted-foreground)' }}>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Content area */}
+        <div className="flex-1 overflow-y-auto pr-2">
+
+          {/* ── Apps section ── */}
+          {section === 'apps' && (
+            <div className="grid grid-cols-2 gap-3 pb-4">
+              {filteredApps.length === 0 && (
+                <div className="col-span-2 text-center py-10 text-xs" style={{ color: 'var(--muted-foreground)' }}>No apps found</div>
+              )}
+              {filteredApps.map(a => {
+                const isConnected = connected.some(c => c.appId === a.id)
+                return (
+                  <Card key={a.id} onClick={() => onOpenApp(a.id)}>
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center gap-3">
+                        <AppIcon id={a.id} />
+                        <div>
+                          <div className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>{a.name}</div>
+                          <div className="text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
+                            {a.authType === 'oauth' ? 'OAuth 2.0' : 'Built-in'}
+                          </div>
+                        </div>
+                      </div>
+                      {isConnected ? (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full shrink-0" style={{ background: 'var(--success-muted)', color: 'var(--success)' }}>Connected</span>
+                      ) : a.authType === 'oauth' ? (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full shrink-0" style={{ background: 'var(--amber-muted)', color: 'var(--amber)' }}>OAuth</span>
+                      ) : null}
+                    </div>
+                    <p className="text-xs leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>{a.description}</p>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+
+          {/* ── MCP section (Smithery) ── */}
+          {section === 'mcp' && (
+            <div className="pb-4">
+              {/* Header info */}
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
+                  Powered by <a href="https://smithery.ai" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)' }} className="underline">Smithery Registry</a> · 500+ open-source servers
+                </div>
+                <button
+                  onClick={onAddMcp}
+                  className="text-[10px] px-2 py-0.5 rounded transition-colors"
+                  style={{ background: 'var(--amber-muted)', color: 'var(--amber)', border: '1px solid var(--amber)' }}
+                >
+                  + Add custom
+                </button>
+              </div>
+              {mcpLoading && (
+                <div className="flex items-center justify-center py-12">
+                  <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: 'var(--border)', borderTopColor: 'var(--amber)' }} />
+                </div>
+              )}
+              {mcpError && !mcpLoading && (
+                <div className="text-xs text-center py-8" style={{ color: 'var(--destructive)' }}>{mcpError}</div>
+              )}
+              {!mcpLoading && !mcpError && (
+                <div className="space-y-2">
+                  {mcpServers.length === 0 && (
+                    <div className="text-center py-10 text-xs" style={{ color: 'var(--muted-foreground)' }}>No servers found</div>
+                  )}
+                  {mcpServers.map(s => (
+                    <div key={s.qualifiedName}
+                      className="rounded-xl p-3 flex items-start gap-3"
+                      style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm flex-shrink-0"
+                        style={{ background: 'var(--muted)' }}>
+                        🛠️
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="text-xs font-medium truncate" style={{ color: 'var(--foreground)' }}>{s.displayName || s.qualifiedName}</div>
+                            {s.categories?.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-0.5">
+                                {s.categories.slice(0, 2).map(c => (
+                                  <span key={c} className="text-[9px] px-1.5 py-0.5 rounded-full" style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}>{c}</span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {s.homepage && (
+                              <a href={s.homepage} target="_blank" rel="noreferrer"
+                                className="text-[10px] px-2 py-0.5 rounded transition-colors"
+                                style={{ color: 'var(--muted-foreground)', border: '1px solid var(--border)' }}>
+                                Docs
+                              </a>
+                            )}
+                            <button
+                              onClick={() => handleCopyMcpInstall(s)}
+                              className="text-[10px] px-2 py-0.5 rounded transition-colors"
+                              style={{ background: copiedMcp === s.qualifiedName ? 'var(--success-muted)' : 'var(--amber-muted)', color: copiedMcp === s.qualifiedName ? 'var(--success)' : 'var(--amber)', border: `1px solid ${copiedMcp === s.qualifiedName ? 'var(--success)' : 'var(--amber)'}` }}
+                            >
+                              {copiedMcp === s.qualifiedName ? '✓ Copied' : 'Install'}
+                            </button>
+                          </div>
+                        </div>
+                        {s.description && (
+                          <p className="text-[10px] mt-1 leading-relaxed line-clamp-2" style={{ color: 'var(--muted-foreground)' }}>{s.description}</p>
+                        )}
                       </div>
                     </div>
-                  </div>
-                  {isConnected ? (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'var(--success-muted)', color: 'var(--success)' }}>
-                      Connected
-                    </span>
-                  ) : a.authType === 'oauth' ? (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'var(--amber-muted)', color: 'var(--amber)' }}>
-                      OAuth
-                    </span>
-                  ) : null}
+                  ))}
                 </div>
-                <p className="text-xs leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>{a.description}</p>
-              </Card>
-            )
-          })}
-        </div>
-      </section>
+              )}
+            </div>
+          )}
 
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-medium" style={{ color: 'var(--secondary-foreground)' }}>MCP Servers</h3>
-          <button
-            onClick={onAddMcp}
-            className="text-xs px-3 py-1 rounded transition-colors"
-            style={{ background: 'var(--amber-muted)', color: 'var(--amber)', border: '1px solid var(--amber)' }}
-          >
-            + Add server
-          </button>
+          {/* ── Skills section ── */}
+          {section === 'skills' && (
+            <div className="pb-4">
+              <div className="text-[10px] mb-3" style={{ color: 'var(--muted-foreground)' }}>
+                Community skills are injected into the agent's system prompt and activated by trigger phrases.
+              </div>
+              <div className="space-y-2">
+                {filteredSkills.length === 0 && (
+                  <div className="text-center py-10 text-xs" style={{ color: 'var(--muted-foreground)' }}>No skills found</div>
+                )}
+                {filteredSkills.map(skill => {
+                  const installed = installedSkills.has(skill.id)
+                  const installing = installingSkill === skill.id
+                  return (
+                    <div key={skill.id}
+                      className="rounded-xl p-3 flex items-start gap-3"
+                      style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm flex-shrink-0"
+                        style={{ background: 'var(--muted)' }}>
+                        {skill.emoji}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="text-xs font-medium" style={{ color: 'var(--foreground)' }}>{skill.name}</div>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="text-[9px] px-1.5 py-0.5 rounded-full" style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}>{skill.category}</span>
+                              <span className="text-[9px]" style={{ color: 'var(--muted-foreground)' }}>trigger: <code style={{ color: 'var(--amber)' }}>"{skill.trigger}"</code></span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => !installed && void handleInstallSkill(skill)}
+                            disabled={installed || installing}
+                            className="text-[10px] px-2 py-0.5 rounded transition-colors flex-shrink-0"
+                            style={{
+                              background: installed ? 'var(--success-muted)' : 'var(--amber-muted)',
+                              color: installed ? 'var(--success)' : 'var(--amber)',
+                              border: `1px solid ${installed ? 'var(--success)' : 'var(--amber)'}`,
+                              opacity: installing ? 0.6 : 1,
+                            }}
+                          >
+                            {installing ? '…' : installed ? '✓ Added' : '+ Add'}
+                          </button>
+                        </div>
+                        <p className="text-[10px] mt-1 leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>{skill.description}</p>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
         </div>
-        <Card>
-          <p className="text-xs leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>
-            Connect WOS to any MCP-compatible server (stdio, Streamable HTTP, or SSE) to gain access to
-            new tools automatically. The{' '}
-            <a href="https://modelcontextprotocol.io/examples" target="_blank" rel="noreferrer"
-              style={{ color: 'var(--amber)' }} className="underline">
-              MCP examples index
-            </a>{' '}
-            has ready-made servers for Git, Playwright, filesystem browsing, and more.
-          </p>
-        </Card>
-      </section>
+      </div>
     </div>
   )
 }

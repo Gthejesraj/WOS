@@ -197,6 +197,7 @@ export function finalizeOrphanBlocks(
   blocks: MessageBlock[],
   opts: { isLatestMessage?: boolean } = {}
 ): MessageBlock[] {
+  const { isLatestMessage = false } = opts
   let mutated = false
   const out = blocks.map((b): MessageBlock => {
     if (b.type === 'tool_use' && (b.status === 'preparing' || b.status === 'running')) {
@@ -205,24 +206,26 @@ export function finalizeOrphanBlocks(
         ...b,
         status: 'error' as const,
         error: b.error || 'Interrupted — previous run did not finish',
-        interrupted: true,
+        // Only mark interrupted (shows the banner) for the most recent message.
+        // Older messages are just cleaned up silently.
+        interrupted: isLatestMessage || undefined,
       }
     }
     if (b.type === 'reasoning' && !b.done) {
       mutated = true
-      return { ...b, done: true, collapsed: true, interrupted: true }
+      return { ...b, done: true, collapsed: true, interrupted: isLatestMessage || undefined }
     }
     if (b.type === 'ask_user' && !b.answer) {
       mutated = true
-      return { ...b, answer: '__cancelled__', interrupted: true }
+      return { ...b, answer: '__cancelled__', interrupted: isLatestMessage || undefined }
     }
     if (b.type === 'permission_request' && !b.decision) {
       mutated = true
-      return { ...b, decision: 'denied' as const, interrupted: true }
+      return { ...b, decision: 'denied' as const, interrupted: isLatestMessage || undefined }
     }
     if (b.type === 'subagent' && !b.result) {
       mutated = true
-      return { ...b, result: '[interrupted]', collapsed: true, interrupted: true }
+      return { ...b, result: '[interrupted]', collapsed: true, interrupted: isLatestMessage || undefined }
     }
     return b
   })

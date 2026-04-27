@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { Plus, ChevronDown, Zap, Shield, BookOpen } from 'lucide-react'
+import { Plus, ChevronDown, Zap, Shield, BookOpen, Search } from 'lucide-react'
 import { useAgentStore } from '../../../store/agentStore'
 import { useWorkspaceStore } from '../../../store/workspaceStore'
 import { useSettingsStore } from '../../../store/settingsStore'
 import { cn } from '../../../lib/utils'
 import { MicButton } from './MicButton'
 import type { FileAttachment } from '../../../types'
+import { ModelPickerModal } from './ModelPickerModal'
 
 interface HomeViewProps {
   onSendMessage: (message: string, attachments?: FileAttachment[]) => void
@@ -29,10 +30,10 @@ const SUGGESTIONS = [
 const SLASH_COMMANDS = [
   { id: 'plan',    hint: '/plan',    desc: 'Switch to plan mode' },
   { id: 'yolo',   hint: '/yolo',    desc: 'Fully autonomous — no interruptions' },
-  { id: 'default',hint: '/default', desc: 'Switch to default mode' },
-  { id: 'model',  hint: '/model',   desc: 'Open mode picker' },
+  { id: 'default', hint: '/default', desc: 'Switch to default mode' },
+  { id: 'model',  hint: '/model',   desc: 'Choose AI model' },
   { id: 'clear',  hint: '/clear',   desc: 'Clear input and attachments' },
-  { id: 'file',   hint: '/file',    desc: 'Attach a file' },
+  { id: 'file',   hint: '/file',    desc: 'Attach a workspace file' },
   { id: 'help',   hint: '/help',    desc: 'Show all commands' },
 ] as const
 
@@ -47,6 +48,7 @@ export function HomeView({ onSendMessage, initialDraft, onDraftConsumed }: HomeV
   const [input, setInput] = useState('')
   const [mode, setMode] = useState('default')
   const [showModeDropdown, setShowModeDropdown] = useState(false)
+  const [showModelPicker, setShowModelPicker] = useState(false)
   const [attachments, setAttachments] = useState<FileAttachment[]>([])
   const [meetingChips, setMeetingChips] = useState<MeetingChip[]>([])
 
@@ -60,13 +62,20 @@ export function HomeView({ onSendMessage, initialDraft, onDraftConsumed }: HomeV
   const [atFilter, setAtFilter] = useState('')
   const [atIndex, setAtIndex] = useState(0)
 
+  // File picker state
+  const [filePickerOpen, setFilePickerOpen] = useState(false)
+  const [filePickerQuery, setFilePickerQuery] = useState('')
+  const [filePickerResults, setFilePickerResults] = useState<string[]>([])
+  const [filePickerIndex, setFilePickerIndex] = useState(0)
+  const filePickerSearchRef = useRef<HTMLInputElement>(null)
+
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const partialStartRef = useRef<number>(-1)
 
   const { defaultMode } = useSettingsStore()
-  const { activeWorkspace } = useWorkspaceStore()
-  const { setMode: storeSetMode } = useAgentStore()
+  const { activeWorkspace, workspaces } = useWorkspaceStore()
+  const { setMode: storeSetMode, currentModel, setModel } = useAgentStore()
 
   useEffect(() => {
     setMode(defaultMode ?? 'default')
@@ -114,6 +123,31 @@ export function HomeView({ onSendMessage, initialDraft, onDraftConsumed }: HomeV
     setShowModeDropdown(false)
   }
 
+  const openFilePicker = useCallback(async (query = '') => {
+    setFilePickerQuery(query)
+    setFilePickerOpen(true)
+    setFilePickerIndex(0)
+    closeMenus()
+    const wsId = workspaces.find(w => w.id === activeWorkspace?.id)?.id ?? workspaces[0]?.id
+    if (wsId) {
+      const res = await window.wos.globWorkspace({ workspaceId: wsId, query })
+      setFilePickerResults(res?.files ?? [])
+    }
+    setTimeout(() => filePickerSearchRef.current?.focus(), 50)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkspace, workspaces])
+
+  const refreshFileSearch = useCallback(async (q: string) => {
+    setFilePickerQuery(q)
+    setFilePickerIndex(0)
+    const wsId = workspaces.find(w => w.id === activeWorkspace?.id)?.id ?? workspaces[0]?.id
+    if (wsId) {
+      const res = await window.wos.globWorkspace({ workspaceId: wsId, query: q })
+      setFilePickerResults(res?.files ?? [])
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkspace, workspaces])
+
   const executeSlash = useCallback(async (cmdId: string) => {
     closeMenus()
     setInput('')
@@ -122,8 +156,8 @@ export function HomeView({ onSendMessage, initialDraft, onDraftConsumed }: HomeV
       case 'plan':    handleModeChange('plan');    break
       case 'yolo':   handleModeChange('yolo');   break
       case 'default': handleModeChange('default'); break
-      case 'model':  setShowModeDropdown(true);  break
-      case 'file':   fileInputRef.current?.click(); break
+      case 'model':  setShowModelPicker(true);  break
+      case 'file':   void openFilePicker(); break
       case 'clear': {
         setAttachments([])
         setMeetingChips([])
@@ -137,20 +171,20 @@ export function HomeView({ onSendMessage, initialDraft, onDraftConsumed }: HomeV
         break
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [openFilePicker])
 
   const executeAt = useCallback(async (cmdId: string) => {
     setInput(prev => prev.replace(/(?:^|\s)@\w*$/, m => m.startsWith(' ') ? ' ' : ''))
     closeMenus()
     setTimeout(resizeTextarea, 0)
     switch (cmdId) {
-      case 'file': fileInputRef.current?.click(); break
+      case 'file': void openFilePicker(); break
       case 'web':
-        setAttachments(prev => [...prev, { name: '@web', content: '[web search]', type: 'web' }])
+        setAttachments(prev => [...prev, { name: '@web', content: '[web search enabled]', type: 'web' as const }])
         break
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [openFilePicker])
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value
@@ -210,7 +244,10 @@ export function HomeView({ onSendMessage, initialDraft, onDraftConsumed }: HomeV
     if (meetingChips.length > 0) {
       text += '\n\n[Attached meeting context: ' + meetingChips.map(m => m.title).join(', ') + ']'
     }
-    onSendMessage(text, attachments)
+    const webSearch = attachments.some(a => a.type === 'web')
+    const fileAttachments = attachments.filter(a => a.type !== 'web')
+    if (webSearch) text = '[Web search enabled — use your search tools to find current information]\n\n' + text
+    onSendMessage(text, fileAttachments)
     setInput('')
     setAttachments([])
     setMeetingChips([])
@@ -348,7 +385,7 @@ export function HomeView({ onSendMessage, initialDraft, onDraftConsumed }: HomeV
             {/* Toolbar */}
             <div className="flex items-center gap-1.5 px-3 pb-3 pt-1">
               <button
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => void openFilePicker()}
                 className="w-5 h-5 rounded flex items-center justify-center wos-hover transition-colors"
                 style={{ color: 'var(--muted-foreground)' }}
                 title="Attach file"
@@ -476,7 +513,7 @@ export function HomeView({ onSendMessage, initialDraft, onDraftConsumed }: HomeV
           ))}
         </div>
 
-        {/* Hidden file input */}
+        {/* Hidden file input (OS fallback) */}
         <input
           ref={fileInputRef}
           type="file"
@@ -485,6 +522,68 @@ export function HomeView({ onSendMessage, initialDraft, onDraftConsumed }: HomeV
           onChange={handleFileInput}
         />
       </div>
+
+      {/* Workspace file picker popup */}
+      {filePickerOpen && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.5)' }}
+          onMouseDown={e => { if (e.target === e.currentTarget) setFilePickerOpen(false) }}>
+          <div className="rounded-xl overflow-hidden flex flex-col" style={{ background: 'var(--popover)', border: '1px solid var(--border)', boxShadow: '0 24px 60px rgba(0,0,0,0.7)', width: '440px', maxHeight: '360px' }}>
+            <div className="flex items-center gap-2 px-3 py-2.5" style={{ borderBottom: '1px solid var(--border)' }}>
+              <Search size={13} style={{ color: 'var(--muted-foreground)' }} />
+              <input
+                ref={filePickerSearchRef}
+                value={filePickerQuery}
+                onChange={e => void refreshFileSearch(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'ArrowDown') { e.preventDefault(); setFilePickerIndex(i => Math.min(i + 1, filePickerResults.length - 1)) }
+                  if (e.key === 'ArrowUp')   { e.preventDefault(); setFilePickerIndex(i => Math.max(i - 1, 0)) }
+                  if (e.key === 'Enter' && filePickerResults[filePickerIndex]) {
+                    const f = filePickerResults[filePickerIndex]
+                    setAttachments(prev => [...prev, { name: f, content: `[File: ${f}]`, type: 'text/plain' }])
+                    setFilePickerOpen(false)
+                  }
+                  if (e.key === 'Escape') setFilePickerOpen(false)
+                }}
+                placeholder="Search workspace files…"
+                className="flex-1 text-xs outline-none bg-transparent"
+                style={{ color: 'var(--foreground)' }}
+              />
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {filePickerResults.length === 0 && (
+                <div className="px-3 py-6 text-center text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                  {activeWorkspace ? 'No files found — try a different search' : 'Open a workspace to search files'}
+                </div>
+              )}
+              {filePickerResults.map((f, i) => (
+                <button key={f} onMouseDown={() => {
+                  setAttachments(prev => [...prev, { name: f, content: `[File: ${f}]`, type: 'text/plain' }])
+                  setFilePickerOpen(false)
+                }}
+                  className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors"
+                  style={{ background: i === filePickerIndex ? 'var(--accent)' : 'transparent', color: 'var(--foreground)' }}>
+                  <span style={{ color: 'var(--muted-foreground)', fontSize: '10px' }}>📄</span>
+                  <span className="font-mono truncate">{f}</span>
+                </button>
+              ))}
+              <button onMouseDown={() => { fileInputRef.current?.click(); setFilePickerOpen(false) }}
+                className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors border-t"
+                style={{ color: 'var(--secondary-foreground)', borderColor: 'var(--border)' }}>
+                <Plus size={12} /> Browse computer…
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Model picker modal */}
+      {showModelPicker && (
+        <ModelPickerModal
+          current={currentModel ?? 'claude-sonnet-4-6'}
+          onSelect={id => { setModel(id) }}
+          onClose={() => setShowModelPicker(false)}
+        />
+      )}
     </div>
   )
 }

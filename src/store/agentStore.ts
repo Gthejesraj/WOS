@@ -78,15 +78,22 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       // If a newer load started after us, or the user switched convs, ignore results
       if (get().loadToken !== token) return
 
+      // Find the index of the last assistant message — only that one can show the
+      // "run was interrupted" banner; older messages are silently cleaned up.
+      const lastAssistantIdx = messages.reduce(
+        (best, m, i) => (m.role === 'assistant' ? i : best),
+        -1
+      )
+
       const displayMessages: DisplayMessage[] = messages.map((m, idx) => {
         const rawBlocks: MessageBlock[] = Array.isArray(m.blocks)
           ? m.blocks
           : JSON.parse(m.blocks as unknown as string)
-        const isLatest = idx === messages.length - 1
+        const isLatestAssistant = m.role === 'assistant' && idx === lastAssistantIdx
         return {
           id: m.id,
           role: m.role as 'user' | 'assistant',
-          blocks: finalizeOrphanBlocks(rawBlocks, { isLatestMessage: false }),
+          blocks: finalizeOrphanBlocks(rawBlocks, { isLatestMessage: isLatestAssistant }),
           createdAt: new Date(m.createdAt),
           branchGroupId: m.branchGroupId,
           branchIndex: m.branchIndex,
