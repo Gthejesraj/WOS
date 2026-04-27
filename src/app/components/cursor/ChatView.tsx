@@ -213,9 +213,9 @@ function ToolUseBlock({
   const isRunning = status === 'running'
   const [expanded, setExpanded] = useState(isPreparing || isRunning)
   const statusIcon = interrupted
-    ? <AlertCircle size={11} className="text-amber-400" />
+    ? <AlertCircle size={11} className="text-zinc-400" />
     : status === 'preparing'
-    ? <Loader2 size={11} className="animate-spin text-amber-400" />
+    ? <Loader2 size={11} className="animate-spin text-zinc-400" />
     : status === 'running'
     ? <Loader2 size={11} className="animate-spin text-blue-400" />
     : status === 'error'
@@ -266,7 +266,7 @@ function ToolUseBlock({
               <div className="text-[10px] mb-1" style={{ color: 'var(--muted-foreground)' }}>Input (streaming)</div>
               <pre className="text-xs p-2 rounded overflow-x-auto max-h-48" style={{ fontSize: '11px', background: 'var(--background)', color: 'var(--secondary-foreground)' }}>
                 {partialArgs}
-                <span className="inline-block w-0.5 h-3 bg-amber-400/60 animate-pulse ml-0.5 align-middle" />
+                <span className="inline-block w-0.5 h-3 bg-zinc-400/60 animate-pulse ml-0.5 align-middle" />
               </pre>
             </>
           ) : hasInput ? (
@@ -417,7 +417,7 @@ function PlanApprovalBlock({
       <div
         className={cn(
           'border-l-2 pl-3 my-2 py-1 opacity-70',
-          cancelled ? 'border-amber-500/50' : 'border-green-500/50'
+          cancelled ? 'border-zinc-600/50' : 'border-green-500/50'
         )}
       >
         <span className="text-xs" style={{ color: cancelled ? 'var(--amber)' : 'var(--secondary-foreground)' }}>
@@ -474,8 +474,8 @@ function PlanApprovalBlock({
   }
 
   return (
-    <div className="my-2 rounded-lg overflow-hidden" style={{ border: '1px solid rgba(245,158,11,0.3)', background: 'rgba(245,158,11,0.04)' }}>
-      <div className="flex items-center gap-2 px-3 py-2" style={{ borderBottom: '1px solid rgba(245,158,11,0.2)' }}>
+    <div className="my-2 rounded-lg overflow-hidden" style={{ border: '1px solid var(--border-strong)', background: 'rgba(255,255,255,0.03)' }}>
+      <div className="flex items-center gap-2 px-3 py-2" style={{ borderBottom: '1px solid var(--border)' }}>
         <span style={{ color: 'var(--amber)' }}>📋</span>
         <span className="text-xs font-medium" style={{ color: 'var(--foreground)' }}>Plan ready — choose how to proceed</span>
         {planMarkdown && (
@@ -494,7 +494,7 @@ function PlanApprovalBlock({
           className="px-3 py-2 text-sm"
           style={{
             background: 'var(--card)',
-            borderBottom: '1px solid rgba(245,158,11,0.2)',
+            borderBottom: '1px solid var(--border)',
             maxHeight: 360,
             overflowY: 'auto',
           }}
@@ -507,7 +507,7 @@ function PlanApprovalBlock({
         <button
           onClick={handleApproveYolo}
           className="text-left text-sm px-3 py-2 rounded transition-colors hover:opacity-90"
-          style={{ background: 'rgba(245,158,11,0.18)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.35)' }}
+          style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--foreground)', border: '1px solid var(--border-strong)' }}
         >
           ▶ Start in YOLO <span style={{ opacity: 0.7, fontSize: 11 }}>— auto-approve every tool</span>
         </button>
@@ -823,7 +823,7 @@ function TodoBlock({
                 className={cn(
                   'mt-[3px] inline-block w-3 h-3 rounded border shrink-0',
                   t.status === 'completed' && 'bg-green-500/70 border-green-500/70',
-                  t.status === 'in_progress' && 'border-amber-400 bg-amber-400/20 animate-pulse',
+                  t.status === 'in_progress' && 'border-zinc-500 bg-zinc-500/20 animate-pulse',
                   t.status === 'pending' && 'border-[#555]',
                 )}
               />
@@ -1075,10 +1075,10 @@ function StreamingIndicator({ blocks }: { blocks: MessageBlock[] }) {
         <span
           key={d}
           className="w-1 h-1 rounded-full animate-bounce"
-          style={{ background: slow ? 'rgba(245,158,11,0.6)' : 'var(--border-strong)', animationDelay: `${d}ms` }}
+          style={{ background: slow ? 'rgba(255,255,255,0.15)' : 'var(--border-strong)', animationDelay: `${d}ms` }}
         />
       ))}
-      <span style={{ color: slow ? 'var(--amber)' : 'var(--muted-foreground)', fontSize: '11px' }}>
+      <span style={{ color: slow ? 'var(--foreground)' : 'var(--muted-foreground)', fontSize: '11px' }}>
         {label}{slow && ` (${elapsed}s)`}
       </span>
     </div>
@@ -1094,15 +1094,12 @@ function AssistantMessage({ message, isStreaming }: { message: DisplayMessage; i
     .join('')
 
   const hasInterruption = !isStreaming && blocksHaveInterruption(message.blocks)
+  void hasInterruption // intentionally unused — banner removed
 
   const handleCopy = () => {
     navigator.clipboard.writeText(textContent)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
-  }
-
-  const handleResume = () => {
-    sendMessage('Continue from where you left off — the previous run was interrupted before it finished.')
   }
 
   if (message.blocks.length === 0 && isStreaming) {
@@ -1146,25 +1143,7 @@ function AssistantMessage({ message, isStreaming }: { message: DisplayMessage; i
           </button>
         </div>
       )}
-      {hasInterruption && (
-        <div className="flex items-center gap-2 mt-2 px-2.5 py-1.5 rounded-md text-xs"
-          style={{
-            background: 'rgba(245,158,11,0.06)',
-            border: '1px solid rgba(245,158,11,0.25)',
-            color: 'var(--amber)',
-          }}
-        >
-          <AlertCircle size={12} />
-          <span>This run was interrupted before it finished.</span>
-          <button
-            onClick={handleResume}
-            className="ml-auto px-2 py-0.5 rounded transition-colors wos-hover font-medium"
-            style={{ border: '1px solid rgba(245,158,11,0.4)', color: 'var(--amber)' }}
-          >
-            Resume from here
-          </button>
-        </div>
-      )}
+      {hasInterruption && null /* banner removed */}
     </div>
   )
 }
@@ -1648,9 +1627,9 @@ function Composer() {
             <div className="flex flex-wrap gap-1.5 px-4 pt-3">
               {meetingChips.map(chip => (
                 <div key={chip.id} className="flex items-center gap-1.5 px-2 py-1 rounded-lg"
-                  style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)' }}>
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-strong)' }}>
                   <span style={{ fontSize: '10px' }}>📋</span>
-                  <span style={{ color: 'var(--amber)', fontSize: '11px', maxWidth: '160px' }} className="truncate">{chip.title}</span>
+                  <span style={{ color: 'var(--foreground)', fontSize: '11px', maxWidth: '160px' }} className="truncate">{chip.title}</span>
                   <button
                     onClick={() => setMeetingChips(prev => prev.filter(m => m.id !== chip.id))}
                     className="hover:opacity-100 transition-opacity"

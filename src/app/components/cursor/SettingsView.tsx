@@ -103,7 +103,7 @@ function PreferencesSection() {
                   fontSize: '12px',
                   background: active ? 'var(--amber-muted)' : 'rgba(255,255,255,0.05)',
                   color: active ? 'var(--amber)' : 'var(--muted-foreground)',
-                  border: active ? '1px solid rgba(245,158,11,0.3)' : '1px solid transparent',
+                  border: active ? '1px solid rgba(255,255,255,0.12)' : '1px solid transparent',
                 }}
               >
                 <Icon size={12} />
@@ -125,7 +125,7 @@ function PreferencesSection() {
                 fontSize: '12px',
                 background: defaultMode === m ? 'var(--amber-muted)' : 'rgba(255,255,255,0.05)',
                 color: defaultMode === m ? 'var(--amber)' : 'var(--muted-foreground)',
-                border: defaultMode === m ? '1px solid rgba(245,158,11,0.3)' : '1px solid transparent',
+                border: defaultMode === m ? '1px solid rgba(255,255,255,0.12)' : '1px solid transparent',
               }}
             >
               {m}
@@ -189,7 +189,7 @@ function AIAgentsSection() {
                     fontSize: '12px',
                     background: reasoningEffort === e ? 'var(--amber-muted)' : 'rgba(255,255,255,0.05)',
                     color: reasoningEffort === e ? 'var(--amber)' : 'var(--muted-foreground)',
-                    border: reasoningEffort === e ? '1px solid rgba(245,158,11,0.3)' : '1px solid transparent',
+                    border: reasoningEffort === e ? '1px solid rgba(255,255,255,0.12)' : '1px solid transparent',
                   }}
                 >
                   {e}
@@ -340,9 +340,9 @@ function GeneralSection() {
                 className="px-3 py-1 rounded-md capitalize transition-colors"
                 style={{
                   fontSize: '11px',
-                  background: reasoningEffort === e ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.05)',
+                  background: reasoningEffort === e ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.05)',
                   color: reasoningEffort === e ? 'var(--amber)' : 'var(--muted-foreground)',
-                  border: reasoningEffort === e ? '1px solid rgba(245,158,11,0.3)' : '1px solid transparent',
+                  border: reasoningEffort === e ? '1px solid rgba(255,255,255,0.12)' : '1px solid transparent',
                 }}
               >
                 {e}
@@ -361,9 +361,9 @@ function GeneralSection() {
               className="px-3 py-1 rounded-md capitalize transition-colors"
               style={{
                 fontSize: '11px',
-                background: defaultMode === m ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.05)',
+                background: defaultMode === m ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.05)',
                 color: defaultMode === m ? 'var(--amber)' : 'var(--muted-foreground)',
-                border: defaultMode === m ? '1px solid rgba(245,158,11,0.3)' : '1px solid transparent',
+                border: defaultMode === m ? '1px solid rgba(255,255,255,0.12)' : '1px solid transparent',
               }}
             >
               {m}
@@ -384,9 +384,9 @@ function GeneralSection() {
                 className="flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors"
                 style={{
                   fontSize: '11px',
-                  background: active ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.05)',
+                  background: active ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.05)',
                   color: active ? 'var(--amber)' : 'var(--muted-foreground)',
-                  border: active ? '1px solid rgba(245,158,11,0.3)' : '1px solid transparent',
+                  border: active ? '1px solid rgba(255,255,255,0.12)' : '1px solid transparent',
                 }}
               >
                 <Icon size={11} />
@@ -547,7 +547,7 @@ function AgentCard({
               className="px-3 py-1 rounded-md capitalize"
               style={{
                 fontSize: '11px',
-                background: mode === m ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.05)',
+                background: mode === m ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.05)',
                 color: mode === m ? 'var(--amber)' : 'var(--muted-foreground)',
               }}
             >
@@ -609,7 +609,7 @@ function AgentCard({
           ...(anthropicKey ? { anthropic: anthropicKey } : {}),
         }).then(() => { setOpenaiKey(''); setAnthropicKey('') })}
         className="px-3 py-1.5 rounded-md disabled:opacity-50"
-        style={{ background: 'rgba(245,158,11,0.15)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)', fontSize: '12px' }}
+        style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--amber)', border: '1px solid rgba(255,255,255,0.10)', fontSize: '12px' }}
       >
         {saving ? 'Saving...' : 'Save Agent'}
       </button>
@@ -824,7 +824,7 @@ function ApiKeyRow({
           onClick={save}
           disabled={!value || state === 'testing'}
           className="px-3 py-1.5 rounded-md disabled:opacity-30 transition-colors"
-          style={{ background: 'rgba(245,158,11,0.2)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.3)', fontSize: '12px' }}
+          style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--amber)', border: '1px solid rgba(255,255,255,0.12)', fontSize: '12px' }}
         >
           Save
         </button>
@@ -889,7 +889,7 @@ function WorkspacesSection() {
       <button
         onClick={() => addWorkspace()}
         className="flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors"
-        style={{ background: 'rgba(245,158,11,0.15)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)', fontSize: '12px' }}
+        style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--amber)', border: '1px solid rgba(255,255,255,0.10)', fontSize: '12px' }}
       >
         <Plus size={12} /> Open workspace…
       </button>
@@ -923,8 +923,8 @@ function StatCard({ label, value, highlight }: { label: string; value: string; h
     <div
       className="rounded-md p-3"
       style={{
-        background: highlight ? 'rgba(245,158,11,0.05)' : 'var(--card)',
-        border: `1px solid ${highlight ? 'rgba(245,158,11,0.2)' : 'var(--border)'}`,
+        background: highlight ? 'rgba(255,255,255,0.03)' : 'var(--card)',
+        border: `1px solid ${highlight ? 'rgba(255,255,255,0.08)' : 'var(--border)'}`,
       }}
     >
       <div style={{ color: 'var(--muted-foreground)', fontSize: '11px' }}>{label}</div>
@@ -992,7 +992,7 @@ function SkillsSection() {
           </button>
           <button onClick={() => setShowCreate(true)}
             className="px-3 py-1.5 rounded-md transition-colors"
-            style={{ background: 'rgba(245,158,11,0.15)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)', fontSize: '12px' }}>
+            style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--amber)', border: '1px solid rgba(255,255,255,0.10)', fontSize: '12px' }}>
             <Plus size={12} className="inline mr-1" /> New skill
           </button>
         </div>
@@ -1101,7 +1101,7 @@ function NewSkillForm({ onCancel, onDone }: {
         </button>
         <button type="submit" disabled={saving}
           className="px-3 py-1.5 rounded-md disabled:opacity-50 transition-colors"
-          style={{ background: 'rgba(245,158,11,0.15)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)', fontSize: '12px' }}>
+          style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--amber)', border: '1px solid rgba(255,255,255,0.10)', fontSize: '12px' }}>
           {saving ? 'Saving…' : 'Create skill'}
         </button>
       </div>
@@ -1129,7 +1129,7 @@ function RulesSection() {
           </button>
           <button onClick={() => setShowCreate(true)}
             className="px-3 py-1.5 rounded-md transition-colors"
-            style={{ background: 'rgba(245,158,11,0.15)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)', fontSize: '12px' }}>
+            style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--amber)', border: '1px solid rgba(255,255,255,0.10)', fontSize: '12px' }}>
             <Plus size={12} className="inline mr-1" /> New rule
           </button>
         </div>
@@ -1153,7 +1153,7 @@ function RulesSection() {
                 <div className="flex items-center gap-2">
                   <span className="font-medium" style={{ color: 'var(--foreground)', fontSize: '13px' }}>{r.name}</span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'var(--background)', color: 'var(--secondary-foreground)' }}>{r.scope}</span>
-                  {r.alwaysApply && <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(245,158,11,0.1)', color: 'var(--amber)' }}>always</span>}
+                  {r.alwaysApply && <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--amber)' }}>always</span>}
                   {r.globs.length > 0 && <span className="text-[10px]" style={{ color: 'var(--secondary-foreground)' }}>{r.globs.join(', ')}</span>}
                 </div>
                 <div style={{ color: 'var(--secondary-foreground)', fontSize: '11px' }}>{r.description || '—'}</div>
@@ -1235,9 +1235,9 @@ function NewRuleForm({ onCancel, onDone }: {
               onClick={() => setScope(s)}
               className="px-3 py-1.5 rounded-md transition-colors"
               style={{
-                background: scope === s ? 'rgba(245,158,11,0.15)' : 'var(--card)',
+                background: scope === s ? 'rgba(255,255,255,0.07)' : 'var(--card)',
                 color: scope === s ? 'var(--amber)' : 'var(--muted-foreground)',
-                border: '1px solid ' + (scope === s ? 'rgba(245,158,11,0.3)' : 'var(--border)'),
+                border: '1px solid ' + (scope === s ? 'rgba(255,255,255,0.12)' : 'var(--border)'),
                 fontSize: '11px',
               }}
             >
@@ -1278,7 +1278,7 @@ function NewRuleForm({ onCancel, onDone }: {
         </button>
         <button type="submit" disabled={saving}
           className="px-3 py-1.5 rounded-md disabled:opacity-50 transition-colors"
-          style={{ background: 'rgba(245,158,11,0.15)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)', fontSize: '12px' }}>
+          style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--amber)', border: '1px solid rgba(255,255,255,0.10)', fontSize: '12px' }}>
           {saving ? 'Saving…' : 'Create rule'}
         </button>
       </div>
@@ -1324,7 +1324,7 @@ function RuleEditor({ rule, onSave }: {
           }}
           disabled={saving}
           className="px-3 py-1.5 rounded-md disabled:opacity-50 transition-colors"
-          style={{ background: 'rgba(245,158,11,0.15)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)', fontSize: '12px' }}>
+          style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--amber)', border: '1px solid rgba(255,255,255,0.10)', fontSize: '12px' }}>
           {saving ? 'Saving…' : 'Save'}
         </button>
       </div>

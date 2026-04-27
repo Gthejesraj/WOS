@@ -487,7 +487,7 @@ function UploadCard({
       className="rounded-2xl p-8 text-center cursor-pointer transition-colors"
       style={{
         border: `2px dashed ${dragActive ? 'var(--amber)' : 'var(--border)'}`,
-        background: dragActive ? 'rgba(245,158,11,0.05)' : 'var(--card)',
+        background: dragActive ? 'rgba(255,255,255,0.03)' : 'var(--card)',
       }}
     >
       <Upload className="mx-auto mb-3 h-8 w-8" style={{ color: dragActive ? 'var(--amber)' : 'var(--muted-foreground)' }} />

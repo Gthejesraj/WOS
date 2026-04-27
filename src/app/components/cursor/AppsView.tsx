@@ -351,7 +351,9 @@ function MarketplaceTab({
   const [mcpError, setMcpError] = useState<string | null>(null)
   const [installingSkill, setInstallingSkill] = useState<string | null>(null)
   const [installedSkills, setInstalledSkills] = useState<Set<string>>(new Set())
-  const [copiedMcp, setCopiedMcp] = useState<string | null>(null)
+  const [installingMcp, setInstallingMcp] = useState<string | null>(null)
+  const [installedMcps, setInstalledMcps] = useState<Set<string>>(new Set())
+  const mcpStore = useMcpStore()
 
   // Fetch Smithery servers when MCP section becomes active
   useEffect(() => {
@@ -420,11 +422,25 @@ function MarketplaceTab({
     }
   }
 
-  const handleCopyMcpInstall = (server: SmitheryServer) => {
-    const cmd = `npx -y @smithery/cli install ${server.qualifiedName} --client claude`
-    void navigator.clipboard.writeText(cmd)
-    setCopiedMcp(server.qualifiedName)
-    setTimeout(() => setCopiedMcp(null), 2000)
+  const handleInstallMcp = async (server: SmitheryServer) => {
+    if (installingMcp === server.qualifiedName) return
+    setInstallingMcp(server.qualifiedName)
+    try {
+      const result = await window.wos.mcp.add({
+        name: server.displayName,
+        transport: 'stdio',
+        command: 'npx',
+        args: ['-y', '@smithery/cli@latest', 'run', server.qualifiedName],
+      })
+      if (result.success) {
+        setInstalledMcps(prev => new Set([...prev, server.qualifiedName]))
+        void mcpStore.load()
+      }
+    } catch {
+      /* silent — button resets */
+    } finally {
+      setInstallingMcp(null)
+    }
   }
 
   const SIDEBAR_SECTIONS = [
@@ -577,11 +593,17 @@ function MarketplaceTab({
                               </a>
                             )}
                             <button
-                              onClick={() => handleCopyMcpInstall(s)}
+                              onClick={() => void handleInstallMcp(s)}
+                              disabled={installingMcp === s.qualifiedName || installedMcps.has(s.qualifiedName)}
                               className="text-[10px] px-2 py-0.5 rounded transition-colors"
-                              style={{ background: copiedMcp === s.qualifiedName ? 'var(--success-muted)' : 'var(--amber-muted)', color: copiedMcp === s.qualifiedName ? 'var(--success)' : 'var(--amber)', border: `1px solid ${copiedMcp === s.qualifiedName ? 'var(--success)' : 'var(--amber)'}` }}
+                              style={{
+                                background: installedMcps.has(s.qualifiedName) ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.07)',
+                                color: installedMcps.has(s.qualifiedName) ? '#22c55e' : 'var(--foreground)',
+                                border: `1px solid ${installedMcps.has(s.qualifiedName) ? 'rgba(34,197,94,0.4)' : 'var(--border-strong)'}`,
+                                opacity: installingMcp === s.qualifiedName ? 0.6 : 1,
+                              }}
                             >
-                              {copiedMcp === s.qualifiedName ? '✓ Copied' : 'Install'}
+                              {installedMcps.has(s.qualifiedName) ? '✓ Installed' : installingMcp === s.qualifiedName ? 'Installing…' : 'Install'}
                             </button>
                           </div>
                         </div>

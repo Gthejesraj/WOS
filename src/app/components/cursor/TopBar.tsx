@@ -92,7 +92,7 @@ export function TopBar({ currentView, isSidebarCollapsed, onToggleSidebar, onRen
         style={{
           fontSize: '13px',
           letterSpacing: '0.18em',
-          background: 'linear-gradient(135deg, var(--amber) 0%, var(--terracotta) 100%)',
+          background: 'linear-gradient(135deg, var(--foreground) 0%, var(--zinc-400) 100%)',
           WebkitBackgroundClip: 'text',
           WebkitTextFillColor: 'transparent',
           backgroundClip: 'text',
