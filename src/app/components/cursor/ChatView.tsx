@@ -1,13 +1,16 @@
 import React, { useState, useRef, useEffect, useCallback, memo, useMemo } from 'react'
 import {
-  Plus, Mic, ChevronDown, ChevronRight, ChevronLeft, Copy, Check,
+  Plus, ChevronDown, ChevronRight, ChevronLeft, Copy, Check,
   RefreshCw, ArrowDown, AlertCircle, Shield, Zap, BookOpen,
   File, Loader2, X, FileEdit, Pencil, Brain, HelpCircle,
 } from 'lucide-react'
 import type { MessageBlock, DisplayMessage, FileAttachment } from '../../../types'
 import { useAgentStore } from '../../../store/agentStore'
 import { useWorkspaceStore } from '../../../store/workspaceStore'
+import { blocksHaveInterruption } from '../../../lib/blockAccumulator'
 import { cn } from '../../../lib/utils'
+import { toast } from 'sonner'
+import { MicButton } from './MicButton'
 
 const MODES = [
   { id: 'default', label: 'Default', icon: Shield, description: 'Asks for permission on each action' },
@@ -162,8 +165,8 @@ function TextBlock({ content, streaming }: { content: string; streaming?: boolea
   )
 }
 
-function ReasoningBlock({ content, collapsed: initCollapsed, done, autoCollapse }: {
-  content: string; collapsed?: boolean; done?: boolean; autoCollapse?: boolean
+function ReasoningBlock({ content, collapsed: initCollapsed, done, autoCollapse, interrupted }: {
+  content: string; collapsed?: boolean; done?: boolean; autoCollapse?: boolean; interrupted?: boolean
 }) {
   const streaming = !done
   const [userToggled, setUserToggled] = useState<boolean | null>(null)
@@ -173,15 +176,15 @@ function ReasoningBlock({ content, collapsed: initCollapsed, done, autoCollapse 
     <div className="my-2 rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--card)' }}>
       <button
         onClick={() => setUserToggled(o => !(o ?? effectiveCollapsed))}
-        className="flex items-center gap-2 px-3 py-2 w-full text-left hover:bg-white/4 transition-colors"
+        className="flex items-center gap-2 px-3 py-2 w-full text-left wos-hover-sm transition-colors"
       >
         <Brain
           size={12}
-          style={{ color: streaming ? 'var(--amber)' : 'var(--muted-foreground)' }}
-          className={streaming ? 'animate-pulse' : ''}
+          style={{ color: interrupted ? 'var(--amber)' : (streaming ? 'var(--amber)' : 'var(--muted-foreground)') }}
+          className={streaming && !interrupted ? 'animate-pulse' : ''}
         />
-        <span className="text-xs flex-1" style={{ color: streaming ? 'var(--secondary-foreground)' : 'var(--muted-foreground)' }}>
-          {streaming ? 'Thinking…' : 'Thought'}
+        <span className="text-xs flex-1" style={{ color: interrupted ? 'var(--amber)' : (streaming ? 'var(--secondary-foreground)' : 'var(--muted-foreground)') }}>
+          {interrupted ? 'Thought (interrupted)' : (streaming ? 'Thinking…' : 'Thought')}
         </span>
         {effectiveCollapsed
           ? <ChevronRight size={10} style={{ color: 'var(--border-strong)' }} />
@@ -191,6 +194,11 @@ function ReasoningBlock({ content, collapsed: initCollapsed, done, autoCollapse 
         <div className="px-3 pb-3 pt-2.5 text-xs leading-relaxed whitespace-pre-wrap"
           style={{ color: 'var(--muted-foreground)', borderTop: '1px solid var(--border)' }}>
           {content}
+          {interrupted && (
+            <span className="block mt-2 italic" style={{ color: 'var(--amber)' }}>
+              … reasoning was cut off when the previous run ended.
+            </span>
+          )}
         </div>
       )}
     </div>
@@ -198,12 +206,14 @@ function ReasoningBlock({ content, collapsed: initCollapsed, done, autoCollapse 
 }
 
 function ToolUseBlock({
-  toolName, toolId: _toolId, input, partialArgs, status, result, error, stdout, stderr,
+  toolName, toolId: _toolId, input, partialArgs, status, result, error, stdout, stderr, interrupted,
 }: Extract<MessageBlock, { type: 'tool_use' }>) {
   const isPreparing = status === 'preparing'
   const isRunning = status === 'running'
   const [expanded, setExpanded] = useState(isPreparing || isRunning)
-  const statusIcon = status === 'preparing'
+  const statusIcon = interrupted
+    ? <AlertCircle size={11} className="text-amber-400" />
+    : status === 'preparing'
     ? <Loader2 size={11} className="animate-spin text-amber-400" />
     : status === 'running'
     ? <Loader2 size={11} className="animate-spin text-blue-400" />
@@ -211,7 +221,9 @@ function ToolUseBlock({
     ? <X size={11} className="text-red-400" />
     : <Check size={11} className="text-green-400" />
 
-  const statusLabel = status === 'preparing'
+  const statusLabel = interrupted
+    ? 'interrupted'
+    : status === 'preparing'
     ? 'preparing…'
     : status === 'running'
     ? 'running…'
@@ -235,7 +247,7 @@ function ToolUseBlock({
     <div className="my-2 rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--card)' }}>
       <button
         onClick={() => setExpanded(o => !o)}
-        className="flex items-center gap-2 px-3 py-1.5 w-full text-left hover:bg-white/4 transition-colors"
+        className="flex items-center gap-2 px-3 py-1.5 w-full text-left wos-hover-sm transition-colors"
       >
         {statusIcon}
         <span className="text-xs font-mono" style={{ color: 'var(--secondary-foreground)' }}>{toolName}</span>
@@ -376,60 +388,200 @@ function PermissionBlock({
 }
 
 function PlanApprovalBlock({
-  questionId, answer,
+  question, questionId, answer, interrupted,
 }: Extract<MessageBlock, { type: 'ask_user' }>) {
-  const { answerQuestion } = useAgentStore()
+  const { answerQuestion, setMode } = useAgentStore()
+  const activeWorkspace = useWorkspaceStore(s => s.activeWorkspace)
+  const [showPlan, setShowPlan] = useState(true)
+  const [showSuggest, setShowSuggest] = useState(false)
+  const [feedback, setFeedback] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  // Plan markdown is encoded as: `__plan_approval__\n\n<markdown>`
+  const planMarkdown = useMemo(() => {
+    const sep = '__plan_approval__\n\n'
+    return question.startsWith(sep) ? question.slice(sep.length) : ''
+  }, [question])
+
   if (answer !== undefined) {
-    const approved = answer === 'approve'
+    const cancelled = answer === '__cancelled__' || interrupted
+    let label = '✓ Plan handled'
+    if (cancelled) label = '⚠ Plan approval cancelled'
+    else if (answer === 'approve' || answer === 'approve_default') label = '✓ Plan approved (default mode)'
+    else if (answer === 'approve_yolo') label = '✓ Plan approved (YOLO mode)'
+    else if (answer === 'save' || answer.startsWith('save')) label = '💾 Plan saved — run ended'
+    else if (answer.startsWith('suggest:') || answer === 'reject') label = '✏ Suggested changes — agent revising'
+
     return (
       <div
         className={cn(
           'border-l-2 pl-3 my-2 py-1 opacity-70',
-          approved ? 'border-green-500/50' : 'border-red-500/50'
+          cancelled ? 'border-amber-500/50' : 'border-green-500/50'
         )}
       >
-        <span className="text-xs" style={{ color: 'var(--secondary-foreground)' }}>
-          {approved ? '✓ Plan approved' : '✗ Plan rejected'}
+        <span className="text-xs" style={{ color: cancelled ? 'var(--amber)' : 'var(--secondary-foreground)' }}>
+          {label}
         </span>
       </div>
     )
   }
+
+  const submitDecision = async (decision: string) => {
+    await answerQuestion(questionId, decision)
+  }
+
+  const handleApproveYolo = async () => {
+    try { await setMode('yolo') } catch { /* ignore */ }
+    void submitDecision('approve_yolo')
+  }
+
+  const handleApproveDefault = async () => {
+    void submitDecision('approve_default')
+  }
+
+  const handleSavePlan = async () => {
+    if (!activeWorkspace || !planMarkdown.trim()) {
+      void submitDecision('save')
+      return
+    }
+    setSaving(true)
+    try {
+      const ts = new Date().toISOString().replace(/[:.]/g, '-')
+      const relPath = `wos-plans/plan-${ts}.md`
+      const result = await window.wos.saveWorkspaceFile({
+        workspaceId: activeWorkspace.id,
+        relPath,
+        content: planMarkdown,
+      })
+      if (!result.ok) {
+        toast.error(`Could not save plan: ${result.error ?? 'unknown error'}`)
+      } else {
+        toast.success(`Plan saved to ${relPath}`)
+      }
+    } catch (err) {
+      toast.error(`Could not save plan: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setSaving(false)
+      void submitDecision('save')
+    }
+  }
+
+  const handleSubmitSuggest = () => {
+    const text = feedback.trim()
+    if (!text) return
+    void submitDecision(`suggest:${text}`)
+  }
+
   return (
-    <div className="my-2 rounded-lg p-3" style={{ border: '1px solid rgba(245,158,11,0.25)', background: 'rgba(245,158,11,0.05)' }}>
-      <div className="text-sm font-medium mb-2" style={{ color: 'var(--amber)' }}>
-        📋 Plan ready — approve to proceed
+    <div className="my-2 rounded-lg overflow-hidden" style={{ border: '1px solid rgba(245,158,11,0.3)', background: 'rgba(245,158,11,0.04)' }}>
+      <div className="flex items-center gap-2 px-3 py-2" style={{ borderBottom: '1px solid rgba(245,158,11,0.2)' }}>
+        <span style={{ color: 'var(--amber)' }}>📋</span>
+        <span className="text-xs font-medium" style={{ color: 'var(--foreground)' }}>Plan ready — choose how to proceed</span>
+        {planMarkdown && (
+          <button
+            onClick={() => setShowPlan(v => !v)}
+            className="ml-auto text-xs px-2 py-0.5 rounded transition-colors"
+            style={{ color: 'var(--muted-foreground)' }}
+          >
+            {showPlan ? 'Hide plan ▲' : 'Show plan ▼'}
+          </button>
+        )}
       </div>
-      <div className="flex gap-2">
-        <button
-          onClick={() => answerQuestion(questionId, 'approve')}
-          className="text-xs px-3 py-1 rounded transition-colors"
-          style={{ background: 'rgba(245,158,11,0.2)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.3)' }}
+
+      {showPlan && planMarkdown && (
+        <div
+          className="px-3 py-2 text-sm"
+          style={{
+            background: 'var(--card)',
+            borderBottom: '1px solid rgba(245,158,11,0.2)',
+            maxHeight: 360,
+            overflowY: 'auto',
+          }}
         >
-          Approve & Run
+          <MarkdownContent content={planMarkdown} />
+        </div>
+      )}
+
+      <div className="px-3 py-2.5 flex flex-col gap-1.5">
+        <button
+          onClick={handleApproveYolo}
+          className="text-left text-sm px-3 py-2 rounded transition-colors hover:opacity-90"
+          style={{ background: 'rgba(245,158,11,0.18)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.35)' }}
+        >
+          ▶ Start in YOLO <span style={{ opacity: 0.7, fontSize: 11 }}>— auto-approve every tool</span>
         </button>
         <button
-          onClick={() => answerQuestion(questionId, 'reject')}
-          className="text-xs px-3 py-1 rounded transition-colors"
-          style={{ border: '1px solid #7f1d1d', color: '#f87171' }}
+          onClick={handleApproveDefault}
+          className="text-left text-sm px-3 py-2 rounded transition-colors hover:opacity-90"
+          style={{ background: 'var(--accent)', color: 'var(--accent-foreground)', border: '1px solid var(--border)' }}
         >
-          Reject / Revise
+          ▶ Start with Default <span style={{ opacity: 0.7, fontSize: 11 }}>— ask before risky tools</span>
         </button>
+        <button
+          onClick={handleSavePlan}
+          disabled={saving}
+          className="text-left text-sm px-3 py-2 rounded transition-colors hover:opacity-90 disabled:opacity-50"
+          style={{ background: 'var(--card)', color: 'var(--secondary-foreground)', border: '1px solid var(--border)' }}
+        >
+          💾 {saving ? 'Saving…' : 'Save plan & exit'} <span style={{ opacity: 0.7, fontSize: 11 }}>— I&apos;ll do it myself</span>
+        </button>
+        {!showSuggest ? (
+          <button
+            onClick={() => setShowSuggest(true)}
+            className="text-left text-sm px-3 py-2 rounded transition-colors hover:opacity-90"
+            style={{ background: 'var(--card)', color: 'var(--secondary-foreground)', border: '1px solid var(--border)' }}
+          >
+            ✏ Suggest changes <span style={{ opacity: 0.7, fontSize: 11 }}>— give feedback, agent revises</span>
+          </button>
+        ) : (
+          <div className="rounded p-2" style={{ border: '1px solid var(--border)', background: 'var(--card)' }}>
+            <textarea
+              value={feedback}
+              onChange={e => setFeedback(e.target.value)}
+              placeholder="What should change in the plan?"
+              rows={3}
+              className="w-full text-sm px-2 py-1.5 rounded resize-y outline-none"
+              style={{ background: 'var(--background)', color: 'var(--foreground)', border: '1px solid var(--border)' }}
+              autoFocus
+            />
+            <div className="flex gap-2 mt-2 justify-end">
+              <button
+                onClick={() => { setShowSuggest(false); setFeedback('') }}
+                className="text-xs px-3 py-1 rounded transition-colors"
+                style={{ border: '1px solid var(--border)', color: 'var(--muted-foreground)' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmitSuggest}
+                disabled={!feedback.trim()}
+                className="text-xs px-3 py-1 rounded transition-colors disabled:opacity-50"
+                style={{ background: 'var(--amber)', color: 'var(--background)', border: '1px solid var(--amber)' }}
+              >
+                Send feedback
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
 function AskUserBlock({
-  question, questionId, choices, answer,
+  question, questionId, choices, answer, interrupted,
 }: Extract<MessageBlock, { type: 'ask_user' }>) {
   const [localAnswer, setLocalAnswer] = useState('')
   const { answerQuestion } = useAgentStore()
 
   if (answer !== undefined) {
+    const cancelled = answer === '__cancelled__' || interrupted
     return (
       <div className="rounded-lg px-3 py-2 my-2 opacity-60" style={{ border: '1px solid var(--border)', background: 'var(--card)' }}>
         <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>❓ {question}</div>
-        <div className="text-sm mt-0.5" style={{ color: 'var(--secondary-foreground)' }}>→ {answer}</div>
+        <div className="text-sm mt-0.5" style={{ color: cancelled ? 'var(--amber)' : 'var(--secondary-foreground)' }}>
+          {cancelled ? '⚠ cancelled — previous run did not finish' : `→ ${answer}`}
+        </div>
       </div>
     )
   }
@@ -448,7 +600,7 @@ function AskUserBlock({
               <button
                 key={c}
                 onClick={() => answerQuestion(questionId, c)}
-                className="text-xs px-3 py-1.5 rounded-lg transition-colors hover:bg-white/8"
+                className="text-xs px-3 py-1.5 rounded-lg transition-colors wos-hover"
                 style={{ border: '1px solid var(--border)', color: 'var(--secondary-foreground)' }}
               >
                 {c}
@@ -499,7 +651,7 @@ function SubagentBlock({ agentId, prompt, events, result, collapsed: initCollaps
     <div className="my-2 rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--card)' }}>
       <button
         onClick={() => setCollapsed(o => !o)}
-        className="flex items-center gap-2 px-3 py-2 w-full text-left hover:bg-white/4 transition-colors"
+        className="flex items-center gap-2 px-3 py-2 w-full text-left wos-hover-sm transition-colors"
       >
         <Zap size={11} className="text-blue-400/70" />
         <span className="text-xs text-blue-400/70 flex-1 truncate">Subagent: {prompt}</span>
@@ -604,7 +756,7 @@ function DiffBlock({ filePath, diff, collapsed: initCollapsed }: Extract<Message
     <div className="my-2 rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)' }}>
       <button
         onClick={() => setCollapsed(o => !o)}
-        className="flex items-center gap-2 px-3 py-1.5 w-full text-left hover:bg-white/4 transition-colors"
+        className="flex items-center gap-2 px-3 py-1.5 w-full text-left wos-hover-sm transition-colors"
       >
         <FileEdit size={11} className="text-blue-400" />
         <span className="text-xs font-mono text-blue-400 flex-1 truncate">{filePath}</span>
@@ -714,7 +866,7 @@ const BlockRenderer = memo(function BlockRenderer({
     }
     case 'permission_request': return <PermissionBlock {...block} />
     case 'ask_user':
-      if (block.question === '__plan_approval__') return <PlanApprovalBlock {...block} />
+      if (block.question === '__plan_approval__' || block.question.startsWith('__plan_approval__\n')) return <PlanApprovalBlock {...block} />
       return <AskUserBlock {...block} />
     case 'subagent': return <SubagentBlock {...block} />
     case 'diff': return <DiffBlock {...block} />
@@ -747,7 +899,7 @@ function BranchNav({ current, total, onSwitch }: BranchInfoProps) {
       <button
         onClick={() => current > 0 && onSwitch(current - 1)}
         disabled={current === 0}
-        className="p-0.5 rounded disabled:opacity-30 hover:bg-white/8 transition-colors"
+        className="p-0.5 rounded disabled:opacity-30 wos-hover transition-colors"
         style={{ color: 'var(--muted-foreground)' }}
         title="Previous version"
       >
@@ -759,7 +911,7 @@ function BranchNav({ current, total, onSwitch }: BranchInfoProps) {
       <button
         onClick={() => current < total - 1 && onSwitch(current + 1)}
         disabled={current === total - 1}
-        className="p-0.5 rounded disabled:opacity-30 hover:bg-white/8 transition-colors"
+        className="p-0.5 rounded disabled:opacity-30 wos-hover transition-colors"
         style={{ color: 'var(--muted-foreground)' }}
         title="Next version"
       >
@@ -869,7 +1021,7 @@ function UserMessage({
             {onEdit && (
               <button
                 onClick={handleEditStart}
-                className="p-1.5 rounded hover:bg-white/8 transition-colors"
+                className="p-1.5 rounded wos-hover transition-colors"
                 style={{ color: 'var(--border-strong)' }}
                 title="Edit message"
               >
@@ -878,7 +1030,7 @@ function UserMessage({
             )}
             <button
               onClick={handleCopy}
-              className="p-1.5 rounded hover:bg-white/8 transition-colors"
+              className="p-1.5 rounded wos-hover transition-colors"
               style={{ color: 'var(--border-strong)' }}
               title="Copy message"
             >
@@ -934,15 +1086,22 @@ function StreamingIndicator({ blocks }: { blocks: MessageBlock[] }) {
 
 function AssistantMessage({ message, isStreaming }: { message: DisplayMessage; isStreaming: boolean }) {
   const [copied, setCopied] = useState(false)
+  const { sendMessage } = useAgentStore()
   const textContent = message.blocks
     .filter(b => b.type === 'text')
     .map(b => (b as Extract<MessageBlock, { type: 'text' }>).content)
     .join('')
 
+  const hasInterruption = !isStreaming && blocksHaveInterruption(message.blocks)
+
   const handleCopy = () => {
     navigator.clipboard.writeText(textContent)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleResume = () => {
+    sendMessage('Continue from where you left off — the previous run was interrupted before it finished.')
   }
 
   if (message.blocks.length === 0 && isStreaming) {
@@ -979,10 +1138,29 @@ function AssistantMessage({ message, isStreaming }: { message: DisplayMessage; i
         <div className="flex items-center gap-0.5 mt-2 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
           <button
             onClick={handleCopy}
-            className="p-1.5 rounded hover:bg-white/8 transition-colors"
+            className="p-1.5 rounded wos-hover transition-colors"
             style={{ color: 'var(--border-strong)' }}
           >
             {copied ? <Check size={11} /> : <Copy size={11} />}
+          </button>
+        </div>
+      )}
+      {hasInterruption && (
+        <div className="flex items-center gap-2 mt-2 px-2.5 py-1.5 rounded-md text-xs"
+          style={{
+            background: 'rgba(245,158,11,0.06)',
+            border: '1px solid rgba(245,158,11,0.25)',
+            color: 'var(--amber)',
+          }}
+        >
+          <AlertCircle size={12} />
+          <span>This run was interrupted before it finished.</span>
+          <button
+            onClick={handleResume}
+            className="ml-auto px-2 py-0.5 rounded transition-colors wos-hover font-medium"
+            style={{ border: '1px solid rgba(245,158,11,0.4)', color: 'var(--amber)' }}
+          >
+            Resume from here
           </button>
         </div>
       )}
@@ -998,14 +1176,17 @@ const SLASH_COMMANDS = [
   { id: 'yolo',   hint: '/yolo',    desc: 'Fully autonomous — no interruptions' },
   { id: 'default',hint: '/default', desc: 'Switch to default mode' },
   { id: 'model',  hint: '/model',   desc: 'Open mode picker' },
+  { id: 'new',    hint: '/new',     desc: 'Start a new conversation' },
+  { id: 'clear',  hint: '/clear',   desc: 'Clear input and attachments' },
   { id: 'meeting',hint: '/meeting', desc: 'Attach an analyzed meeting as context' },
   { id: 'file',   hint: '/file',    desc: 'Attach a file' },
   { id: 'help',   hint: '/help',    desc: 'Show all commands' },
 ] as const
 
 const AT_COMMANDS = [
-  { id: 'file', hint: '@file', desc: 'Attach a file' },
-  { id: 'web',  hint: '@web',  desc: 'Search the web' },
+  { id: 'file',    hint: '@file',    desc: 'Attach a file' },
+  { id: 'meeting', hint: '@meeting', desc: 'Attach an analyzed meeting' },
+  { id: 'web',     hint: '@web',     desc: 'Search the web' },
 ] as const
 
 /* ─── Composer ─── */
@@ -1034,8 +1215,9 @@ function Composer() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const dropRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const partialStartRef = useRef<number>(-1)
 
-  const { isStreaming, sendMessage, cancelAgent, currentMode, setMode: storeSetMode } = useAgentStore()
+  const { isStreaming, sendMessage, cancelAgent, currentMode, setMode: storeSetMode, startNewConversation } = useAgentStore()
 
   useEffect(() => { setMode(currentMode) }, [currentMode])
 
@@ -1076,6 +1258,19 @@ function Composer() {
       case 'default': handleModeChange('default'); break
       case 'model':  setShowModeDropdown(true);  break
       case 'file':   fileInputRef.current?.click(); break
+      case 'new': {
+        try {
+          await startNewConversation()
+        } catch {
+          /* swallow — store surfaces toast */
+        }
+        break
+      }
+      case 'clear': {
+        setAttachments([])
+        setMeetingChips([])
+        break
+      }
       case 'help':
         setSlashFilter('')
         setSlashIndex(0)
@@ -1098,7 +1293,7 @@ function Composer() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const executeAt = useCallback((cmdId: string) => {
+  const executeAt = useCallback(async (cmdId: string) => {
     // Remove the @word trigger from input
     setInput(prev => prev.replace(/(?:^|\s)@\w*$/, m => m.startsWith(' ') ? ' ' : ''))
     closeMenus()
@@ -1106,6 +1301,18 @@ function Composer() {
 
     switch (cmdId) {
       case 'file': fileInputRef.current?.click(); break
+      case 'meeting': {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const raw = await (window.wos as any).listAnalyzedMeetings?.() ?? []
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          setAnalyzedMeetings(raw.map((m: any) => ({ id: m.id ?? m.meetingId, title: m.title, date: m.date ?? m.startTime })))
+        } catch {
+          setAnalyzedMeetings([])
+        }
+        setMeetingSubOpen(true)
+        break
+      }
       case 'web':
         // Web chip: add a placeholder attachment; real search handled by agent on send
         setAttachments(prev => [...prev, { name: '@web', content: '[web search]', type: 'web' }])
@@ -1165,9 +1372,9 @@ function Composer() {
     if (atOpen && filteredAtCmds.length > 0) {
       if (e.key === 'ArrowDown') { e.preventDefault(); setAtIndex(i => Math.min(i + 1, filteredAtCmds.length - 1)); return }
       if (e.key === 'ArrowUp')   { e.preventDefault(); setAtIndex(i => Math.max(i - 1, 0)); return }
-      if (e.key === 'Enter')     { e.preventDefault(); executeAt(filteredAtCmds[atIndex]?.id ?? ''); return }
+      if (e.key === 'Enter')     { e.preventDefault(); void executeAt(filteredAtCmds[atIndex]?.id ?? ''); return }
       if (e.key === 'Escape')    { e.preventDefault(); closeMenus(); return }
-      if (e.key === 'Tab')       { e.preventDefault(); executeAt(filteredAtCmds[atIndex]?.id ?? ''); return }
+      if (e.key === 'Tab')       { e.preventDefault(); void executeAt(filteredAtCmds[atIndex]?.id ?? ''); return }
     }
 
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1267,7 +1474,7 @@ function Composer() {
                 <button
                   key={m.id}
                   onMouseDown={() => addMeetingChip(m)}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/6 transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left wos-hover-sm transition-colors"
                 >
                   <span className="text-xs flex-1 truncate" style={{ color: 'var(--foreground)' }}>{m.title}</span>
                   {m.date && <span className="text-[10px] shrink-0" style={{ color: 'var(--muted-foreground)' }}>{m.date}</span>}
@@ -1284,7 +1491,7 @@ function Composer() {
             {filteredAtCmds.map((cmd, i) => (
               <button
                 key={cmd.id}
-                onMouseDown={e => { e.preventDefault(); executeAt(cmd.id) }}
+                onMouseDown={e => { e.preventDefault(); void executeAt(cmd.id) }}
                 className="w-full flex items-center gap-3 px-3 py-2 text-left transition-colors"
                 style={{ background: i === atIndex ? 'rgba(255,255,255,0.06)' : 'transparent' }}
               >
@@ -1373,7 +1580,7 @@ function Composer() {
             {/* Attach file */}
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="w-5 h-5 rounded flex items-center justify-center hover:bg-white/10 transition-colors"
+              className="w-5 h-5 rounded flex items-center justify-center wos-hover transition-colors"
               style={{ color: 'var(--muted-foreground)' }}
               title="Attach file"
             >
@@ -1385,7 +1592,7 @@ function Composer() {
             <div className="relative">
               <button
                 onClick={() => setShowModeDropdown(o => !o)}
-                className="flex items-center gap-0.5 px-2 py-1 rounded-lg hover:bg-white/8 transition-colors"
+                className="flex items-center gap-0.5 px-2 py-1 rounded-lg wos-hover transition-colors"
                 style={{ color: mode === 'yolo' ? 'var(--terracotta)' : 'var(--muted-foreground)', fontSize: '12px' }}
               >
                 <ModeIcon size={11} />
@@ -1405,7 +1612,7 @@ function Composer() {
                     <button
                       key={m.id}
                       onClick={() => handleModeChange(m.id)}
-                      className="w-full text-left px-3 py-2 hover:bg-white/8 transition-colors flex items-start gap-2"
+                      className="w-full text-left px-3 py-2 wos-hover transition-colors flex items-start gap-2"
                       style={{ color: mode === m.id ? 'var(--foreground)' : 'var(--muted-foreground)' }}
                     >
                       <m.icon size={13} className="mt-0.5 shrink-0" />
@@ -1431,22 +1638,57 @@ function Composer() {
                 <X size={10} /> Stop
               </button>
             ) : (
-              <button
-                onClick={canSend ? handleSend : undefined}
-                className={cn(
-                  'w-6 h-6 rounded-full flex items-center justify-center transition-all',
-                  canSend ? 'bg-white text-black hover:bg-[#e8e8e8]' : 'hover:bg-white/8'
-                )}
-                style={canSend ? undefined : { color: 'var(--muted-foreground)' }}
-              >
-                {canSend ? (
+              <>
+                <MicButton
+                  onPartial={(text) => {
+                    const trimmed = text.trim()
+                    if (!trimmed) return
+                    setInput(prev => {
+                      if (partialStartRef.current < 0) partialStartRef.current = prev.length
+                      return prev.slice(0, partialStartRef.current) + trimmed
+                    })
+                    setTimeout(resizeTextarea, 0)
+                  }}
+                  onCommitText={(text) => {
+                    const el = textareaRef.current
+                    const t = text.trim()
+                    partialStartRef.current = -1
+                    if (!t) return
+                    if (!el) {
+                      setInput(prev => (prev ? prev + ' ' : '') + t)
+                      return
+                    }
+                    const start = el.selectionStart ?? input.length
+                    const end = el.selectionEnd ?? input.length
+                    const before = input.slice(0, start)
+                    const after = input.slice(end)
+                    const needsSpace = before.length > 0 && !/\s$/.test(before)
+                    const insert = (needsSpace ? ' ' : '') + t + (after && !/^\s/.test(after) ? ' ' : '')
+                    const next = before + insert + after
+                    setInput(next)
+                    requestAnimationFrame(() => {
+                      el.focus()
+                      resizeTextarea()
+                      const caret = (before + insert).length
+                      try { el.setSelectionRange(caret, caret) } catch { /* ignore */ }
+                    })
+                  }}
+                />
+                <button
+                  onClick={canSend ? handleSend : undefined}
+                  disabled={!canSend}
+                  className={cn(
+                    'w-6 h-6 rounded-full flex items-center justify-center transition-all',
+                    canSend ? 'bg-white text-black hover:bg-[#e8e8e8]' : 'opacity-50 cursor-not-allowed'
+                  )}
+                  style={canSend ? undefined : { color: 'var(--muted-foreground)' }}
+                  aria-label="Send"
+                >
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M12 19V5M5 12l7-7 7 7" />
                   </svg>
-                ) : (
-                  <Mic size={11} />
-                )}
-              </button>
+                </button>
+              </>
             )}
           </div>
         </div>

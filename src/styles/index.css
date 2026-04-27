@@ -6,30 +6,30 @@
 
 /* ── Dark mode (default) ── */
 :root {
-  --background: #131315;
+  --background: #0f0f11;
   --foreground: #ededef;
-  --card: #1c1c20;
+  --card: #1a1a1e;
   --card-foreground: #ededef;
-  --popover: #242428;
+  --popover: #232328;
   --popover-foreground: #ededef;
   /* amber is brand accent — use only for active highlights, primary CTA, critical badges */
   --primary: #f59e0b;
   --primary-foreground: #0e0e10;
   --secondary: #28282c;
   --secondary-foreground: #b0b0b8;
-  --muted: #242428;
+  --muted: #232328;
   --muted-foreground: #8a8a94;
   --accent: #f59e0b;
   --accent-foreground: #0e0e10;
   --destructive: #ef4444;
   --destructive-foreground: #fff;
-  --border: #2a2a2e;
-  --border-strong: #3a3a3e;
-  --input: #1c1c20;
+  --border: #262628;
+  --border-strong: #363638;
+  --input: #1a1a1e;
   --ring: #f59e0b;
   --radius: 0.5rem;
-  --sidebar: #141416;
-  --topbar: #141416;
+  --sidebar: #121214;
+  --topbar: #121214;
   /* brand palette */
   --amber: #f59e0b;
   --amber-hover: #fbbf24;
@@ -49,7 +49,7 @@
 
 /* ── Light mode ── */
 .light {
-  --background: #f4f4f6;
+  --background: #f2f2f5;
   --foreground: #111113;
   --card: #ffffff;
   --card-foreground: #111113;
@@ -57,20 +57,20 @@
   --popover-foreground: #111113;
   --primary: #d97706;
   --primary-foreground: #ffffff;
-  --secondary: #f0f0f2;
+  --secondary: #ebebef;
   --secondary-foreground: #52525b;
-  --muted: #f0f0f2;
+  --muted: #ebebef;
   --muted-foreground: #6b6b74;
   --accent: #d97706;
   --accent-foreground: #ffffff;
   --destructive: #dc2626;
   --destructive-foreground: #fff;
-  --border: #e2e2e6;
-  --border-strong: #cacace;
+  --border: #dddde2;
+  --border-strong: #c8c8ce;
   --input: #ffffff;
   --ring: #d97706;
-  --sidebar: #e8e8ec;
-  --topbar: #e8e8ec;
+  --sidebar: #e6e6ea;
+  --topbar: #e6e6ea;
   --amber: #d97706;
   --amber-hover: #b45309;
   --amber-muted: rgba(217, 119, 6, 0.10);
@@ -165,6 +165,36 @@
   .titlebar-no-drag {
     -webkit-app-region: no-drag;
   }
+
+  /* Theme-aware hover utilities: use these instead of hover:bg-white/N in components */
+  .wos-hover:hover {
+    background: rgba(255, 255, 255, 0.07);
+  }
+  .light .wos-hover:hover {
+    background: rgba(0, 0, 0, 0.05);
+  }
+  .wos-hover-sm:hover {
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .light .wos-hover-sm:hover {
+    background: rgba(0, 0, 0, 0.03);
+  }
+
+  /* Sidebar active item highlight */
+  .wos-sidebar-active {
+    background: rgba(255, 255, 255, 0.07);
+  }
+  .light .wos-sidebar-active {
+    background: rgba(0, 0, 0, 0.07);
+  }
+
+  /* Resize handle hover — theme-aware */
+  .wos-resize-hover:hover {
+    background: rgba(255, 255, 255, 0.18);
+  }
+  .light .wos-resize-hover:hover {
+    background: rgba(0, 0, 0, 0.12);
+  }
 }
 
 @keyframes wos-fade-in {
@@ -175,4 +205,10 @@
 @keyframes wos-blink {
   0%, 50%  { opacity: 1; }
   51%, 100% { opacity: 0; }
+}
+
+@keyframes wos-mic-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55); }
+  70%  { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
 }

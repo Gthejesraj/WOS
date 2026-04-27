@@ -55,6 +55,10 @@ function loadSidebarWidth(): number {
 
 export default function App() {
   useThemeClass()
+  const { theme } = useSettingsStore()
+  const toasterTheme = (theme === 'system'
+    ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+    : theme) as 'light' | 'dark'
   const [currentView, setCurrentView] = useState<ViewType>('home')
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState<number>(loadSidebarWidth)
@@ -139,7 +143,7 @@ export default function App() {
     setCurrentView('chat')
   }
 
-  const handleStartChat = async (message: string) => {
+  const handleStartChat = async (message: string, _attachments?: unknown[]) => {
     const { sendMessage } = useAgentStore.getState()
     const { activeWorkspaceId } = useWorkspaceStore.getState()
     const convId = await startNewConversation(activeWorkspaceId)
@@ -242,7 +246,7 @@ export default function App() {
       </div>
 
       <Toaster
-        theme="dark"
+        theme={toasterTheme}
         position="bottom-right"
         richColors
         toastOptions={{

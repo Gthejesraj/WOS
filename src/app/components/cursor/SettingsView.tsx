@@ -34,7 +34,7 @@ export function SettingsView({ onBack }: SettingsViewProps) {
       <div className="shrink-0 w-56 flex flex-col" style={{ background: 'var(--sidebar)', borderRight: '1px solid var(--border)' }}>
         <button
           onClick={onBack}
-          className="flex items-center gap-2 px-3 py-2.5 hover:bg-white/5 transition-colors"
+          className="flex items-center gap-2 px-3 py-2.5 wos-hover-sm transition-colors"
           style={{ fontSize: '12px', color: 'var(--muted-foreground)', borderBottom: '1px solid var(--border)' }}
         >
           <ArrowLeft size={12} />
@@ -49,7 +49,7 @@ export function SettingsView({ onBack }: SettingsViewProps) {
                 key={s.id}
                 onClick={() => setSection(s.id)}
                 className={`flex items-center gap-2.5 w-full px-3 py-2 rounded-md transition-colors text-left ${
-                  active ? 'bg-white/8' : 'hover:bg-white/5'
+                  active ? 'wos-sidebar-active' : 'wos-hover-sm'
                 }`}
               >
                 <Icon size={13} style={{ color: active ? 'var(--amber)' : 'var(--zinc-500)', flexShrink: 0 }} />
@@ -656,7 +656,7 @@ function ModelAutocomplete({
       <div className="flex items-center gap-2">
         <button
           onClick={() => setOpen(o => !o)}
-          className="flex items-center justify-between flex-1 px-3 py-1.5 rounded-md hover:bg-white/10 transition-colors"
+          className="flex items-center justify-between flex-1 px-3 py-1.5 rounded-md wos-hover transition-colors"
           style={{ background: 'var(--card)', border: '1px solid var(--border)', fontSize: '12px' }}
         >
           <span className="flex items-center gap-2 truncate" style={{ color: 'var(--foreground)' }}>
@@ -669,7 +669,7 @@ function ModelAutocomplete({
         <button
           onClick={onRefresh}
           title="Refresh model list"
-          className="p-1.5 rounded-md hover:bg-white/10"
+          className="p-1.5 rounded-md wos-hover"
           style={{ color: 'var(--muted-foreground)' }}
         >
           {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
@@ -700,8 +700,8 @@ function ModelAutocomplete({
             <button
               key={m.id}
               onClick={() => { onChange(m.id); setOpen(false); setQuery('') }}
-              className={`w-full text-left px-3 py-1.5 flex items-center justify-between hover:bg-white/6 ${
-                m.id === value ? 'bg-white/8' : ''
+              className={`w-full text-left px-3 py-1.5 flex items-center justify-between wos-hover-sm ${
+                m.id === value ? 'wos-sidebar-active' : ''
               }`}
             >
               <span className="flex items-center gap-2 min-w-0">
@@ -815,7 +815,7 @@ function ApiKeyRow({
         <button
           onClick={test}
           disabled={!value || state === 'testing'}
-          className="px-3 py-1.5 rounded-md hover:bg-white/10 disabled:opacity-30 transition-colors"
+          className="px-3 py-1.5 rounded-md wos-hover disabled:opacity-30 transition-colors"
           style={{ background: 'var(--card)', color: 'var(--foreground)', fontSize: '12px', border: '1px solid var(--border)' }}
         >
           {state === 'testing' ? <Loader2 size={12} className="animate-spin" /> : 'Test'}
@@ -943,7 +943,7 @@ function AboutSection() {
       <SectionHeader title="About" subtitle={`WOS ${version ? 'v' + version : ''}`} />
       <button
         onClick={() => window.wos.openLogs()}
-        className="px-3 py-1.5 rounded-md hover:bg-white/10 transition-colors"
+        className="px-3 py-1.5 rounded-md wos-hover transition-colors"
         style={{ background: 'var(--card)', color: 'var(--foreground)', border: '1px solid var(--border)', fontSize: '12px' }}
       >
         Open logs folder
@@ -986,7 +986,7 @@ function SkillsSection() {
         <SectionHeader title="Skills" subtitle="Claude-style skill packs stored under ~/.wos/skills. Enable to expose them to the agent." />
         <div className="flex gap-2">
           <button onClick={() => reload()}
-            className="px-3 py-1.5 rounded-md hover:bg-white/10 transition-colors"
+            className="px-3 py-1.5 rounded-md wos-hover transition-colors"
             style={{ background: 'var(--card)', color: 'var(--foreground)', border: '1px solid var(--border)', fontSize: '12px' }}>
             <RefreshCw size={12} className="inline mr-1" /> Rescan
           </button>
@@ -1095,7 +1095,7 @@ function NewSkillForm({ onCancel, onDone }: {
       </Field>
       <div className="flex gap-2">
         <button type="button" onClick={onCancel}
-          className="px-3 py-1.5 rounded-md hover:bg-white/10 transition-colors"
+          className="px-3 py-1.5 rounded-md wos-hover transition-colors"
           style={{ background: 'var(--card)', color: 'var(--foreground)', border: '1px solid var(--border)', fontSize: '12px' }}>
           Cancel
         </button>
@@ -1123,7 +1123,7 @@ function RulesSection() {
         <SectionHeader title="Rules" subtitle="User rules live in ~/.wos/rules. Workspace rules use the Cursor-compatible .cursor/rules/*.mdc format." />
         <div className="flex gap-2">
           <button onClick={() => reload()}
-            className="px-3 py-1.5 rounded-md hover:bg-white/10 transition-colors"
+            className="px-3 py-1.5 rounded-md wos-hover transition-colors"
             style={{ background: 'var(--card)', color: 'var(--foreground)', border: '1px solid var(--border)', fontSize: '12px' }}>
             <RefreshCw size={12} className="inline mr-1" /> Rescan
           </button>
@@ -1272,7 +1272,7 @@ function NewRuleForm({ onCancel, onDone }: {
       </Field>
       <div className="flex gap-2">
         <button type="button" onClick={onCancel}
-          className="px-3 py-1.5 rounded-md hover:bg-white/10 transition-colors"
+          className="px-3 py-1.5 rounded-md wos-hover transition-colors"
           style={{ background: 'var(--card)', color: 'var(--foreground)', border: '1px solid var(--border)', fontSize: '12px' }}>
           Cancel
         </button>

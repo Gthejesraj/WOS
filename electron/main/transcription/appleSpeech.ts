@@ -129,7 +129,7 @@ export interface StreamingTranscriber extends EventEmitter {
  *   - 'segment' (segment: TranscriptSegment)
  *   - 'error'   (err: Error)
  */
-export function transcribeStream(): StreamingTranscriber {
+export function transcribeStream(sampleRate = 16000, channels = 1): StreamingTranscriber {
   const emitter = new EventEmitter() as StreamingTranscriber
   let helper: string
   try {
@@ -144,7 +144,7 @@ export function transcribeStream(): StreamingTranscriber {
     return emitter
   }
 
-  const child = spawn(helper, ['stream'], {
+  const child = spawn(helper, ['stream', String(sampleRate), String(channels)], {
     stdio: ['pipe', 'pipe', 'pipe'],
   })
 

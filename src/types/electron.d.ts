@@ -13,6 +13,18 @@ interface WosAPI {
   openWorkspace: () => Promise<import('./index').Workspace | null>
   getWorkspaces: () => Promise<import('./index').Workspace[]>
   removeWorkspace: (id: string) => Promise<void>
+  saveWorkspaceFile: (params: { workspaceId: string; relPath: string; content: string }) =>
+    Promise<{ ok: boolean; absPath?: string; error?: string }>
+
+  dictation: {
+    start: (sessionId: string) => Promise<{ ok: boolean; error?: string; unavailable?: boolean }>
+    write: (sessionId: string, chunk: ArrayBuffer | Uint8Array) => Promise<{ ok: boolean; error?: string }>
+    stop: (sessionId: string) => Promise<{ ok: boolean; text?: string; error?: string }>
+    cancel: (sessionId: string) => Promise<{ ok: boolean }>
+    onEvent: (
+      callback: (event: { sessionId: string; type: 'partial' | 'segment' | 'error'; text?: string; error?: string }) => void
+    ) => () => void
+  }
 
   getSettings: () => Promise<Record<string, unknown>>
   setSetting: (key: string, value: unknown) => Promise<void>

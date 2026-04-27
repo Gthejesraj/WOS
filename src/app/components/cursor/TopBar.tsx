@@ -76,7 +76,7 @@ export function TopBar({ currentView, isSidebarCollapsed, onToggleSidebar, onRen
       {/* Sidebar toggle */}
       <button
         onClick={onToggleSidebar}
-        className="p-1 rounded hover:bg-white/10 transition-colors shrink-0"
+        className="p-1 rounded wos-hover transition-colors shrink-0"
         style={{
           color: 'var(--zinc-500)',
           WebkitAppRegion: 'no-drag',
@@ -178,7 +178,7 @@ function WorkspacePicker({ activeConversationId }: WorkspacePickerProps) {
     <div ref={ref} className="relative" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}>
       <button
         onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-1 px-2 py-0.5 rounded hover:bg-white/8 transition-colors"
+        className="flex items-center gap-1 px-2 py-0.5 rounded wos-hover transition-colors"
         style={{ fontSize: '11px', color: 'var(--zinc-600)' }}
       >
         <span>/</span>
@@ -206,7 +206,7 @@ function WorkspacePicker({ activeConversationId }: WorkspacePickerProps) {
           </div>
           <button
             onClick={() => handleSelect(null)}
-            className="w-full text-left px-3 py-1.5 hover:bg-white/6 flex items-center gap-2"
+            className="w-full text-left px-3 py-1.5 wos-hover-sm flex items-center gap-2"
             style={{ fontSize: '12px', color: 'var(--zinc-400)' }}
           >
             {!activeWorkspace && <Check size={10} style={{ color: 'var(--amber)' }} />}
@@ -216,7 +216,7 @@ function WorkspacePicker({ activeConversationId }: WorkspacePickerProps) {
             <button
               key={ws.id}
               onClick={() => handleSelect(ws.id)}
-              className="w-full text-left px-3 py-1.5 hover:bg-white/6 flex items-center gap-2"
+              className="w-full text-left px-3 py-1.5 wos-hover-sm flex items-center gap-2"
               style={{ fontSize: '12px', color: 'var(--foreground)' }}
             >
               {activeWorkspace?.id === ws.id && <Check size={10} style={{ color: 'var(--amber)' }} />}
@@ -226,7 +226,7 @@ function WorkspacePicker({ activeConversationId }: WorkspacePickerProps) {
           ))}
           <button
             onClick={async () => { await addWorkspace(); setOpen(false) }}
-            className="w-full text-left px-3 py-1.5 hover:bg-white/6 flex items-center gap-2"
+            className="w-full text-left px-3 py-1.5 wos-hover-sm flex items-center gap-2"
             style={{ fontSize: '12px', color: 'var(--zinc-500)', borderTop: '1px solid var(--border)' }}
           >
             <Plus size={10} style={{ color: 'var(--zinc-600)' }} />

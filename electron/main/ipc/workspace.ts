@@ -54,4 +54,30 @@ export function registerWorkspaceHandlers() {
     db.delete(schema.workspaces).where(eq(schema.workspaces.id, id)).run()
     return { success: true }
   })
+
+  ipcMain.handle(
+    'workspace:save-file',
+    async (_event, { workspaceId, relPath, content }: { workspaceId: string; relPath: string; content: string }) => {
+      try {
+        const fs = await import('fs/promises')
+        const db = getDb()
+        const ws = db.select().from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId)).get()
+        if (!ws) return { ok: false, error: 'Workspace not found' }
+
+        // Sanitize relPath: no parent traversal, no absolute paths.
+        const safeRel = relPath.replace(/^[/\\]+/, '').replace(/\.\.[/\\]/g, '')
+        const absPath = path.join(ws.path, safeRel)
+        const absResolved = path.resolve(absPath)
+        const wsResolved = path.resolve(ws.path)
+        if (!absResolved.startsWith(wsResolved + path.sep) && absResolved !== wsResolved) {
+          return { ok: false, error: 'Refusing to write outside workspace' }
+        }
+        await fs.mkdir(path.dirname(absPath), { recursive: true })
+        await fs.writeFile(absPath, content, 'utf8')
+        return { ok: true, absPath }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    }
+  )
 }

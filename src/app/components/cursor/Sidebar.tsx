@@ -36,7 +36,9 @@ export function Sidebar({
   const [searchQuery, setSearchQuery] = useState('')
   const [hoveredConvId, setHoveredConvId] = useState<string | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
-  const { workspaces } = useWorkspaceStore()
+  const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<Set<string>>(new Set())
+  const [hoveredGroup, setHoveredGroup] = useState<string | null>(null)
+  const { workspaces, removeWorkspace } = useWorkspaceStore()
 
   const filtered = searchQuery
     ? conversations.filter(c => c.title.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -72,14 +74,14 @@ export function Sidebar({
       <div className="flex items-center gap-1 px-2 pt-2 pb-1.5">
         <button
           onClick={onNewChat}
-          className="flex items-center gap-1.5 flex-1 px-2 py-1.5 rounded-md hover:bg-white/8 transition-colors group"
+          className="flex items-center gap-1.5 flex-1 px-2 py-1.5 rounded-md wos-hover transition-colors group"
         >
           <Plus size={13} className="shrink-0" style={{ color: 'var(--zinc-500)' }} />
           <span className="text-[12px] truncate" style={{ color: 'var(--zinc-400)' }}>New chat</span>
         </button>
         <button
           onClick={() => { setSearchOpen(o => !o); if (searchOpen) setSearchQuery('') }}
-          className="p-1.5 rounded hover:bg-white/10 transition-colors shrink-0"
+          className="p-1.5 rounded wos-hover transition-colors shrink-0"
           style={{ color: searchOpen ? 'var(--zinc-400)' : 'var(--zinc-600)' }}
         >
           {searchOpen ? <X size={13} /> : <Search size={13} />}
@@ -108,7 +110,7 @@ export function Sidebar({
       <button
         onClick={onApps}
         className={`flex items-center gap-2 mx-2 px-2 py-1.5 rounded-md transition-colors group mb-0.5 ${
-          currentView === 'apps' ? 'bg-white/8' : 'hover:bg-white/6'
+          currentView === 'apps' ? 'wos-sidebar-active' : 'wos-hover-sm'
         }`}
       >
         <ShoppingBag size={13} className="shrink-0" style={{ color: currentView === 'apps' ? 'var(--amber)' : 'var(--zinc-500)' }} />
@@ -123,7 +125,7 @@ export function Sidebar({
       <button
         onClick={onMeetings}
         className={`flex items-center gap-2 mx-2 px-2 py-1.5 rounded-md transition-colors group mb-2 ${
-          currentView === 'meetings' ? 'bg-white/8' : 'hover:bg-white/6'
+          currentView === 'meetings' ? 'wos-sidebar-active' : 'wos-hover-sm'
         }`}
       >
         <Calendar size={13} className="shrink-0" style={{ color: currentView === 'meetings' ? 'var(--amber)' : 'var(--zinc-500)' }} />
@@ -164,39 +166,83 @@ export function Sidebar({
             ))
           )
         ) : (
-          Object.entries(grouped).map(([groupKey, convs]) => (
-            <div key={groupKey}>
-              <div className="px-3 pt-3 pb-1">
-                <span style={{
-                  fontSize: '10px',
-                  fontWeight: 600,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.08em',
-                  color: 'var(--zinc-600)',
-                }}>
-                  {workspaceById[groupKey] ?? groupKey}
-                </span>
+          Object.entries(grouped).map(([groupKey, convs]) => {
+            const isCollapsed = collapsedWorkspaces.has(groupKey)
+            const isRealWorkspace = groupKey !== 'No Workspace' && workspaceById[groupKey]
+            return (
+              <div key={groupKey}>
+                <div
+                  className="flex items-center px-2 pt-3 pb-1 group/group"
+                  onMouseEnter={() => setHoveredGroup(groupKey)}
+                  onMouseLeave={() => setHoveredGroup(null)}
+                >
+                  <button
+                    onClick={() => setCollapsedWorkspaces(prev => {
+                      const next = new Set(prev)
+                      if (next.has(groupKey)) next.delete(groupKey)
+                      else next.add(groupKey)
+                      return next
+                    })}
+                    className="flex items-center gap-1 flex-1 min-w-0 hover:opacity-80 transition-opacity"
+                  >
+                    <svg
+                      width="8" height="8" viewBox="0 0 8 8" fill="currentColor"
+                      className="shrink-0 transition-transform duration-150"
+                      style={{
+                        color: 'var(--zinc-600)',
+                        transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                      }}
+                    >
+                      <path d="M1 2l3 3 3-3" stroke="currentColor" strokeWidth="1.2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <span
+                      className="truncate"
+                      style={{
+                        fontSize: '10px',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.08em',
+                        color: 'var(--zinc-600)',
+                      }}
+                    >
+                      {workspaceById[groupKey] ?? groupKey}
+                    </span>
+                  </button>
+                  {isRealWorkspace && hoveredGroup === groupKey && (
+                    <button
+                      onClick={async () => {
+                        if (!confirm(`Delete workspace "${workspaceById[groupKey]}"?\nThis removes the workspace entry only — files on disk are not deleted.`)) return
+                        await removeWorkspace(groupKey)
+                      }}
+                      className="shrink-0 p-0.5 rounded wos-hover transition-colors"
+                      style={{ color: 'var(--zinc-600)' }}
+                      title="Delete workspace"
+                    >
+                      <Trash2 size={10} />
+                    </button>
+                  )}
+                </div>
+                {!isCollapsed && convs.map(c => (
+                  <ConvItem
+                    key={c.id}
+                    conv={c}
+                    isActive={c.id === activeConversationId}
+                    hovered={hoveredConvId === c.id}
+                    isRenaming={renamingId === c.id}
+                    onHover={setHoveredConvId}
+                    onClick={() => onSelectConversation(c.id)}
+                    onDelete={() => onDeleteConversation(c.id)}
+                    onRenameStart={() => setRenamingId(c.id)}
+                    onRenameConfirm={(title) => {
+                      onRenameConversation(c.id, title)
+                      setRenamingId(null)
+                    }}
+                    onRenameCancel={() => setRenamingId(null)}
+                  />
+                ))}
               </div>
-              {convs.map(c => (
-                <ConvItem
-                  key={c.id}
-                  conv={c}
-                  isActive={c.id === activeConversationId}
-                  hovered={hoveredConvId === c.id}
-                  isRenaming={renamingId === c.id}
-                  onHover={setHoveredConvId}
-                  onClick={() => onSelectConversation(c.id)}
-                  onDelete={() => onDeleteConversation(c.id)}
-                  onRenameStart={() => setRenamingId(c.id)}
-                  onRenameConfirm={(title) => {
-                    onRenameConversation(c.id, title)
-                    setRenamingId(null)
-                  }}
-                  onRenameCancel={() => setRenamingId(null)}
-                />
-              ))}
-            </div>
-          ))
+            )
+          })
         )}
       </div>
 
@@ -204,7 +250,7 @@ export function Sidebar({
       <button
         onClick={onSettings}
         className={`flex items-center gap-2 px-3 py-2.5 transition-colors ${
-          currentView === 'settings' ? 'bg-white/6' : 'hover:bg-white/5'
+          currentView === 'settings' ? 'wos-sidebar-active' : 'wos-hover-sm'
         }`}
         style={{ borderTop: '1px solid var(--border)', color: currentView === 'settings' ? 'var(--foreground)' : 'var(--zinc-500)' }}
       >
@@ -215,7 +261,7 @@ export function Sidebar({
       {/* Resize handle */}
       <div
         onMouseDown={onResizeStart}
-        className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-white/20 transition-colors"
+        className="absolute top-0 right-0 w-1 h-full cursor-col-resize wos-resize-hover transition-colors"
         style={{ marginRight: '-1px' }}
       />
     </div>
@@ -304,7 +350,7 @@ function ConvItem({
         <button
           onClick={onClick}
           className={`flex items-center w-full px-3 py-1.5 text-left transition-colors ${
-            isActive ? 'bg-white/8' : 'hover:bg-white/5'
+            isActive ? 'wos-sidebar-active' : 'wos-hover-sm'
           }`}
         >
           <span
@@ -324,7 +370,7 @@ function ConvItem({
       {hovered && !isRenaming && (
         <button
           onClick={e => { e.stopPropagation(); setMenuOpen(o => !o) }}
-          className="absolute right-1 p-1 rounded hover:bg-white/10 transition-colors"
+          className="absolute right-1 p-1 rounded wos-hover transition-colors"
           style={{ color: 'var(--zinc-500)' }}
         >
           <MoreHorizontal size={11} />
@@ -345,7 +391,7 @@ function ConvItem({
         >
           <button
             onClick={e => { e.stopPropagation(); setMenuOpen(false); onRenameStart() }}
-            className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-white/8 transition-colors"
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-left wos-hover transition-colors"
             style={{ fontSize: '12px', color: 'var(--foreground)' }}
           >
             <Pencil size={11} style={{ color: 'var(--zinc-500)' }} />

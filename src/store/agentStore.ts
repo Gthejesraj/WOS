@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { AgentEvent, Conversation, DisplayMessage, MessageBlock, FileAttachment } from '../types'
-import { applyEvent } from '../lib/blockAccumulator'
+import { applyEvent, finalizeOrphanBlocks } from '../lib/blockAccumulator'
 import { eventLog } from '../lib/eventLog'
 import { toast } from 'sonner'
 import { useWorkspaceStore } from './workspaceStore'
@@ -78,14 +78,20 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       // If a newer load started after us, or the user switched convs, ignore results
       if (get().loadToken !== token) return
 
-      const displayMessages: DisplayMessage[] = messages.map(m => ({
-        id: m.id,
-        role: m.role as 'user' | 'assistant',
-        blocks: Array.isArray(m.blocks) ? m.blocks : JSON.parse(m.blocks as unknown as string),
-        createdAt: new Date(m.createdAt),
-        branchGroupId: m.branchGroupId,
-        branchIndex: m.branchIndex,
-      }))
+      const displayMessages: DisplayMessage[] = messages.map((m, idx) => {
+        const rawBlocks: MessageBlock[] = Array.isArray(m.blocks)
+          ? m.blocks
+          : JSON.parse(m.blocks as unknown as string)
+        const isLatest = idx === messages.length - 1
+        return {
+          id: m.id,
+          role: m.role as 'user' | 'assistant',
+          blocks: finalizeOrphanBlocks(rawBlocks, { isLatestMessage: false }),
+          createdAt: new Date(m.createdAt),
+          branchGroupId: m.branchGroupId,
+          branchIndex: m.branchIndex,
+        }
+      })
 
       // Build activeBranches: default to highest branch index per group
       const activeBranches: Record<string, number> = {}

@@ -19,6 +19,7 @@ export type AgentEvent =
   | { type: 'permission_request'; toolName: string; toolId: string; args: unknown }
   | { type: 'permission_decided'; toolId: string; decision: 'allowed' | 'denied' }
   | { type: 'ask_user'; question: string; questionId: string; choices?: string[] }
+  | { type: 'ask_user_answered'; questionId: string; answer: string }
   | { type: 'plan_ready' }
   | { type: 'turn_start' }
   | { type: 'turn_complete'; usage: { inputTokens: number; outputTokens: number }; reason?: 'end_turn' | 'tool_use' | 'aborted' | 'error' }
@@ -80,6 +81,9 @@ export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEve
     signal, permissionStore, onPermissionRequest, onAskUser, maxDepth = 0,
     systemPromptOverride, systemPromptCustom, systemPromptAppend, apiKeyOverride, onEvent,
   } = options
+
+  // effectiveMode may change mid-run when the user approves a plan in yolo/default mode.
+  let effectiveMode: AgentMode = mode
 
   const provider = getProvider(model)
 
@@ -169,66 +173,40 @@ export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEve
           break
 
         case 'tool_preparing':
-          if (mode !== 'plan' || planApproved) {
-            yield { type: 'tool_preparing', toolName: event.name, toolId: event.id }
-          }
+          yield { type: 'tool_preparing', toolName: event.name, toolId: event.id }
           break
 
         case 'tool_arg_delta':
-          if (mode !== 'plan' || planApproved) {
-            yield { type: 'tool_arg_delta', toolId: event.id, delta: event.delta }
-          }
+          yield { type: 'tool_arg_delta', toolId: event.id, delta: event.delta }
           break
 
         case 'tool_use_start':
-          if (mode === 'plan' && !planApproved) {
-            // In plan mode, only ExitPlanMode and read-only tools are permitted.
-            if (event.name === 'ExitPlanMode') {
-              const input = (event.input ?? {}) as { plan?: string }
-              planExitRequested = { id: event.id, plan: input.plan ?? '' }
-              // Do NOT yield tool_use_start to UI — we treat this as a mode transition.
-              break
-            }
-            if (event.name === 'EnterPlanMode') {
-              // Already in plan mode — acknowledge with a no-op tool_result.
-              yield {
-                type: 'tool_use_start',
-                toolName: event.name,
-                toolId: event.id,
-                input: event.input,
-              }
-              yield { type: 'tool_result', toolId: event.id, result: 'already_in_plan_mode' }
-              break
-            }
+          // ExitPlanMode is intercepted — we pause for user approval instead of running it.
+          if (event.name === 'ExitPlanMode' && mode === 'plan' && !planApproved) {
+            const input = (event.input ?? {}) as { plan?: string }
+            planExitRequested = { id: event.id, plan: input.plan ?? '' }
+            break
           }
-          if (mode !== 'plan' || planApproved) {
-            // EnterPlanMode from default/yolo mode: flip mode and acknowledge.
-            if (event.name === 'EnterPlanMode') {
-              yield {
-                type: 'tool_use_start',
-                toolName: event.name,
-                toolId: event.id,
-                input: event.input,
-              }
-              // Mode switch is one-way within this loop run — just record it.
-              // (Full per-message mode transitions require state beyond this loop.)
+          // EnterPlanMode: acknowledge with a synthetic result so the model continues.
+          if (event.name === 'EnterPlanMode') {
+            yield { type: 'tool_use_start', toolName: event.name, toolId: event.id, input: event.input }
+            if (mode === 'plan' && !planApproved) {
+              yield { type: 'tool_result', toolId: event.id, result: 'already_in_plan_mode' }
+            } else {
               planApproved = false
               yield { type: 'tool_result', toolId: event.id, result: 'entered_plan_mode' }
               yield { type: 'plan_ready' }
-              break
             }
-            yield {
-              type: 'tool_use_start',
-              toolName: event.name,
-              toolId: event.id,
-              input: event.input,
-            }
-            pendingToolCalls.push({ id: event.id, name: event.name, input: event.input })
+            break
           }
+          // All other tools (including read-only tools used during plan-mode research)
+          // are yielded and tracked for execution so the multi-turn loop stays correct.
+          yield { type: 'tool_use_start', toolName: event.name, toolId: event.id, input: event.input }
+          pendingToolCalls.push({ id: event.id, name: event.name, input: event.input })
           break
 
         case 'message_stop': {
-          if (event.stopReason === 'end_turn' || pendingToolCalls.length === 0) {
+          if ((event.stopReason === 'end_turn' || pendingToolCalls.length === 0) && !planExitRequested) {
             yield {
               type: 'turn_complete',
               usage: event.usage,
@@ -245,10 +223,33 @@ export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEve
     if (planExitRequested) {
       const exit = planExitRequested
       yield { type: 'plan_ready' }
-      const decision = await onAskUser('__plan_approval__', exit.id, ['approve', 'reject'])
-      if (decision === 'approve') {
+      // Embed the plan markdown so the renderer can show it in the approval block.
+      // Format: `__plan_approval__\n\n<plan markdown>`
+      const planQuestion = `__plan_approval__\n\n${exit.plan ?? ''}`
+      const decision = await onAskUser(
+        planQuestion,
+        exit.id,
+        ['approve_default', 'approve_yolo', 'save', 'suggest']
+      )
+      // Decision values:
+      //   approve | approve_default → run with default permissions
+      //   approve_yolo              → run with yolo permissions (auto-approve all tools)
+      //   save                      → save plan to workspace and end the run
+      //   suggest:<feedback>        → reject with feedback, agent revises
+      if (decision === 'approve' || decision === 'approve_default' || decision === 'approve_yolo') {
         planApproved = true
-        // Feed a synthetic tool_result so the model sees the plan was approved.
+        if (decision === 'approve_yolo') effectiveMode = 'yolo'
+        else if (decision === 'approve_default') effectiveMode = 'default'
+        // Rebuild system prompt for the approved execution mode (strip plan-mode instructions)
+        if (!systemPromptOverride) {
+          systemPrompt = SYSTEM_PROMPT
+          if (effectiveMode === 'yolo') systemPrompt = buildYoloModePrompt(systemPrompt)
+          if (workspacePath) systemPrompt += `\n\n## Workspace\nCurrent workspace: ${workspacePath}`
+          if (rulesSection) systemPrompt += `\n\n${rulesSection}`
+          if (skillsSection) systemPrompt += `\n\n${skillsSection}`
+          if (systemPromptCustom) systemPrompt += `\n\n## Custom Instructions\n${systemPromptCustom}`
+          if (systemPromptAppend) systemPrompt += `\n\n${systemPromptAppend}`
+        }
         history.push({
           role: 'assistant',
           content: [
@@ -262,7 +263,9 @@ export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEve
           ],
         })
         continue
-      } else {
+      } else if (decision.startsWith('save')) {
+        // User chose to save plan and exit. The renderer is responsible for the
+        // actual file write (it has workspace context via IPC); we just end here.
         history.push({
           role: 'assistant',
           content: [
@@ -272,7 +275,29 @@ export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEve
         history.push({
           role: 'user',
           content: [
-            { type: 'tool_result', tool_use_id: exit.id, content: 'Plan rejected. Please revise and propose a new plan.' },
+            { type: 'tool_result', tool_use_id: exit.id, content: 'Plan saved by user. Ending run.' },
+          ],
+        })
+        yield { type: 'turn_complete', usage: { inputTokens: 0, outputTokens: 0 }, reason: 'end_turn' }
+        return
+      } else {
+        // suggest:<feedback>  OR  reject (legacy)
+        const feedback = decision.startsWith('suggest:')
+          ? decision.slice('suggest:'.length).trim()
+          : ''
+        const rejectMsg = feedback
+          ? `Plan rejected. User feedback: ${feedback}\n\nPlease revise the plan and propose a new one.`
+          : 'Plan rejected. Please revise and propose a new plan.'
+        history.push({
+          role: 'assistant',
+          content: [
+            { type: 'tool_use', id: exit.id, name: 'ExitPlanMode', input: { plan: exit.plan } },
+          ],
+        })
+        history.push({
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: exit.id, content: rejectMsg },
           ],
         })
         continue
@@ -294,7 +319,7 @@ export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEve
     for (const call of pendingToolCalls) {
       if (signal?.aborted) return
 
-      const permission = await canUseTool(call.name, mode, permissionStore, call.input)
+      const permission = await canUseTool(call.name, effectiveMode, permissionStore, call.input)
 
       if (permission.decision === 'deny') {
         const msg = permission.reason ?? 'Blocked by policy'

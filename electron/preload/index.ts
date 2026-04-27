@@ -60,6 +60,9 @@ contextBridge.exposeInMainWorld('wos', {
   openWorkspace: () => ipcRenderer.invoke('workspace:open'),
   getWorkspaces: () => ipcRenderer.invoke('workspace:list'),
   removeWorkspace: (id: string) => ipcRenderer.invoke('workspace:remove', id),
+  saveWorkspaceFile: (params: { workspaceId: string; relPath: string; content: string }):
+    Promise<{ ok: boolean; absPath?: string; error?: string }> =>
+    safeInvoke('workspace:save-file', { ok: false, error: 'workspace:save-file not ready' }, params),
 
   // Settings
   getSettings: () => ipcRenderer.invoke('settings:get'),
@@ -271,6 +274,23 @@ contextBridge.exposeInMainWorld('wos', {
       const handler = (_: Electron.IpcRendererEvent, data: { error: string | null }) => callback(data)
       ipcRenderer.on('meet:analysis-error', handler)
       return () => ipcRenderer.removeListener('meet:analysis-error', handler)
+    },
+  },
+
+  // ----- Dictation (Apple Speech) -----
+  dictation: {
+    start: (sessionId: string): Promise<{ ok: boolean; error?: string; unavailable?: boolean }> =>
+      safeInvoke('dictation:start', { ok: false, error: 'Dictation IPC not registered' }, { sessionId }),
+    write: (sessionId: string, chunk: ArrayBuffer | Uint8Array): Promise<{ ok: boolean; error?: string }> =>
+      safeInvoke('dictation:write', { ok: false, error: 'Dictation IPC not registered' }, { sessionId, chunk }),
+    stop: (sessionId: string): Promise<{ ok: boolean; text?: string; error?: string }> =>
+      safeInvoke('dictation:stop', { ok: false, error: 'Dictation IPC not registered' }, { sessionId }),
+    cancel: (sessionId: string): Promise<{ ok: boolean }> =>
+      safeInvoke('dictation:cancel', { ok: false }, { sessionId }),
+    onEvent: (callback: (event: { sessionId: string; type: 'partial' | 'segment' | 'error'; text?: string; error?: string }) => void) => {
+      const handler = (_: Electron.IpcRendererEvent, payload: { sessionId: string; type: 'partial' | 'segment' | 'error'; text?: string; error?: string }) => callback(payload)
+      ipcRenderer.on('dictation:event', handler)
+      return () => ipcRenderer.removeListener('dictation:event', handler)
     },
   },
 })

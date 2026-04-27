@@ -385,7 +385,7 @@ function EventCard({
         <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => onChat(`Tell me about this meeting: "${title}" on ${formatDate(event)}. Attendees: ${attendeeText || 'just me'}.`)}
-            className="p-1.5 rounded-lg transition-colors hover:bg-white/8"
+            className="p-1.5 rounded-lg transition-colors wos-hover"
             style={{ color: 'var(--zinc-500)' }}
             title="Chat about this meeting"
           >
@@ -797,7 +797,7 @@ function CalendarTabView({
             <>
               <button
                 onClick={() => navigate(-1)}
-                className="p-1 rounded hover:bg-white/8 transition-colors"
+                className="p-1 rounded wos-hover transition-colors"
                 style={{ color: 'var(--muted-foreground)' }}
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -807,7 +807,7 @@ function CalendarTabView({
               </span>
               <button
                 onClick={() => navigate(1)}
-                className="p-1 rounded hover:bg-white/8 transition-colors"
+                className="p-1 rounded wos-hover transition-colors"
                 style={{ color: 'var(--muted-foreground)' }}
               >
                 <ChevronRight className="w-4 h-4" />
@@ -817,7 +817,7 @@ function CalendarTabView({
           <button
             onClick={onRefresh}
             disabled={eventsLoading}
-            className="p-1 rounded hover:bg-white/8 transition-colors"
+            className="p-1 rounded wos-hover transition-colors"
             style={{ color: 'var(--muted-foreground)' }}
             title="Refresh"
           >
@@ -865,7 +865,7 @@ function CalendarTabView({
                 {weekDays.map((day, i) => (
                   <div
                     key={i}
-                    className="px-2 py-3 text-center cursor-pointer hover:bg-white/5 transition-colors"
+                    className="px-2 py-3 text-center cursor-pointer wos-hover-sm transition-colors"
                     onClick={() => setSelectedDay(day)}
                   >
                     <div className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--muted-foreground)' }}>
@@ -932,7 +932,7 @@ function CalendarTabView({
                     <div
                       key={i}
                       onClick={() => setSelectedDay(day)}
-                      className="min-h-[72px] p-1.5 cursor-pointer hover:bg-white/4 transition-colors"
+                      className="min-h-[72px] p-1.5 cursor-pointer wos-hover-sm transition-colors"
                       style={{
                         borderBottom: '1px solid var(--border)',
                         borderRight: '1px solid var(--border)',

@@ -20,6 +20,7 @@ export interface MessageBlock {
 export class AgentRunner {
   private abortController: AbortController | null = null
   private pauseResolvers = new Map<string, (value: string) => void>()
+  private askUserResolvers = new Map<string, { resolve: (v: string) => void; emit: (e: AgentEvent) => void }>()
   private permissionStore = new PermissionStore()
 
   async run(
@@ -479,9 +480,21 @@ export class AgentRunner {
       try { resolver('deny') } catch { /* ignore */ }
     }
     this.pauseResolvers.clear()
+    for (const [, entry] of this.askUserResolvers) {
+      try { entry.resolve('__cancelled__') } catch { /* ignore */ }
+    }
+    this.askUserResolvers.clear()
   }
 
   resolveAnswer(id: string, answer: string) {
+    // Check ask_user resolvers first — these emit ask_user_answered before resolving
+    const askEntry = this.askUserResolvers.get(id)
+    if (askEntry) {
+      try { askEntry.emit({ type: 'ask_user_answered', questionId: id, answer }) } catch { /* ignore */ }
+      askEntry.resolve(answer)
+      this.askUserResolvers.delete(id)
+      return
+    }
     const resolver = this.pauseResolvers.get(id)
     if (resolver) {
       resolver(answer)
@@ -515,7 +528,7 @@ export class AgentRunner {
   ): Promise<string> {
     return new Promise(resolve => {
       emit({ type: 'ask_user', question, questionId, choices })
-      this.pauseResolvers.set(questionId, resolve)
+      this.askUserResolvers.set(questionId, { resolve, emit })
     })
   }
 
@@ -605,6 +618,11 @@ export class AgentRunner {
           choices: event.choices,
         })
         break
+      case 'ask_user_answered': {
+        const block = blocks.find(b => b.type === 'ask_user' && b.questionId === event.questionId)
+        if (block) block.answer = event.answer
+        break
+      }
       case 'subagent_start':
         blocks.push({
           type: 'subagent',
@@ -634,6 +652,13 @@ export class AgentRunner {
         }
         break
       }
+      case 'turn_complete':
+        // Mark any open reasoning blocks as done so finalizeOrphanBlocks does
+        // not incorrectly flag them as interrupted when the chat is revisited.
+        for (const b of blocks) {
+          if (b.type === 'reasoning' && !b.done) b.done = true
+        }
+        break
       case 'error':
         blocks.push({ type: 'error', message: event.message, retryable: event.retryable })
         break

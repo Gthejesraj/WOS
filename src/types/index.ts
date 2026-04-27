@@ -16,6 +16,7 @@ export type AgentEvent =
   | { type: 'permission_request'; toolName: string; toolId: string; args: unknown }
   | { type: 'permission_decided'; toolId: string; decision: 'allowed' | 'denied' }
   | { type: 'ask_user'; question: string; questionId: string; choices?: string[] }
+  | { type: 'ask_user_answered'; questionId: string; answer: string }
   | { type: 'plan_ready' }
   | { type: 'turn_start' }
   | { type: 'turn_complete'; usage: { inputTokens: number; outputTokens: number }; reason?: 'end_turn' | 'tool_use' | 'aborted' | 'error' }
@@ -25,12 +26,12 @@ export type AgentEvent =
 
 export type MessageBlock =
   | { type: 'text'; content: string }
-  | { type: 'reasoning'; content: string; collapsed?: boolean; done?: boolean }
-  | { type: 'tool_use'; toolName: string; toolId: string; input: unknown; partialArgs?: string; status: 'preparing' | 'running' | 'done' | 'error'; result?: unknown; error?: string; stdout?: string; stderr?: string }
+  | { type: 'reasoning'; content: string; collapsed?: boolean; done?: boolean; interrupted?: boolean }
+  | { type: 'tool_use'; toolName: string; toolId: string; input: unknown; partialArgs?: string; status: 'preparing' | 'running' | 'done' | 'error'; result?: unknown; error?: string; stdout?: string; stderr?: string; interrupted?: boolean }
   | { type: 'tool_result'; toolId: string; result: unknown; error?: string }
-  | { type: 'subagent'; agentId: string; prompt: string; events: AgentEvent[]; result?: string; collapsed?: boolean }
-  | { type: 'permission_request'; toolName: string; toolId: string; args: unknown; decision?: 'allowed' | 'denied' }
-  | { type: 'ask_user'; question: string; questionId: string; choices?: string[]; answer?: string }
+  | { type: 'subagent'; agentId: string; prompt: string; events: AgentEvent[]; result?: string; collapsed?: boolean; interrupted?: boolean }
+  | { type: 'permission_request'; toolName: string; toolId: string; args: unknown; decision?: 'allowed' | 'denied'; interrupted?: boolean }
+  | { type: 'ask_user'; question: string; questionId: string; choices?: string[]; answer?: string; interrupted?: boolean }
   | { type: 'diff'; filePath: string; diff: string; collapsed?: boolean }
   | { type: 'error'; message: string; retryable: boolean }
   | { type: 'compact_notice'; summary: string }

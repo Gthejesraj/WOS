@@ -133,6 +133,13 @@ export function applyEvent(blocks: MessageBlock[], event: AgentEvent): MessageBl
         },
       ]
 
+    case 'ask_user_answered':
+      return blocks.map(b =>
+        b.type === 'ask_user' && b.questionId === event.questionId
+          ? { ...b, answer: event.answer }
+          : b
+      )
+
     case 'subagent_start':
       return [
         ...blocks,
@@ -177,4 +184,51 @@ export function applyEvent(blocks: MessageBlock[], event: AgentEvent): MessageBl
     default:
       return blocks
   }
+}
+
+/**
+ * Reconcile blocks that were left "alive" because the previous run was interrupted
+ * (app crash, hard kill, hot-reload, or aborted streaming). Called when loading
+ * a persisted conversation so revisited chats don't show fake "running…" state.
+ *
+ * Returns the same array reference if nothing needed fixing.
+ */
+export function finalizeOrphanBlocks(
+  blocks: MessageBlock[],
+  opts: { isLatestMessage?: boolean } = {}
+): MessageBlock[] {
+  let mutated = false
+  const out = blocks.map((b): MessageBlock => {
+    if (b.type === 'tool_use' && (b.status === 'preparing' || b.status === 'running')) {
+      mutated = true
+      return {
+        ...b,
+        status: 'error' as const,
+        error: b.error || 'Interrupted — previous run did not finish',
+        interrupted: true,
+      }
+    }
+    if (b.type === 'reasoning' && !b.done) {
+      mutated = true
+      return { ...b, done: true, collapsed: true, interrupted: true }
+    }
+    if (b.type === 'ask_user' && !b.answer) {
+      mutated = true
+      return { ...b, answer: '__cancelled__', interrupted: true }
+    }
+    if (b.type === 'permission_request' && !b.decision) {
+      mutated = true
+      return { ...b, decision: 'denied' as const, interrupted: true }
+    }
+    if (b.type === 'subagent' && !b.result) {
+      mutated = true
+      return { ...b, result: '[interrupted]', collapsed: true, interrupted: true }
+    }
+    return b
+  })
+  return mutated ? out : blocks
+}
+
+export function blocksHaveInterruption(blocks: MessageBlock[]): boolean {
+  return blocks.some(b => 'interrupted' in b && (b as { interrupted?: boolean }).interrupted === true)
 }
