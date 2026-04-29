@@ -59,4 +59,63 @@ describe('Task subagent preset wiring', () => {
     const args = queryLoopSpy.mock.calls[0][0] as { systemPromptOverride?: string }
     expect(args.systemPromptOverride).toMatch(/WOS Meeting Agent/i)
   })
+
+  it('forwards parent AbortSignal to the child queryLoop', async () => {
+    queryLoopSpy.mockClear()
+    const { subAgentTool } = await import('../subAgent')
+    const ac = new AbortController()
+    const ctx = {
+      parentModel: 'gpt-4o',
+      parentMode: 'default' as const,
+      parentReasoningEffort: undefined,
+      parentApiKeyOverride: undefined,
+      workspacePath: '/tmp/wos-test-ws',
+      parentMessages: [],
+      signal: ac.signal,
+      yieldEvent: async () => {},
+      onPermissionRequest: async () => 'allow' as const,
+      onAskUser: async () => 'noop',
+    }
+    await subAgentTool.execute(
+      { description: 'd', prompt: 'p', preset: 'meeting' },
+      ctx as never,
+    )
+    const args = queryLoopSpy.mock.calls[0][0] as { signal?: AbortSignal }
+    expect(args.signal).toBe(ac.signal)
+  })
+
+  it('returns an error result when a BeforeSubagent hook blocks', async () => {
+    queryLoopSpy.mockClear()
+    const { registerHooks, clearHooks } = await import('../../hooks/manager')
+    clearHooks('test:block')
+    registerHooks('test:block', {
+      BeforeSubagent: async () => ({ block: true, reason: 'denied for test' }),
+    })
+    try {
+      const { subAgentTool } = await import('../subAgent')
+      const events: Array<{ type: string }> = []
+      const ctx = {
+        parentModel: 'gpt-4o',
+        parentMode: 'default' as const,
+        parentReasoningEffort: undefined,
+        parentApiKeyOverride: undefined,
+        workspacePath: '/tmp/wos-test-ws',
+        parentMessages: [],
+        signal: new AbortController().signal,
+        yieldEvent: async (e: { type: string }) => { events.push(e) },
+        onPermissionRequest: async () => 'allow' as const,
+        onAskUser: async () => 'noop',
+      }
+      const result = await subAgentTool.execute(
+        { description: 'd', prompt: 'p', preset: 'meeting' },
+        ctx as never,
+      )
+      expect(result.error).toMatch(/denied for test/)
+      expect(queryLoopSpy).not.toHaveBeenCalled()
+      expect(events.some(e => e.type === 'subagent_start')).toBe(true)
+      expect(events.some(e => e.type === 'subagent_end')).toBe(true)
+    } finally {
+      clearHooks('test:block')
+    }
+  })
 })

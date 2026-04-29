@@ -14,7 +14,11 @@ describe('meeting tool naming', () => {
     const names = meetingTools.map(t => t.name).sort()
     expect(names).toEqual(
       [
+        'meeting_delete',
+        'meeting_extract_actions',
+        'meeting_get',
         'meeting_list',
+        'meeting_rename',
         'meeting_search',
         'meeting_summarize',
       ].sort()

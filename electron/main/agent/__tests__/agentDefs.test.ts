@@ -41,4 +41,26 @@ describe('agentDefs', () => {
     expect(getAgentDef('does-not-exist')).toBeUndefined()
     expect(getAgentDef(null)).toBeUndefined()
   })
+
+  it('meeting agent exposes the full meeting tool superset', () => {
+    const def = getAgentDef('meeting')!
+    const all = [
+      'meeting_list', 'meeting_search', 'meeting_get', 'meeting_summarize',
+      'meeting_extract_actions', 'meeting_rename', 'meeting_delete',
+      'fileRead', 'fileWrite', 'bash',
+    ].map(fakeTool)
+    const got = def.toolFilter(all).map(t => t.name)
+    for (const name of [
+      'meeting_list', 'meeting_search', 'meeting_get', 'meeting_summarize',
+      'meeting_extract_actions', 'meeting_rename', 'meeting_delete',
+    ]) {
+      expect(got, `meeting agent should expose ${name}`).toContain(name)
+    }
+  })
+
+  it('wos agent system prompt advertises Task delegation for meeting work', () => {
+    const def = getAgentDef('wos')!
+    expect(def.systemPrompt ?? '').toMatch(/meeting subagent|preset.*meeting/i)
+    expect(def.systemPrompt ?? '').toMatch(/Task tool/)
+  })
 })
