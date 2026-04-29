@@ -1339,6 +1339,7 @@ const SLASH_COMMANDS = [
   { id: 'new',    hint: '/new',     desc: 'Start a new conversation' },
   { id: 'clear',  hint: '/clear',   desc: 'Clear input and attachments' },
   { id: 'export', hint: '/export',  desc: 'Export this conversation to a Markdown file' },
+  { id: 'agent',  hint: '/agent',   desc: 'Pin a subagent (e.g. /agent meeting) for the next message' },
   { id: 'meeting',hint: '/meeting', desc: 'Attach an analyzed meeting as context' },
   { id: 'file',   hint: '/file',    desc: 'Attach a file from your workspace or computer' },
   { id: 'help',   hint: '/help',    desc: 'Show all commands' },
@@ -1368,6 +1369,7 @@ function Composer() {
   // Meeting sub-picker state
   const [meetingSubOpen, setMeetingSubOpen] = useState(false)
   const [analyzedMeetings, setAnalyzedMeetings] = useState<MeetingChip[]>([])
+  const [pinnedAgent, setPinnedAgent] = useState<string | null>(null)
 
   // @ command state
   const [atOpen, setAtOpen] = useState(false)
@@ -1494,6 +1496,24 @@ function Composer() {
         setSlashOpen(true)
         setInput('/')
         break
+      case 'agent': {
+        // Pin a subagent for the next message. Argument may follow on same line: "/agent meeting"
+        const rest = input.replace(/^\/agent\s*/i, '').trim().split(/\s+/)[0] ?? ''
+        if (rest) {
+          setPinnedAgent(rest.toLowerCase())
+          setInput('')
+          toast.success(`Pinned agent: ${rest}`)
+        } else {
+          if (pinnedAgent) {
+            setPinnedAgent(null)
+            toast.success('Cleared pinned agent')
+          } else {
+            setInput('/agent ')
+            toast.message('Type an agent name (e.g. meeting), then press Enter or send.')
+          }
+        }
+        break
+      }
       case 'meeting': {
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1616,12 +1636,16 @@ function Composer() {
     if (hasWebChip) {
       text = `[Web search enabled — please search the web as needed to answer this query]\n\n${text}`
     }
+    if (pinnedAgent) {
+      text = `[Use the Task tool with subagent="${pinnedAgent}" to handle this request.]\n\n${text}`
+    }
     const nonWebAttachments = attachments.filter(a => a.type !== 'web')
 
     sendMessage(text, nonWebAttachments)
     setInput('')
     setAttachments([])
     setMeetingChips([])
+    setPinnedAgent(null)
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
   }
 
@@ -1819,6 +1843,24 @@ function Composer() {
             border: `1px solid ${isDragOver ? '#3b82f6' : 'var(--border)'}`,
           }}
         >
+          {/* Pinned agent chip */}
+          {pinnedAgent && (
+            <div className="flex flex-wrap gap-1.5 px-4 pt-3">
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg"
+                style={{ background: 'rgba(120, 200, 255, 0.08)', border: '1px solid var(--border-strong)' }}>
+                <span style={{ fontSize: '10px' }}>🤖</span>
+                <span style={{ color: 'var(--foreground)', fontSize: '11px' }}>agent: {pinnedAgent}</span>
+                <button
+                  onClick={() => setPinnedAgent(null)}
+                  className="hover:opacity-100 transition-opacity"
+                  style={{ color: 'var(--amber)', opacity: 0.7 }}
+                >
+                  <X size={9} />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Meeting chips */}
           {meetingChips.length > 0 && (
             <div className="flex flex-wrap gap-1.5 px-4 pt-3">

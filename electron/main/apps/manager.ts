@@ -8,6 +8,7 @@ import { googleApp } from './google'
 import type { AppModule, AppManifest } from './types'
 import type { Tool } from '../tools'
 import { registerHooks, runOnConnect, runOnDisconnect } from '../hooks/manager'
+import { getUserAppSkills, loadAllUserAppHooksOnce } from './userExtensions'
 
 const REGISTRY: Record<string, AppModule> = {
   [slackApp.manifest.id]: slackApp,
@@ -166,6 +167,7 @@ function registerAppHooksOnce(): void {
   for (const app of Object.values(REGISTRY)) {
     if (app.hooks) registerHooks(`app:${app.manifest.id}`, app.hooks)
   }
+  loadAllUserAppHooksOnce()
 }
 
 async function runAppOnConnect(appId: string, creds: Record<string, string>): Promise<void> {
@@ -196,4 +198,38 @@ export function buildConnectedAppTools(): Tool[] {
     }
   }
   return out
+}
+
+/**
+ * Skills declared by every connected & enabled app, scoped under the app id.
+ * Consumed by `buildSkillIndex()` so the agent sees app skills in its system
+ * prompt and can pull bodies via the `ReadAppSkill` tool.
+ */
+export function listConnectedAppSkills(): Array<{ appId: string; appName: string; id: string; description: string; body: string }> {
+  const out: Array<{ appId: string; appName: string; id: string; description: string; body: string }> = []
+  for (const c of listConnections()) {
+    if (!c.enabled) continue
+    const app = getApp(c.appId)
+    if (!app) continue
+    const builtIn = app.skills ?? []
+    const user = getUserAppSkills(c.appId)
+    // user skills override built-ins on id collision
+    const merged = new Map<string, { id: string; description: string; body: string }>()
+    for (const s of builtIn) merged.set(s.id, s)
+    for (const s of user) merged.set(s.id, s)
+    for (const s of merged.values()) {
+      out.push({ appId: c.appId, appName: app.manifest.name, id: s.id, description: s.description, body: s.body })
+    }
+  }
+  return out
+}
+
+/** Return body of an app skill or undefined if not found / not connected. */
+export function getConnectedAppSkillBody(appId: string, skillId: string): string | undefined {
+  const conn = listConnections().find(c => c.appId === appId && c.enabled)
+  if (!conn) return undefined
+  const user = getUserAppSkills(appId).find(s => s.id === skillId)
+  if (user) return user.body
+  const app = getApp(appId)
+  return app?.skills?.find(s => s.id === skillId)?.body
 }

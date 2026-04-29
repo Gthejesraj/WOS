@@ -13,7 +13,7 @@ import { enterPlanModeTool, exitPlanModeTool } from './planMode'
 import type { AgentEvent } from '../agent/query'
 import { buildConnectedAppTools } from '../apps/manager'
 import { buildMcpTools } from '../mcp/manager'
-import { readSkillTool } from '../skills/manager'
+import { readSkillTool, readAppSkillTool } from '../skills/manager'
 import { readRuleTool } from '../rules/manager'
 import { meetingTools } from './meetings'
 import path from 'node:path'
@@ -94,6 +94,7 @@ export function getAllTools(): Tool[] {
   return [
     ...BUILTIN_TOOLS,
     readSkillTool,
+    readAppSkillTool,
     readRuleTool,
     ...ensureValidNames(meetingTools, 'meetings'),
     ...ensureValidNames(buildConnectedAppTools(), 'apps'),

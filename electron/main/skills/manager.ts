@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { skillsDir, ensureDir } from '../paths'
 import type { Tool } from '../tools'
+import { listConnectedAppSkills, getConnectedAppSkillBody } from '../apps/manager'
 
 export interface SkillRecord {
   id: string
@@ -182,11 +183,22 @@ export function deleteSkill(id: string) {
  */
 export function buildSkillIndex(): string {
   const skills = listSkills().filter(s => s.enabled)
-  if (skills.length === 0) return ''
-  const lines = ['## Available skills', '', 'Call the `ReadSkill` tool with an id below when one of the triggers matches.', '']
-  for (const s of skills) {
-    const trig = s.triggers.length ? ` [triggers: ${s.triggers.join(', ')}]` : ''
-    lines.push(`- **${s.id.slice(0, 8)}** — ${s.name}: ${s.description}${trig}`)
+  const appSkills = listConnectedAppSkills()
+  if (skills.length === 0 && appSkills.length === 0) return ''
+  const lines: string[] = []
+  if (skills.length > 0) {
+    lines.push('## Available skills', '', 'Call the `ReadSkill` tool with an id below when one of the triggers matches.', '')
+    for (const s of skills) {
+      const trig = s.triggers.length ? ` [triggers: ${s.triggers.join(', ')}]` : ''
+      lines.push(`- **${s.id.slice(0, 8)}** — ${s.name}: ${s.description}${trig}`)
+    }
+  }
+  if (appSkills.length > 0) {
+    if (lines.length) lines.push('')
+    lines.push('## App skills', '', 'Call the `ReadAppSkill` tool with `appId` + `skillId` to load the body.', '')
+    for (const s of appSkills) {
+      lines.push(`- **${s.appId}/${s.id}** (${s.appName}) — ${s.description}`)
+    }
   }
   return lines.join('\n')
 }
@@ -209,5 +221,25 @@ export const readSkillTool: Tool = {
     const parsed = readSkillBody(match.id)
     if (!parsed) return { output: '', error: 'Skill file is missing on disk.' }
     return { output: `# ${match.name}\n\n${parsed.body}` }
+  },
+}
+
+/** Built-in tool that loads an app-declared skill body. */
+export const readAppSkillTool: Tool = {
+  name: 'ReadAppSkill',
+  description: 'Load an app-declared skill body (e.g. "github/post-update"). Returns markdown.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      appId: { type: 'string', description: 'App id, e.g. "github", "slack".' },
+      skillId: { type: 'string', description: 'Skill id within that app.' },
+    },
+    required: ['appId', 'skillId'],
+  },
+  async execute(input) {
+    const { appId, skillId } = input as { appId: string; skillId: string }
+    const body = getConnectedAppSkillBody(appId, skillId)
+    if (!body) return { output: '', error: `App skill "${appId}/${skillId}" not found or app not connected.` }
+    return { output: body }
   },
 }
