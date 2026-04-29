@@ -170,3 +170,106 @@ export const meetingsFts = sqliteTable('meetings_fts', {
   transcript: text('transcript'),
   summary: text('summary'),
 })
+
+// ─── Automations (OpenClaw-inspired, scoped to user-installed apps) ──────────
+
+// Scheduled jobs — cron expressions or one-shot runAt; agent runs happen in main process.
+export const scheduledJobs = sqliteTable('scheduled_jobs', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  cronExpr: text('cron_expr'),
+  runAt: integer('run_at', { mode: 'timestamp' }),
+  tz: text('tz').notNull().default('local'),
+  target: text('target').notNull(), // 'new' | conversationId
+  prompt: text('prompt').notNull(),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  deleteAfterRun: integer('delete_after_run', { mode: 'boolean' }).notNull().default(false),
+  lastRunAt: integer('last_run_at', { mode: 'timestamp' }),
+  nextRunAt: integer('next_run_at', { mode: 'timestamp' }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+})
+
+export const scheduledRuns = sqliteTable('scheduled_runs', {
+  id: text('id').primaryKey(),
+  jobId: text('job_id').notNull(),
+  startedAt: integer('started_at', { mode: 'timestamp' }).notNull(),
+  endedAt: integer('ended_at', { mode: 'timestamp' }),
+  status: text('status').notNull(), // 'running' | 'success' | 'error' | 'cancelled'
+  error: text('error'),
+  conversationId: text('conversation_id'),
+})
+
+// Hooks — react to in-process events ('message:received', 'app:connected', ...).
+export const hooks = sqliteTable('hooks', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  event: text('event').notNull(),
+  type: text('type').notNull(), // 'skill' | 'prompt' | 'tool'
+  config: text('config', { mode: 'json' }).notNull(),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  lastFiredAt: integer('last_fired_at', { mode: 'timestamp' }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+})
+
+export const hookRuns = sqliteTable('hook_runs', {
+  id: text('id').primaryKey(),
+  hookId: text('hook_id').notNull(),
+  firedAt: integer('fired_at', { mode: 'timestamp' }).notNull(),
+  status: text('status').notNull(), // 'success' | 'error' | 'timeout'
+  error: text('error'),
+  contextJson: text('context_json', { mode: 'json' }),
+})
+
+// Standing orders — long-lived rules injected into every system prompt.
+// Stored separately from `rules` so we can attach scheduling/escalation metadata.
+export const standingOrders = sqliteTable('standing_orders', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  body: text('body').notNull(),
+  scope: text('scope').notNull().default('global'), // 'global' | conversation/workspace id
+  triggersJson: text('triggers_json', { mode: 'json' }),
+  approvalsJson: text('approvals_json', { mode: 'json' }),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+})
+
+// Tasks — durable ledger for any detached run (scheduled, sub-agent, multi-step flow).
+export const tasks = sqliteTable('tasks', {
+  id: text('id').primaryKey(),
+  parentId: text('parent_id'),
+  type: text('type').notNull(), // 'scheduled' | 'subagent' | 'flow' | 'hook'
+  status: text('status').notNull().default('queued'), // 'queued' | 'running' | 'success' | 'error' | 'cancelled' | 'paused'
+  title: text('title').notNull(),
+  payload: text('payload', { mode: 'json' }),
+  conversationId: text('conversation_id'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+})
+
+export const taskSteps = sqliteTable('task_steps', {
+  id: text('id').primaryKey(),
+  taskId: text('task_id').notNull(),
+  idx: integer('idx').notNull(),
+  status: text('status').notNull(),
+  label: text('label').notNull(),
+  output: text('output'),
+  error: text('error'),
+  ts: integer('ts', { mode: 'timestamp' }).notNull(),
+})
+
+// Sub-agent runs — invoked via wos.spawn_subagent tool, rendered inline in chat.
+export const subagentRuns = sqliteTable('subagent_runs', {
+  id: text('id').primaryKey(),
+  parentMessageId: text('parent_message_id'),
+  conversationId: text('conversation_id').notNull(),
+  status: text('status').notNull().default('running'),
+  goal: text('goal').notNull(),
+  summary: text('summary'),
+  tokensIn: integer('tokens_in').notNull().default(0),
+  tokensOut: integer('tokens_out').notNull().default(0),
+  startedAt: integer('started_at', { mode: 'timestamp' }).notNull(),
+  endedAt: integer('ended_at', { mode: 'timestamp' }),
+})

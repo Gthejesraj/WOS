@@ -467,6 +467,22 @@ export class AgentRunner {
           .where(eq(schema.conversations.id, conversationId))
           .run()
         notifyWrite()
+      } else if (lastMsg.branchGroupId) {
+        // The user message we continued from was edited (it lives in a branch
+        // group). Even though this turn produced no assistant blocks (cancelled,
+        // errored, no model output), persist a stub assistant message so the
+        // branch is anchored — otherwise the next edit lookup would see an
+        // unbalanced branch and the picker would render a phantom slot.
+        db.insert(schema.messages).values({
+          id: assistantMsgId,
+          conversationId,
+          role: 'assistant',
+          blocks: JSON.stringify([]),
+          createdAt: new Date(),
+          branchGroupId: lastMsg.branchGroupId,
+          branchIndex: lastMsg.branchIndex ?? 0,
+        }).run()
+        notifyWrite()
       }
 
       this.abortController = null

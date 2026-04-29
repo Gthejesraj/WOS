@@ -1,5 +1,5 @@
 export type AgentMode = 'default' | 'plan' | 'yolo'
-export type ViewType = 'home' | 'chat' | 'settings' | 'apps' | 'meetings'
+export type ViewType = 'home' | 'chat' | 'settings' | 'apps' | 'meetings' | 'automations'
 
 /**
  * Render-component protocol for `ask_user`. The agent declares the kind of

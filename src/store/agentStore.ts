@@ -460,16 +460,31 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     const r = await window.wos.editMessage(messageId, newText) as {
       success: boolean
       error?: string
+      code?: string
+      failingId?: string
       newMessageId?: string
       branchGroupId?: string
       branchIndex?: number
     }
-    if (!r.success) { toast.error(`Edit failed: ${r.error}`); return }
+    if (!r.success) {
+      // The most common cause of NOT_FOUND is a stale message id: the editor
+      // submitted before a reload completed (e.g. the user spammed edit while
+      // the agent was still streaming). Reload the conversation once and bail
+      // — the editor will re-target the fresh row on the next click.
+      if (r.code === 'NOT_FOUND') {
+        await get().loadConversation(activeConversationId)
+        toast.error('That message has moved — refreshed the view, please try again.')
+        return
+      }
+      toast.error(`Edit failed: ${r.error}`)
+      return
+    }
 
-    // Reload conversation to get updated messages with branch info
+    // Reload conversation to get updated messages with branch info, AND set the
+    // active branch BEFORE kicking off continueConversation — otherwise the
+    // continue handler may pick the wrong branch tail.
     await get().loadConversation(activeConversationId)
 
-    // Switch to the new branch so it's visible
     if (r.branchGroupId && r.branchIndex !== undefined) {
       set(s => ({ activeBranches: { ...s.activeBranches, [r.branchGroupId!]: r.branchIndex! } }))
     }

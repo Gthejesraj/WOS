@@ -54,6 +54,41 @@ function NoWorkspacePrompt({ onClose }: { onClose: () => void }) {
   )
 }
 
+/* ─── Markdown error boundary ───
+   Any render exception inside MarkdownContent (mid-stream malformed markdown,
+   third-party renderer crashes such as the historical "listblock not found"
+   from upstream parsers, etc.) falls back to a <pre> dump of the raw text
+   instead of unmounting the chat — which would otherwise cascade into
+   "Message not found" errors when the user tries to edit. */
+class MarkdownErrorBoundary extends React.Component<
+  { rawText: string; children: React.ReactNode },
+  { errored: boolean }
+> {
+  constructor(props: { rawText: string; children: React.ReactNode }) {
+    super(props)
+    this.state = { errored: false }
+  }
+  static getDerivedStateFromError() {
+    return { errored: true }
+  }
+  componentDidCatch(error: Error) {
+    console.warn('[wos] markdown render error — falling back to plain text:', error.message)
+  }
+  render() {
+    if (this.state.errored) {
+      return (
+        <pre
+          className="whitespace-pre-wrap text-[13px] leading-[1.7]"
+          style={{ color: 'var(--muted-foreground)', fontFamily: 'inherit' }}
+        >
+          {this.props.rawText}
+        </pre>
+      )
+    }
+    return this.props.children
+  }
+}
+
 /* ─── Markdown / text renderer ─── */
 function MarkdownContent({ content }: { content: string }) {
   const raw = (typeof content === 'string' ? content : String(content ?? '')).replace(/\n+$/, '')
@@ -183,7 +218,9 @@ function InlineCodeBlock({ code, lang }: { code: string; lang: string }) {
 function TextBlock({ content, streaming }: { content: string; streaming?: boolean }) {
   return (
     <span>
-      <MarkdownContent content={content} />
+      <MarkdownErrorBoundary rawText={content}>
+        <MarkdownContent content={content} />
+      </MarkdownErrorBoundary>
       {streaming && (
         <span
           aria-hidden
@@ -534,7 +571,9 @@ function PlanApprovalBlock({
             overflowY: 'auto',
           }}
         >
-          <MarkdownContent content={planMarkdown} />
+          <MarkdownErrorBoundary rawText={planMarkdown}>
+            <MarkdownContent content={planMarkdown} />
+          </MarkdownErrorBoundary>
         </div>
       )}
 

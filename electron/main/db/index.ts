@@ -212,6 +212,102 @@ export async function initDatabase(): Promise<WosDb> {
       FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
     );
 
+    -- ── Automations (OpenClaw-inspired) ───────────────────────────────────
+    CREATE TABLE IF NOT EXISTS scheduled_jobs (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      cron_expr TEXT,
+      run_at INTEGER,
+      tz TEXT NOT NULL DEFAULT 'local',
+      target TEXT NOT NULL,
+      prompt TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      delete_after_run INTEGER NOT NULL DEFAULT 0,
+      last_run_at INTEGER,
+      next_run_at INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS scheduled_runs (
+      id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL,
+      started_at INTEGER NOT NULL,
+      ended_at INTEGER,
+      status TEXT NOT NULL,
+      error TEXT,
+      conversation_id TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS hooks (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      event TEXT NOT NULL,
+      type TEXT NOT NULL,
+      config TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      last_fired_at INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS hook_runs (
+      id TEXT PRIMARY KEY,
+      hook_id TEXT NOT NULL,
+      fired_at INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      error TEXT,
+      context_json TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS standing_orders (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      body TEXT NOT NULL,
+      scope TEXT NOT NULL DEFAULT 'global',
+      triggers_json TEXT,
+      approvals_json TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS tasks (
+      id TEXT PRIMARY KEY,
+      parent_id TEXT,
+      type TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'queued',
+      title TEXT NOT NULL,
+      payload TEXT,
+      conversation_id TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS task_steps (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL,
+      idx INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      label TEXT NOT NULL,
+      output TEXT,
+      error TEXT,
+      ts INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS subagent_runs (
+      id TEXT PRIMARY KEY,
+      parent_message_id TEXT,
+      conversation_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'running',
+      goal TEXT NOT NULL,
+      summary TEXT,
+      tokens_in INTEGER NOT NULL DEFAULT 0,
+      tokens_out INTEGER NOT NULL DEFAULT 0,
+      started_at INTEGER NOT NULL,
+      ended_at INTEGER
+    );
+
   `)
   if (_fts5Available) {
     _sqlDb.exec(`

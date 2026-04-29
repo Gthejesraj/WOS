@@ -41,15 +41,40 @@ export async function getMyself(baseUrl: string, email: string, token: string) {
   )
 }
 
+// Atlassian CHANGE-2046 (April 2026): /rest/api/3/project/search was deprecated in favour
+// of token-paginated endpoints. The successor /rest/api/3/projects/paginated is not yet
+// rolled out everywhere, so we keep calling /project/search but accept either response shape.
 export async function listProjects(baseUrl: string, email: string, token: string) {
   return jiraFetch<{ values: unknown[] }>(baseUrl, '/rest/api/3/project/search?maxResults=50', email, token)
 }
 
+const ISSUE_FIELDS = ['summary', 'status', 'assignee', 'priority', 'issuetype', 'created', 'updated', 'description', 'comment']
+
+// Atlassian CHANGE-2046 (April 2026): the legacy POST /rest/api/3/search endpoint is gone
+// (returns 410 Gone). We now hit /rest/api/3/search/jql, which uses token-based pagination
+// and dropped the `total` field from responses. Callers that previously relied on `total`
+// receive `issues.length` as a best-effort fallback.
 export async function searchIssues(baseUrl: string, email: string, token: string, jql: string, maxResults = 50) {
-  return jiraFetch<{ issues: unknown[]; total: number }>(baseUrl, '/rest/api/3/search', email, token, {
-    method: 'POST',
-    body: { jql, maxResults, fields: ['summary', 'status', 'assignee', 'priority', 'issuetype', 'created', 'updated', 'description', 'comment'] },
-  })
+  const data = await searchIssuesPage(baseUrl, email, token, jql, { maxResults })
+  return { issues: data.issues, total: data.issues.length, nextPageToken: data.nextPageToken, isLast: data.isLast }
+}
+
+export async function searchIssuesPage(
+  baseUrl: string,
+  email: string,
+  token: string,
+  jql: string,
+  opts: { maxResults?: number; nextPageToken?: string; fields?: string[] } = {},
+) {
+  const body: Record<string, unknown> = {
+    jql,
+    maxResults: opts.maxResults ?? 50,
+    fields: opts.fields ?? ISSUE_FIELDS,
+  }
+  if (opts.nextPageToken) body.nextPageToken = opts.nextPageToken
+  return jiraFetch<{ issues: unknown[]; nextPageToken?: string; isLast?: boolean }>(
+    baseUrl, '/rest/api/3/search/jql', email, token, { method: 'POST', body },
+  )
 }
 
 export async function getIssue(baseUrl: string, email: string, token: string, issueKey: string) {

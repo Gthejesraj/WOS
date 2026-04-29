@@ -27,6 +27,7 @@ export function TopBar({ currentView, isSidebarCollapsed, onToggleSidebar, onRen
   const title = (() => {
     if (currentView === 'settings') return 'Settings'
     if (currentView === 'apps') return 'Apps'
+    if (currentView === 'automations') return 'Automations'
     if (currentView === 'meetings') return 'Meetings'
     if (currentView === 'chat' && activeConv) return activeConv.title
     return null

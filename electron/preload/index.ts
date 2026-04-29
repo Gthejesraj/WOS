@@ -274,6 +274,47 @@ contextBridge.exposeInMainWorld('wos', {
     },
   },
 
+  // ----- Automations (Scheduled / Hooks / Standing Orders / Tasks / Sub-agents) -----
+  automations: {
+    // Scheduled jobs
+    listScheduled: (): Promise<unknown[]> => safeInvoke('automations:scheduled:list', []),
+    upsertScheduled: (job: Record<string, unknown>): Promise<{ ok: boolean; id?: string; error?: string }> =>
+      safeInvoke('automations:scheduled:upsert', { ok: false, error: 'IPC not registered' }, job),
+    deleteScheduled: (id: string): Promise<{ ok: boolean }> =>
+      safeInvoke('automations:scheduled:delete', { ok: false }, { id }),
+    runScheduledNow: (id: string): Promise<{ ok: boolean; error?: string }> =>
+      safeInvoke('automations:scheduled:run-now', { ok: false }, { id }),
+    listScheduledRuns: (jobId?: string): Promise<unknown[]> =>
+      safeInvoke('automations:scheduled:runs', [], { jobId }),
+
+    // Hooks
+    listHooks: (): Promise<unknown[]> => safeInvoke('automations:hooks:list', []),
+    upsertHook: (hook: Record<string, unknown>): Promise<{ ok: boolean; id?: string; error?: string }> =>
+      safeInvoke('automations:hooks:upsert', { ok: false, error: 'IPC not registered' }, hook),
+    deleteHook: (id: string): Promise<{ ok: boolean }> =>
+      safeInvoke('automations:hooks:delete', { ok: false }, { id }),
+    listHookRuns: (hookId?: string): Promise<unknown[]> =>
+      safeInvoke('automations:hooks:runs', [], { hookId }),
+
+    // Standing orders
+    listStandingOrders: (): Promise<unknown[]> => safeInvoke('automations:standing:list', []),
+    upsertStandingOrder: (order: Record<string, unknown>): Promise<{ ok: boolean; id?: string; error?: string }> =>
+      safeInvoke('automations:standing:upsert', { ok: false, error: 'IPC not registered' }, order),
+    deleteStandingOrder: (id: string): Promise<{ ok: boolean }> =>
+      safeInvoke('automations:standing:delete', { ok: false }, { id }),
+
+    // Tasks ledger
+    listTasks: (filter?: { status?: string; type?: string }): Promise<unknown[]> =>
+      safeInvoke('automations:tasks:list', [], filter ?? {}),
+    getTaskSteps: (taskId: string): Promise<unknown[]> =>
+      safeInvoke('automations:tasks:steps', [], { taskId }),
+
+    // Natural-language authoring
+    authorAutomation: (kind: 'scheduled' | 'hook' | 'standing-order', prompt: string):
+      Promise<{ ok: boolean; draft?: Record<string, unknown>; error?: string }> =>
+      safeInvoke('automations:author', { ok: false, error: 'IPC not registered' }, { kind, prompt }),
+  },
+
   // ----- Dictation (Apple Speech) -----
   dictation: {
     start: (sessionId: string): Promise<{ ok: boolean; error?: string; unavailable?: boolean }> =>

@@ -6,6 +6,7 @@ import { HomeView } from './components/cursor/HomeView'
 import { ChatView } from './components/cursor/ChatView'
 import { SettingsView } from './components/cursor/SettingsView'
 import { AppsView } from './components/cursor/AppsView'
+import { AutomationsView } from './components/cursor/AutomationsView'
 import { MeetingsView } from './components/cursor/MeetingsView'
 import { CommandPalette, type CommandItem } from './components/cursor/CommandPalette'
 import { DebugDrawer } from './components/cursor/DebugDrawer'
@@ -201,6 +202,8 @@ export default function App() {
           return <SettingsView onBack={() => setCurrentView(activeConversationId ? 'chat' : 'home')} />
         case 'apps':
           return <AppsView />
+        case 'automations':
+          return <AutomationsView />
         case 'meetings':
           return <MeetingsView onOpenChat={handleOpenChatDraft} />
         default:
@@ -234,6 +237,7 @@ export default function App() {
             onNewChat={handleNewChat}
             onApps={() => setCurrentView('apps')}
             onMeetings={() => setCurrentView('meetings')}
+            onAutomations={() => setCurrentView('automations')}
             onSettings={() => setCurrentView('settings')}
             onDeleteConversation={deleteConversation}
             onRenameConversation={handleRenameConversation}

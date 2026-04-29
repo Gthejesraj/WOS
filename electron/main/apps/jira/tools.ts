@@ -17,18 +17,22 @@ export function buildJiraTools(creds: JiraCreds): Tool[] {
     },
     {
       name: 'JiraSearchIssues',
-      description: 'Search Jira issues using JQL (Jira Query Language).',
+      description: 'Search Jira issues using JQL (Jira Query Language). Returns at most max_results issues plus an optional next_page_token. To page through more results, call again with the returned next_page_token. (Atlassian CHANGE-2046, April 2026: pagination is token-based; offsets are no longer supported and the `total` field is no longer returned by Jira.)',
       inputSchema: {
         type: 'object',
         required: ['jql'],
         properties: {
           jql: { type: 'string', description: 'JQL query, e.g. "project=ENG AND status=Open ORDER BY created DESC"' },
-          max_results: { type: 'number', description: 'Max issues to return (default: 50)' },
+          max_results: { type: 'number', description: 'Max issues to return per page (default: 50)' },
+          next_page_token: { type: 'string', description: 'Opaque pagination token returned by a prior call. Omit on the first call.' },
         },
       },
       async execute(input) {
-        const { jql, max_results } = input as { jql: string; max_results?: number }
-        const data = await api.searchIssues(baseUrl, email, token, jql, max_results)
+        const { jql, max_results, next_page_token } = input as { jql: string; max_results?: number; next_page_token?: string }
+        const data = await api.searchIssuesPage(baseUrl, email, token, jql, {
+          maxResults: max_results,
+          nextPageToken: next_page_token,
+        })
         return { output: JSON.stringify(data, null, 2) }
       },
     },

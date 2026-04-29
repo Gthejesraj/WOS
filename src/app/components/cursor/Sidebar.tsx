@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Search, Plus, ShoppingBag, Settings, Trash2, X, Calendar, MoreHorizontal, Pencil } from 'lucide-react'
+import { Search, Plus, ShoppingBag, Settings, Trash2, X, Calendar, MoreHorizontal, Pencil, Zap } from 'lucide-react'
 import type { Conversation, ViewType } from '../../../types'
 import { useWorkspaceStore } from '../../../store/workspaceStore'
 
@@ -13,6 +13,7 @@ interface SidebarProps {
   onNewChat: () => void
   onApps: () => void
   onMeetings: () => void
+  onAutomations: () => void
   onSettings: () => void
   onDeleteConversation: (id: string) => void
   onRenameConversation: (id: string, title: string) => void
@@ -28,6 +29,7 @@ export function Sidebar({
   onNewChat,
   onApps,
   onMeetings,
+  onAutomations,
   onSettings,
   onDeleteConversation,
   onRenameConversation,
@@ -124,7 +126,7 @@ export function Sidebar({
 
       <button
         onClick={onMeetings}
-        className={`flex items-center gap-2 mx-2 px-2 py-1.5 rounded-md transition-colors group mb-2 ${
+        className={`flex items-center gap-2 mx-2 px-2 py-1.5 rounded-md transition-colors group mb-0.5 ${
           currentView === 'meetings' ? 'wos-sidebar-active' : 'wos-hover-sm'
         }`}
       >
@@ -134,6 +136,21 @@ export function Sidebar({
           style={{ color: currentView === 'meetings' ? 'var(--foreground)' : 'var(--zinc-400)' }}
         >
           Meetings
+        </span>
+      </button>
+
+      <button
+        onClick={onAutomations}
+        className={`flex items-center gap-2 mx-2 px-2 py-1.5 rounded-md transition-colors group mb-2 ${
+          currentView === 'automations' ? 'wos-sidebar-active' : 'wos-hover-sm'
+        }`}
+      >
+        <Zap size={13} className="shrink-0" style={{ color: currentView === 'automations' ? 'var(--amber)' : 'var(--zinc-500)' }} />
+        <span
+          className="text-[12px]"
+          style={{ color: currentView === 'automations' ? 'var(--foreground)' : 'var(--zinc-400)' }}
+        >
+          Automations
         </span>
       </button>
 

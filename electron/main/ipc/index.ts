@@ -9,6 +9,7 @@ import { registerSkillsHandlers } from './skills'
 import { registerRulesHandlers } from './rules'
 import { registerMeetingsHandlers } from './meetings'
 import { registerDictationHandlers } from './dictation'
+import { registerAutomationsHandlers } from './automations'
 
 let registered = false
 
@@ -25,4 +26,5 @@ export function registerIpcHandlers(win: BrowserWindow) {
   registerRulesHandlers()
   registerMeetingsHandlers()
   registerDictationHandlers()
+  registerAutomationsHandlers()
 }
