@@ -51,6 +51,9 @@ export interface QueryOptions {
    * (e.g. "meeting" sees a curated subset) and system-prompt augmentation.
    * Defaults to "wos". */
   agentKey?: string
+  /** Conversation id, forwarded to ToolContext so tools (e.g. Task subagent)
+   * can persist ledger rows scoped to the right conversation. */
+  conversationId?: string
 }
 
 const SYSTEM_PROMPT = `You are WOS, an AI agent assistant. You have access to tools to help accomplish tasks.
@@ -84,7 +87,7 @@ export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEve
     model, messages, userMessage, workspacePath, mode, reasoningEffort,
     signal, permissionStore, onPermissionRequest, onAskUser, maxDepth = 0,
     systemPromptOverride, systemPromptCustom, systemPromptAppend, apiKeyOverride, onEvent,
-    agentKey,
+    agentKey, conversationId,
   } = options
   const { getAgentDef } = await import('./agentDefs')
   const agentDef = getAgentDef(agentKey ?? 'wos')
@@ -403,6 +406,7 @@ export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEve
             parentMode: mode,
             parentReasoningEffort: reasoningEffort,
             parentApiKeyOverride: apiKeyOverride,
+            conversationId,
           }
         )
 

@@ -225,6 +225,7 @@ export class AgentRunner {
         onAskUser: (question, questionId, choices, extras) =>
           this.askUser(question, questionId, choices, emit, extras),
         onEvent: emit,
+        conversationId,
       })) {
         if (signal.aborted) break
         emit(event)
@@ -441,6 +442,7 @@ export class AgentRunner {
         onAskUser: (question, questionId, choices, extras) =>
           this.askUser(question, questionId, choices, emit, extras),
         onEvent: emit,
+        conversationId,
       })) {
         if (signal.aborted) break
         emit(event)

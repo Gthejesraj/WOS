@@ -32,6 +32,9 @@ export interface ToolContext {
   parentMode?: 'default' | 'plan' | 'yolo'
   parentReasoningEffort?: 'low' | 'medium' | 'high' | 'max'
   parentApiKeyOverride?: string
+  /** Conversation id of the running turn. Tools that need to persist ledger
+   * rows (e.g. Task subagent → subagent_runs / tasks) read this. */
+  conversationId?: string
   /** Arbitrary side-channel key/value passthrough (e.g. conversationId, reasoningEffort). */
   extras?: Record<string, unknown>
 }

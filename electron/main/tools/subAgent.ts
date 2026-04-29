@@ -35,6 +35,58 @@ export const subAgentTool: Tool = {
     const { description, prompt, fork = true } = input as SubAgentInput
     const preset = (input as SubAgentInput).presetKey ?? (input as SubAgentInput).preset
     const agentId = randomUUID()
+    const startedAt = new Date()
+
+    const db = getDb()
+    const conversationId = ctx.conversationId
+    let taskId: string | null = null
+    if (conversationId) {
+      try {
+        db.insert(schema.subagentRuns).values({
+          id: agentId,
+          parentMessageId: ctx.toolId ?? null,
+          conversationId,
+          status: 'running',
+          goal: description,
+          summary: null,
+          tokensIn: 0,
+          tokensOut: 0,
+          startedAt,
+          endedAt: null,
+        }).run()
+        taskId = randomUUID()
+        db.insert(schema.tasks).values({
+          id: taskId,
+          type: 'subagent',
+          status: 'running',
+          title: description,
+          conversationId,
+          createdAt: startedAt,
+          updatedAt: startedAt,
+        }).run()
+      } catch (err) {
+        if (process.env.WOS_DEBUG === '1') console.warn('[subAgent] ledger write failed', err)
+      }
+    }
+
+    const finishLedger = (status: 'success' | 'error' | 'cancelled', summary: string | null) => {
+      if (!conversationId) return
+      const endedAt = new Date()
+      try {
+        db.update(schema.subagentRuns)
+          .set({ status, summary, endedAt })
+          .where(eq(schema.subagentRuns.id, agentId))
+          .run()
+        if (taskId) {
+          db.update(schema.tasks)
+            .set({ status, updatedAt: endedAt })
+            .where(eq(schema.tasks.id, taskId))
+            .run()
+        }
+      } catch (err) {
+        if (process.env.WOS_DEBUG === '1') console.warn('[subAgent] ledger finalize failed', err)
+      }
+    }
 
     const { runBeforeSubagent } = await import('../hooks/manager')
     const gate = await runBeforeSubagent(preset ?? 'wos', input, { workspacePath: ctx.workspacePath ?? null })
@@ -42,6 +94,7 @@ export const subAgentTool: Tool = {
       const reason = gate.reason ?? 'blocked by hook'
       await ctx.yieldEvent({ type: 'subagent_start', agentId, prompt: description })
       await ctx.yieldEvent({ type: 'subagent_end', agentId, result: `Blocked: ${reason}` })
+      finishLedger('cancelled', `blocked: ${reason}`)
       return { output: `Subagent blocked: ${reason}`, error: reason }
     }
 
@@ -111,10 +164,12 @@ export const subAgentTool: Tool = {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       await ctx.yieldEvent({ type: 'subagent_end', agentId, result: `Error: ${msg}` })
+      finishLedger('error', msg)
       return { output: `Subagent error: ${msg}`, error: msg }
     }
 
     await ctx.yieldEvent({ type: 'subagent_end', agentId, result })
+    finishLedger('success', result.slice(0, 4000) || null)
     return { output: result || '(subagent completed with no output)' }
   },
 }
