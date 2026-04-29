@@ -1338,6 +1338,7 @@ const SLASH_COMMANDS = [
   { id: 'model',  hint: '/model',   desc: 'Choose AI model (provider + model selection)' },
   { id: 'new',    hint: '/new',     desc: 'Start a new conversation' },
   { id: 'clear',  hint: '/clear',   desc: 'Clear input and attachments' },
+  { id: 'export', hint: '/export',  desc: 'Export this conversation to a Markdown file' },
   { id: 'meeting',hint: '/meeting', desc: 'Attach an analyzed meeting as context' },
   { id: 'file',   hint: '/file',    desc: 'Attach a file from your workspace or computer' },
   { id: 'help',   hint: '/help',    desc: 'Show all commands' },
@@ -1469,6 +1470,22 @@ function Composer() {
       case 'clear': {
         setAttachments([])
         setMeetingChips([])
+        break
+      }
+      case 'export': {
+        const convId = useAgentStore.getState().activeConversationId
+        if (!convId) {
+          toast.error('No active conversation to export')
+          break
+        }
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const result = await (window.wos as any).exportConversation?.(convId)
+          if (result?.ok) toast.success(`Exported to ${result.path}`)
+          else if (!result?.canceled) toast.error(`Export failed: ${result?.error ?? 'unknown error'}`)
+        } catch (err) {
+          toast.error(`Export failed: ${err instanceof Error ? err.message : String(err)}`)
+        }
         break
       }
       case 'help':

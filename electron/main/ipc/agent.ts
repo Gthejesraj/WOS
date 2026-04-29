@@ -1,7 +1,8 @@
-import { ipcMain, BrowserWindow } from 'electron'
+import { ipcMain, BrowserWindow, dialog } from 'electron'
+import fs from 'node:fs'
 import { agentRunner } from '../agent/runner'
 import { getDb, schema, notifyWrite } from '../db'
-import { eq } from 'drizzle-orm'
+import { eq, asc } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 
 export function registerAgentHandlers(_win: BrowserWindow) {
@@ -129,6 +130,59 @@ export function registerAgentHandlers(_win: BrowserWindow) {
         .run()
       notifyWrite()
       return { success: true }
+    }
+  )
+
+  // Export a conversation to Markdown via a save dialog.
+  ipcMain.handle(
+    'agent:export-conversation',
+    async (_event, { conversationId }: { conversationId: string }) => {
+      const db = getDb()
+      const conv = db
+        .select()
+        .from(schema.conversations)
+        .where(eq(schema.conversations.id, conversationId))
+        .get()
+      if (!conv) return { ok: false, error: 'Conversation not found' }
+      const messages = db
+        .select()
+        .from(schema.messages)
+        .where(eq(schema.messages.conversationId, conversationId))
+        .orderBy(asc(schema.messages.createdAt))
+        .all()
+
+      const lines: string[] = []
+      lines.push(`# ${conv.title || 'Conversation'}`)
+      lines.push('')
+      lines.push(`_Exported ${new Date().toISOString()} • model: ${conv.model || 'unknown'} • mode: ${conv.mode || 'default'}_`)
+      lines.push('')
+      for (const m of messages) {
+        const role = m.role === 'user' ? '👤 User' : m.role === 'assistant' ? '🤖 Assistant' : `🔧 ${m.role}`
+        lines.push(`## ${role}`)
+        lines.push('')
+        let body = ''
+        const blocks = m.blocks
+        if (typeof blocks === 'string') {
+          body = blocks
+        } else if (Array.isArray(blocks)) {
+          for (const block of blocks as Array<Record<string, unknown>>) {
+            if (block.type === 'text') body += String(block.content ?? '') + '\n'
+            else if (block.type === 'reasoning') body += `_(reasoning)_\n${String(block.content ?? '')}\n`
+            else if (block.type === 'tool_use') body += `\n\`tool: ${String(block.toolName ?? '')}\`\n`
+            else if (block.type === 'ask_user') body += `\n> ❓ ${String(block.question ?? '')}\n`
+          }
+        }
+        lines.push(body.trim())
+        lines.push('')
+      }
+
+      const chosen = await dialog.showSaveDialog({
+        defaultPath: `${(conv.title || 'conversation').replace(/[^a-z0-9-]+/gi, '-')}.md`,
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+      })
+      if (chosen.canceled || !chosen.filePath) return { ok: false, canceled: true }
+      fs.writeFileSync(chosen.filePath, lines.join('\n'), 'utf-8')
+      return { ok: true, path: chosen.filePath }
     }
   )
 }

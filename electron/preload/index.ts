@@ -96,6 +96,8 @@ contextBridge.exposeInMainWorld('wos', {
   editMessage: (messageId: string, newText: string) => ipcRenderer.invoke('db:messages:edit', { messageId, newText }),
   getMessageBranches: (conversationId: string, branchGroupId: string) => ipcRenderer.invoke('db:messages:branches', { conversationId, branchGroupId }),
   deleteConversation: (id: string) => ipcRenderer.invoke('db:conversations:delete', id),
+  exportConversation: (conversationId: string) =>
+    ipcRenderer.invoke('agent:export-conversation', { conversationId }),
 
   // App
   getVersion: () => ipcRenderer.invoke('app:version'),
