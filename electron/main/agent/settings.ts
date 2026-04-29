@@ -3,6 +3,10 @@ import { decryptApiKey } from '../crypto'
 import { getDb, schema } from '../db'
 import { getDecryptedApiKeyOrNull } from '../providers/keystore'
 import { getProviderNameForModel } from '../providers'
+import { getAgentDef } from './agentDefs'
+import { DEFAULT_MEETING_SYSTEM_PROMPT } from './agentDefs/meeting'
+
+export { DEFAULT_MEETING_SYSTEM_PROMPT }
 
 export type AgentKey = 'wos' | 'meeting' | string
 
@@ -30,9 +34,9 @@ export interface AgentConfig {
   [key: string]: unknown
 }
 
-export const DEFAULT_MEETING_SYSTEM_PROMPT = `You are WOS Meeting Agent, a focused meeting specialist.
-You help users join Google Meet sessions, capture consented transcripts, summarize discussions, extract decisions, and prepare follow-up actions.
-Be concise, preserve names and dates exactly when present, and never invent commitments that are not grounded in the transcript.`
+export const DEFAULT_MEETING_SYSTEM_PROMPT_LOCAL = DEFAULT_MEETING_SYSTEM_PROMPT
+// Re-exported above for backward compat with callers/tests that imported
+// DEFAULT_MEETING_SYSTEM_PROMPT from './settings'.
 
 function parseSettingValue(value: unknown): string {
   if (typeof value !== 'string') return ''
@@ -99,9 +103,10 @@ export async function resolveAgent(agentKey: AgentKey): Promise<AgentRuntimeSett
 
   let model = defaults.model
   let mode = defaults.mode
-  let systemPrompt = agentKey === 'meeting' ? DEFAULT_MEETING_SYSTEM_PROMPT : ''
+  const def = getAgentDef(agentKey)
+  let systemPrompt = def?.systemPrompt ?? ''
   let config: AgentConfig = {}
-  let inheritFrom: string | null = agentKey === 'meeting' ? 'wos' : null
+  let inheritFrom: string | null = def?.defaultInheritFrom ?? null
 
   for (const row of chain) {
     inheritFrom = row.inheritFrom
@@ -112,13 +117,8 @@ export async function resolveAgent(agentKey: AgentKey): Promise<AgentRuntimeSett
     if (row.systemPrompt) systemPrompt = row.systemPrompt
   }
 
-  if (agentKey === 'meeting') {
-    config = {
-      liveSource: 'captions',
-      autoSummarize: true,
-      defaultSlackChannel: '',
-      ...config,
-    }
+  if (def?.defaultConfig) {
+    config = { ...def.defaultConfig, ...config }
   }
 
   if (!model) model = defaults.model

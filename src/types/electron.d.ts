@@ -162,6 +162,8 @@ interface AppConnection {
   connected: boolean
   metadata?: Record<string, unknown>
   tools: Array<{ name: string; description: string }>
+  skills?: Array<{ id: string; description: string }>
+  hooks?: string[]
 }
 
 interface McpServerInfo {

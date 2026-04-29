@@ -18,6 +18,10 @@ import { meetingAgent } from './meeting'
 export interface AgentDef {
   key: string
   systemPrompt?: string
+  /** Default config seeded into this agent's resolved settings. */
+  defaultConfig?: Record<string, unknown>
+  /** Default parent agent for inheritance when no DB row sets it. */
+  defaultInheritFrom?: string | null
   toolFilter(allTools: Tool[]): Tool[]
 }
 

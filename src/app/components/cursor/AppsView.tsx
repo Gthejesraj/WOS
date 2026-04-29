@@ -1011,6 +1011,36 @@ function AppDetailPanel({
             </div>
           </section>
         )}
+
+        {connection && connection.skills && connection.skills.length > 0 && (
+          <section className="mt-6">
+            <h3 className="text-xs font-medium mb-2" style={{ color: 'var(--secondary-foreground)' }}>App skills ({connection.skills.length})</h3>
+            <div className="space-y-1">
+              {connection.skills.map(s => (
+                <div key={s.id} className="text-xs p-2 rounded" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+                  <span className="font-mono" style={{ color: 'var(--foreground)' }}>{s.id}</span>
+                  <div className="mt-0.5" style={{ color: 'var(--muted-foreground)' }}>{s.description}</div>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] mt-2" style={{ color: 'var(--muted-foreground)' }}>
+              Drop additional markdown files into <code>~/.wos/apps/{connection.appId}/skills/</code> to extend.
+            </p>
+          </section>
+        )}
+
+        {connection && connection.hooks && connection.hooks.length > 0 && (
+          <section className="mt-6">
+            <h3 className="text-xs font-medium mb-2" style={{ color: 'var(--secondary-foreground)' }}>Active hooks ({connection.hooks.length})</h3>
+            <div className="flex flex-wrap gap-2">
+              {connection.hooks.map(h => (
+                <span key={h} className="text-[10px] px-2 py-0.5 rounded" style={{ background: 'var(--muted)', color: 'var(--secondary-foreground)' }}>
+                  {h}
+                </span>
+              ))}
+            </div>
+          </section>
+        )}
       </div>
     </div>
   )

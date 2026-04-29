@@ -7,7 +7,9 @@ import {
   initiateOAuthApp,
   disconnectApp,
   setAppEnabled,
+  listConnectedAppSkills,
 } from '../apps/manager'
+import { listHooks } from '../hooks/manager'
 
 export function registerAppsHandlers() {
   ipcMain.handle('apps:list-available', () => {
@@ -26,6 +28,8 @@ export function registerAppsHandlers() {
 
   ipcMain.handle('apps:list', () => {
     const conns = listConnections()
+    const allSkills = listConnectedAppSkills()
+    const allHooks = listHooks()
     return conns.map(c => {
       const app = getApp(c.appId)
       if (!app) return null
@@ -34,6 +38,12 @@ export function registerAppsHandlers() {
           return app.buildTools(c.creds).map(t => ({ name: t.name, description: t.description }))
         } catch { return [] }
       })()
+      const skills = allSkills
+        .filter(s => s.appId === c.appId)
+        .map(s => ({ id: s.id, description: s.description }))
+      const hooks = allHooks
+        .filter(h => h.source === `app:${c.appId}`)
+        .flatMap(h => h.events)
       return {
         appId: c.appId,
         name: app.manifest.name,
@@ -42,6 +52,8 @@ export function registerAppsHandlers() {
         connected: true,
         metadata: c.metadata,
         tools,
+        skills,
+        hooks,
       }
     }).filter(Boolean)
   })
