@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Clock, Webhook, Shield, ListChecks, Pause, Play, Trash2, Pencil, Zap } from 'lucide-react'
 import { cn } from '../../../lib/utils'
 import { useUIStore, type AutomationsTab } from '../../../store/uiStore'
-import { NLAuthorBox } from './NLAuthorBox'
+import { DraftWizard } from './DraftWizard'
 
 type Tab = AutomationsTab
 
@@ -143,7 +143,7 @@ function ScheduledTab() {
 
   return (
     <>
-      <NLAuthorBox kind="scheduled" onDraft={onDraft} />
+      <DraftWizard kind="scheduled" onSave={onDraft} />
       {editing && (
         <EditScheduledModal
           job={editing}
@@ -214,7 +214,7 @@ function HooksTab() {
 
   return (
     <>
-      <NLAuthorBox kind="hook" onDraft={onDraft} />
+      <DraftWizard kind="hook" onSave={onDraft} />
       {editing && (
         <EditHookModal
           hook={editing}
@@ -278,7 +278,7 @@ function StandingTab() {
 
   return (
     <>
-      <NLAuthorBox kind="standing-order" onDraft={onDraft} />
+      <DraftWizard kind="standing-order" onSave={onDraft} />
       {editing && (
         <EditStandingModal
           order={editing}

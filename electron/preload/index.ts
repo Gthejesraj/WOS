@@ -313,6 +313,12 @@ contextBridge.exposeInMainWorld('wos', {
     authorAutomation: (kind: 'scheduled' | 'hook' | 'standing-order', prompt: string):
       Promise<{ ok: boolean; draft?: Record<string, unknown>; error?: string }> =>
       safeInvoke('automations:author', { ok: false, error: 'IPC not registered' }, { kind, prompt }),
+
+    draftTurn: (
+      kind: 'scheduled' | 'hook' | 'standing-order',
+      messages: { role: 'user' | 'assistant'; content: string }[],
+    ): Promise<{ ok: boolean; reply?: string; draft?: Record<string, unknown> | null; error?: string }> =>
+      safeInvoke('automations:draft:turn', { ok: false, error: 'IPC not registered' }, { kind, messages }),
   },
 
   // ----- Dictation (Apple Speech) -----

@@ -6,6 +6,7 @@
 import { ipcMain } from 'electron'
 import * as svc from '../automations/service'
 import { authorAutomation } from '../automations/nlAuthor'
+import { draftTurn, type DraftKind, type DraftMessage } from '../automations/draftAgent'
 
 export function registerAutomationsHandlers() {
   // ----- Scheduled jobs -----
@@ -38,5 +39,10 @@ export function registerAutomationsHandlers() {
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }
+  })
+
+  // ----- LLM-driven conversational drafting (one turn at a time) -----
+  ipcMain.handle('automations:draft:turn', async (_e, payload: { kind: DraftKind; messages: DraftMessage[] }) => {
+    return draftTurn(payload?.kind, payload?.messages ?? [])
   })
 }
