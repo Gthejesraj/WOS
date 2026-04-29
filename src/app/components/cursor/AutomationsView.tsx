@@ -40,6 +40,20 @@ interface Task {
   status: string
   title: string
   createdAt: number
+  updatedAt?: number
+  conversationId?: string | null
+  parentId?: string | null
+}
+
+interface TaskStep {
+  id: string
+  taskId: string
+  idx: number
+  status: string
+  label: string
+  output?: string | null
+  error?: string | null
+  ts: number
 }
 
 const wos = () => (window as any).wos
@@ -275,13 +289,29 @@ function StandingTab() {
 
 function TasksTab() {
   const [tasks, setTasks] = useState<Task[]>([])
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [typeFilter, setTypeFilter] = useState<string>('all')
+  const [selected, setSelected] = useState<Task | null>(null)
+
+  const reload = async () => {
+    const list = await wos().automations.listTasks()
+    setTasks(list as Task[])
+  }
 
   useEffect(() => {
-    void (async () => {
-      const list = await wos().automations.listTasks()
-      setTasks(list as Task[])
-    })()
+    void reload()
+    const t = setInterval(() => { void reload() }, 4000)
+    return () => clearInterval(t)
   }, [])
+
+  if (selected) {
+    return <TaskDetailPanel task={selected} onBack={() => setSelected(null)} />
+  }
+
+  const filtered = tasks.filter(t =>
+    (statusFilter === 'all' || t.status === statusFilter) &&
+    (typeFilter === 'all' || t.type === typeFilter),
+  )
 
   if (tasks.length === 0) {
     return (
@@ -294,20 +324,144 @@ function TasksTab() {
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      {tasks.map(t => (
-        <Row
-          key={t.id}
-          title={t.title}
-          subtitle={`${t.type} · ${new Date(t.createdAt).toLocaleString()}`}
-          status={t.status}
-        />
-      ))}
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-2 text-xs">
+        <FilterChip label="All" active={statusFilter === 'all'} onClick={() => setStatusFilter('all')} />
+        <FilterChip label="Running" active={statusFilter === 'running'} onClick={() => setStatusFilter('running')} />
+        <FilterChip label="Success" active={statusFilter === 'success'} onClick={() => setStatusFilter('success')} />
+        <FilterChip label="Error" active={statusFilter === 'error'} onClick={() => setStatusFilter('error')} />
+        <div className="w-px h-4" style={{ background: 'var(--border)' }} />
+        <FilterChip label="All types" active={typeFilter === 'all'} onClick={() => setTypeFilter('all')} />
+        <FilterChip label="Scheduled" active={typeFilter === 'scheduled'} onClick={() => setTypeFilter('scheduled')} />
+        <FilterChip label="Sub-agent" active={typeFilter === 'subagent'} onClick={() => setTypeFilter('subagent')} />
+        <FilterChip label="Hook" active={typeFilter === 'hook'} onClick={() => setTypeFilter('hook')} />
+        <FilterChip label="Flow" active={typeFilter === 'flow'} onClick={() => setTypeFilter('flow')} />
+      </div>
+      <div className="flex flex-col gap-2">
+        {filtered.map(t => (
+          <button key={t.id} onClick={() => setSelected(t)} className="text-left">
+            <Row
+              title={t.title}
+              subtitle={`${t.type} · ${new Date(t.createdAt).toLocaleString()}`}
+              status={t.status}
+            />
+          </button>
+        ))}
+        {filtered.length === 0 && (
+          <div className="text-xs text-center py-6" style={{ color: 'var(--muted-foreground)' }}>
+            No tasks match the current filters.
+          </div>
+        )}
+      </div>
     </div>
   )
 }
 
-// --- shared UI primitives, matching AppsView idiom ---
+function FilterChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="px-2.5 py-1 rounded-full transition-colors"
+      style={{
+        background: active ? 'var(--accent)' : 'var(--muted)',
+        color: active ? 'var(--foreground)' : 'var(--muted-foreground)',
+        border: '1px solid var(--border)',
+      }}
+    >
+      {label}
+    </button>
+  )
+}
+
+function TaskDetailPanel({ task, onBack }: { task: Task; onBack: () => void }) {
+  const [steps, setSteps] = useState<TaskStep[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const s = await wos().automations.getTaskSteps(task.id)
+        if (!cancelled) setSteps(s as TaskStep[])
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [task.id])
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onBack}
+          className="text-xs px-2 py-1 rounded transition-colors"
+          style={{ color: 'var(--muted-foreground)', border: '1px solid var(--border)' }}
+        >
+          ← Back
+        </button>
+        <div className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>{task.title}</div>
+        <StatusBadge status={task.status} />
+      </div>
+      <div className="rounded-xl p-3" style={{ border: '1px solid var(--border)', background: 'var(--card)' }}>
+        <div className="text-xs grid grid-cols-2 gap-2" style={{ color: 'var(--muted-foreground)' }}>
+          <div><span style={{ color: 'var(--foreground)' }}>Type:</span> {task.type}</div>
+          <div><span style={{ color: 'var(--foreground)' }}>ID:</span> <span className="font-mono">{task.id.slice(0, 12)}</span></div>
+          <div><span style={{ color: 'var(--foreground)' }}>Created:</span> {new Date(task.createdAt).toLocaleString()}</div>
+          {task.updatedAt && <div><span style={{ color: 'var(--foreground)' }}>Updated:</span> {new Date(task.updatedAt).toLocaleString()}</div>}
+          {task.conversationId && <div className="col-span-2"><span style={{ color: 'var(--foreground)' }}>Conversation:</span> <span className="font-mono">{task.conversationId.slice(0, 12)}</span></div>}
+        </div>
+      </div>
+      <div>
+        <div className="text-xs mb-2" style={{ color: 'var(--muted-foreground)' }}>Timeline</div>
+        {loading ? (
+          <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Loading…</div>
+        ) : steps.length === 0 ? (
+          <div className="text-xs italic py-3" style={{ color: 'var(--muted-foreground)' }}>
+            No steps recorded for this task.
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {steps.map(s => (
+              <div key={s.id} className="rounded-lg p-3" style={{ border: '1px solid var(--border)', background: 'var(--card)' }}>
+                <div className="flex items-center gap-2">
+                  <div className="text-xs font-mono" style={{ color: 'var(--muted-foreground)' }}>#{s.idx}</div>
+                  <div className="text-sm flex-1 truncate" style={{ color: 'var(--foreground)' }}>{s.label}</div>
+                  <StatusBadge status={s.status} />
+                </div>
+                {s.output && (
+                  <pre className="text-xs mt-2 whitespace-pre-wrap" style={{ color: 'var(--muted-foreground)' }}>{s.output}</pre>
+                )}
+                {s.error && (
+                  <pre className="text-xs mt-2 whitespace-pre-wrap" style={{ color: 'var(--destructive)' }}>{s.error}</pre>
+                )}
+                <div className="text-[10px] mt-1" style={{ color: 'var(--muted-foreground)' }}>{new Date(s.ts).toLocaleString()}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const map: Record<string, { bg: string; fg: string; label: string }> = {
+    enabled: { bg: 'var(--secondary)', fg: 'var(--foreground)', label: 'Enabled' },
+    paused: { bg: 'var(--muted)', fg: 'var(--muted-foreground)', label: 'Paused' },
+    running: { bg: 'var(--muted)', fg: 'var(--accent-foreground)', label: 'Running' },
+    queued: { bg: 'var(--muted)', fg: 'var(--muted-foreground)', label: 'Queued' },
+    success: { bg: 'var(--secondary)', fg: 'var(--foreground)', label: 'Success' },
+    error: { bg: 'var(--destructive)', fg: 'var(--destructive-foreground)', label: 'Error' },
+    cancelled: { bg: 'var(--muted)', fg: 'var(--muted-foreground)', label: 'Cancelled' },
+  }
+  const v = map[status] ?? { bg: 'var(--muted)', fg: 'var(--muted-foreground)', label: status }
+  return (
+    <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: v.bg, color: v.fg }}>
+      {v.label}
+    </span>
+  )
+}
 
 function TabButton({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -349,24 +503,6 @@ function Row({ title, subtitle, status, actions }: {
         </div>
       )}
     </div>
-  )
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { bg: string; fg: string; label: string }> = {
-    enabled: { bg: 'var(--secondary)', fg: 'var(--foreground)', label: 'Enabled' },
-    paused: { bg: 'var(--muted)', fg: 'var(--muted-foreground)', label: 'Paused' },
-    running: { bg: 'var(--muted)', fg: 'var(--accent-foreground)', label: 'Running' },
-    queued: { bg: 'var(--muted)', fg: 'var(--muted-foreground)', label: 'Queued' },
-    success: { bg: 'var(--secondary)', fg: 'var(--foreground)', label: 'Success' },
-    error: { bg: 'var(--destructive)', fg: 'var(--destructive-foreground)', label: 'Error' },
-    cancelled: { bg: 'var(--muted)', fg: 'var(--muted-foreground)', label: 'Cancelled' },
-  }
-  const v = map[status] ?? { bg: 'var(--muted)', fg: 'var(--muted-foreground)', label: status }
-  return (
-    <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: v.bg, color: v.fg }}>
-      {v.label}
-    </span>
   )
 }
 
