@@ -1618,10 +1618,20 @@ function Composer() {
     // @ detection: last token starts with @
     const atMatch = /(?:^|\s)@(\w*)$/.exec(val)
     if (atMatch) {
-      setAtFilter(atMatch[1])
-      setAtOpen(true)
-      setAtIndex(0)
+      const q = atMatch[1] ?? ''
+      setAtFilter(q)
       setSlashOpen(false)
+      // If user is typing a query (>=1 char) that doesn't exactly match a static @ category,
+      // open the workspace file typeahead directly. Empty query keeps the static menu.
+      const staticIds: string[] = AT_COMMANDS.map(c => c.id)
+      if (q.length >= 1 && !staticIds.includes(q.toLowerCase())) {
+        if (!filePickerOpen) void openFilePicker(q)
+        else void refreshFileSearch(q)
+        setAtOpen(false)
+      } else {
+        setAtOpen(true)
+        setAtIndex(0)
+      }
     } else {
       setAtOpen(false)
     }
