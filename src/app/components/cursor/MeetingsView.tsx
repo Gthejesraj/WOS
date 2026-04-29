@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '../../../lib/utils'
+import { useUIStore, type MeetingsTab, type CalendarView } from '../../../store/uiStore'
 import AnalyzeTab from './AnalyzeTab'
 
 /* ── Types ── */
@@ -412,14 +413,16 @@ function EventCard({
 /* ── Main Component ── */
 
 export function MeetingsView({ onOpenChat }: MeetingsViewProps) {
-  const [tab, setTab] = useState<Tab>('calendar')
+  const tab = useUIStore(s => s.meetingsTab) as Tab
+  const setTab = useUIStore(s => s.setMeetingsTab) as (t: Tab) => void
+  const calendarView = useUIStore(s => s.calendarView) as CalendarViewType
+  const setCalendarView = useUIStore(s => s.setCalendarView) as (v: CalendarViewType) => void
 
   // Calendar tab state
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
   const [eventsError, setEventsError] = useState<string | null>(null)
   const [googleConnected, setGoogleConnected] = useState(true)
-  const [calendarView, setCalendarView] = useState<CalendarViewType>('week')
   const [calendarDate, setCalendarDate] = useState(new Date())
 
   // Analyze tab state — Drive

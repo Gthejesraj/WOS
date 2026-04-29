@@ -14,7 +14,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { useAgentStore } from '../store/agentStore'
 import { useWorkspaceStore } from '../store/workspaceStore'
 import { useSettingsStore } from '../store/settingsStore'
-import type { ViewType } from '../types'
+import { useUIStore, SIDEBAR_BOUNDS } from '../store/uiStore'
 import { toast } from 'sonner'
 
 function useThemeClass() {
@@ -39,34 +39,26 @@ function useThemeClass() {
   }, [theme])
 }
 
-const SIDEBAR_MIN = 165
-const SIDEBAR_MAX = 480
-const SIDEBAR_DEFAULT = 220
-
-function loadSidebarWidth(): number {
-  try {
-    const v = localStorage.getItem('wos.sidebarWidth')
-    if (v) {
-      const n = parseInt(v, 10)
-      if (!Number.isNaN(n)) return Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, n))
-    }
-  } catch {}
-  return SIDEBAR_DEFAULT
-}
-
 export default function App() {
   useThemeClass()
   const { theme } = useSettingsStore()
   const toasterTheme = (theme === 'system'
     ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
     : theme) as 'light' | 'dark'
-  const [currentView, setCurrentView] = useState<ViewType>('home')
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
-  const [sidebarWidth, setSidebarWidth] = useState<number>(loadSidebarWidth)
+
+  const currentView = useUIStore(s => s.currentView)
+  const setCurrentView = useUIStore(s => s.setCurrentView)
+  const isSidebarCollapsed = useUIStore(s => s.isSidebarCollapsed)
+  const toggleSidebar = useUIStore(s => s.toggleSidebar)
+  const sidebarWidth = useUIStore(s => s.sidebarWidth)
+  const setSidebarWidth = useUIStore(s => s.setSidebarWidth)
+  const lastConversationId = useUIStore(s => s.lastConversationId)
+  const setLastConversationId = useUIStore(s => s.setLastConversationId)
+
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [debugOpen, setDebugOpen] = useState(false)
-  const [composerDraft, setComposerDraft] = useState('')
   const resizingRef = useRef(false)
+  const restoredRef = useRef(false)
 
   const {
     activeConversationId, conversations, loadConversations,
@@ -88,6 +80,30 @@ export default function App() {
       return cleanup
     }
   }, [])
+
+  // Restore the last open conversation once after conversations have loaded.
+  // This preserves "where you left off" across reloads/relaunches.
+  useEffect(() => {
+    if (restoredRef.current) return
+    if (conversations.length === 0) return
+    restoredRef.current = true
+    if (
+      currentView === 'chat' &&
+      lastConversationId &&
+      !activeConversationId &&
+      conversations.some(c => c.id === lastConversationId)
+    ) {
+      void loadConversation(lastConversationId)
+    }
+  }, [conversations, currentView, lastConversationId, activeConversationId, loadConversation])
+
+  // Mirror the active conversation into the persisted UI store so the next
+  // launch knows which chat to reopen.
+  useEffect(() => {
+    if (activeConversationId !== lastConversationId) {
+      setLastConversationId(activeConversationId)
+    }
+  }, [activeConversationId, lastConversationId, setLastConversationId])
 
   useEffect(() => {
     if (!window.wos) return
@@ -130,7 +146,7 @@ export default function App() {
     { id: 'go-apps',     label: 'Open Apps',                         run: () => setCurrentView('apps') },
     { id: 'go-meetings', label: 'Open Meetings',                      run: () => setCurrentView('meetings') },
     { id: 'go-settings', label: 'Open Settings',         hint: '⌘,', run: () => setCurrentView('settings') },
-    { id: 'toggle-sb',   label: 'Toggle sidebar',        hint: '⌘B', run: () => setIsSidebarCollapsed(o => !o) },
+    { id: 'toggle-sb',   label: 'Toggle sidebar',        hint: '⌘B', run: () => toggleSidebar() },
     { id: 'toggle-debug',label: 'Toggle Debug drawer',   hint: '⌥⌘D', run: () => setDebugOpen(o => !o) },
   ]
 
@@ -158,7 +174,7 @@ export default function App() {
 
   const handleOpenChatDraft = (message: string) => {
     setActiveConversationId(null)
-    setComposerDraft(message)
+    useUIStore.getState().setDraft(null, message)
     setCurrentView('home')
   }
 
@@ -170,24 +186,17 @@ export default function App() {
 
     const onMove = (ev: MouseEvent) => {
       if (!resizingRef.current) return
-      const next = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, startW + (ev.clientX - startX)))
+      const next = Math.min(SIDEBAR_BOUNDS.MAX, Math.max(SIDEBAR_BOUNDS.MIN, startW + (ev.clientX - startX)))
       setSidebarWidth(next)
     }
     const onUp = () => {
       resizingRef.current = false
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseup', onUp)
-      try { localStorage.setItem('wos.sidebarWidth', String(document.body.dataset.lastSidebarWidth || '')) } catch {}
     }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
-  }, [sidebarWidth])
-
-  // Persist width when it changes (debounce-free simple effect)
-  useEffect(() => {
-    try { localStorage.setItem('wos.sidebarWidth', String(sidebarWidth)) } catch {}
-    document.body.dataset.lastSidebarWidth = String(sidebarWidth)
-  }, [sidebarWidth])
+  }, [sidebarWidth, setSidebarWidth])
 
   const renderMain = () => {
     const view = (() => {
@@ -196,7 +205,7 @@ export default function App() {
           return activeConversationId ? (
             <ChatView key={activeConversationId} />
           ) : (
-            <HomeView onSendMessage={handleStartChat} initialDraft={composerDraft} onDraftConsumed={() => setComposerDraft('')} />
+            <HomeView onSendMessage={handleStartChat} />
           )
         case 'settings':
           return <SettingsView onBack={() => setCurrentView(activeConversationId ? 'chat' : 'home')} />
@@ -207,7 +216,7 @@ export default function App() {
         case 'meetings':
           return <MeetingsView onOpenChat={handleOpenChatDraft} />
         default:
-          return <HomeView onSendMessage={handleStartChat} initialDraft={composerDraft} onDraftConsumed={() => setComposerDraft('')} />
+          return <HomeView onSendMessage={handleStartChat} />
       }
     })()
     return <ErrorBoundary key={`${currentView}-${activeConversationId ?? 'none'}`}>{view}</ErrorBoundary>
@@ -221,7 +230,7 @@ export default function App() {
       <TopBar
         currentView={currentView}
         isSidebarCollapsed={isSidebarCollapsed}
-        onToggleSidebar={() => setIsSidebarCollapsed(o => !o)}
+        onToggleSidebar={toggleSidebar}
         onRenameConversation={handleRenameConversation}
       />
 

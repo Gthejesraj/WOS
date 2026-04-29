@@ -1,13 +1,15 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useAppsStore } from '../../../store/appsStore'
 import { useMcpStore } from '../../../store/mcpStore'
+import { useUIStore, type AppsTab } from '../../../store/uiStore'
 import { cn } from '../../../lib/utils'
 import { SkillsTab, RulesTab } from './RulesAndSkills'
 
-type Tab = 'marketplace' | 'apps' | 'mcp' | 'skills' | 'rules'
+type Tab = AppsTab
 
 export function AppsView() {
-  const [tab, setTab] = useState<Tab>('marketplace')
+  const tab = useUIStore(s => s.appsTab)
+  const setTab = useUIStore(s => s.setAppsTab)
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null)
   const [selectedMcpId, setSelectedMcpId] = useState<string | null>(null)
   const [addingMcp, setAddingMcp] = useState(false)

@@ -3,6 +3,7 @@ import { Plus, ChevronDown, Zap, Shield, BookOpen, Search } from 'lucide-react'
 import { useAgentStore } from '../../../store/agentStore'
 import { useWorkspaceStore } from '../../../store/workspaceStore'
 import { useSettingsStore } from '../../../store/settingsStore'
+import { useUIStore } from '../../../store/uiStore'
 import { cn } from '../../../lib/utils'
 import { MicButton } from './MicButton'
 import type { FileAttachment } from '../../../types'
@@ -10,8 +11,6 @@ import { ModelPickerModal } from './ModelPickerModal'
 
 interface HomeViewProps {
   onSendMessage: (message: string, attachments?: FileAttachment[]) => void
-  initialDraft?: string
-  onDraftConsumed?: () => void
 }
 
 function NoWorkspacePromptHome({ onClose }: { onClose: () => void }) {
@@ -73,8 +72,10 @@ const SLASH_COMMANDS = [
 
 type MeetingChip = { id: string; title: string; date?: string }
 
-export function HomeView({ onSendMessage, initialDraft, onDraftConsumed }: HomeViewProps) {
-  const [input, setInput] = useState('')
+export function HomeView({ onSendMessage }: HomeViewProps) {
+  const setDraft = useUIStore(s => s.setDraft)
+  const clearDraft = useUIStore(s => s.clearDraft)
+  const [input, setInput] = useState(() => useUIStore.getState().getDraft(null))
   const [mode, setMode] = useState('default')
   const [showModeDropdown, setShowModeDropdown] = useState(false)
   const [showModelPicker, setShowModelPicker] = useState(false)
@@ -107,20 +108,33 @@ export function HomeView({ onSendMessage, initialDraft, onDraftConsumed }: HomeV
 
   useEffect(() => {
     textareaRef.current?.focus()
-  }, [])
-
-  useEffect(() => {
-    if (!initialDraft) return
-    setInput(initialDraft)
-    onDraftConsumed?.()
+    // Resize textarea to fit any restored draft on first paint.
     requestAnimationFrame(() => {
       const el = textareaRef.current
       if (!el) return
-      el.focus()
       el.style.height = 'auto'
       el.style.height = Math.min(el.scrollHeight, 200) + 'px'
     })
-  }, [initialDraft, onDraftConsumed])
+  }, [])
+
+  // Subscribe to external draft updates (e.g. opening chat from MeetingsView).
+  useEffect(() => {
+    const unsub = useUIStore.subscribe((state, prev) => {
+      const next = state.composerDrafts['__home__'] ?? ''
+      const before = prev.composerDrafts['__home__'] ?? ''
+      if (next !== before && next !== input) {
+        setInput(next)
+        requestAnimationFrame(() => {
+          const el = textareaRef.current
+          if (!el) return
+          el.focus()
+          el.style.height = 'auto'
+          el.style.height = Math.min(el.scrollHeight, 200) + 'px'
+        })
+      }
+    })
+    return unsub
+  }, [input])
 
   const filteredSlashCmds = SLASH_COMMANDS.filter(c =>
     c.id.startsWith(slashFilter.toLowerCase()) || slashFilter === ''
@@ -197,6 +211,7 @@ export function HomeView({ onSendMessage, initialDraft, onDraftConsumed }: HomeV
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value
     setInput(val)
+    setDraft(null, val)
     const el = e.target
     el.style.height = 'auto'
     el.style.height = Math.min(el.scrollHeight, 200) + 'px'
@@ -244,6 +259,7 @@ export function HomeView({ onSendMessage, initialDraft, onDraftConsumed }: HomeV
     }
     onSendMessage(text, attachments)
     setInput('')
+    clearDraft(null)
     setAttachments([])
     setMeetingChips([])
     partialStartRef.current = -1

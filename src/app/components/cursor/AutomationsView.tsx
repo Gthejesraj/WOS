@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Clock, Webhook, Shield, ListChecks, Pause, Play, Trash2, Pencil, Zap } from 'lucide-react'
 import { cn } from '../../../lib/utils'
+import { useUIStore, type AutomationsTab } from '../../../store/uiStore'
 import { NLAuthorBox } from './NLAuthorBox'
 
-type Tab = 'scheduled' | 'hooks' | 'standing' | 'tasks'
+type Tab = AutomationsTab
 
 interface ScheduledJob {
   id: string
@@ -59,7 +60,8 @@ interface TaskStep {
 const wos = () => (window as any).wos
 
 export function AutomationsView() {
-  const [tab, setTab] = useState<Tab>('scheduled')
+  const tab = useUIStore(s => s.automationsTab)
+  const setTab = useUIStore(s => s.setAutomationsTab)
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden" style={{ background: 'var(--background)' }}>

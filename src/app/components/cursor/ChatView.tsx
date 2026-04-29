@@ -7,6 +7,7 @@ import {
 import type { MessageBlock, DisplayMessage, FileAttachment } from '../../../types'
 import { useAgentStore } from '../../../store/agentStore'
 import { useWorkspaceStore } from '../../../store/workspaceStore'
+import { useUIStore } from '../../../store/uiStore'
 import { blocksHaveInterruption } from '../../../lib/blockAccumulator'
 import { cn } from '../../../lib/utils'
 import { toast } from 'sonner'
@@ -1424,7 +1425,8 @@ const SLASH_COMMANDS = [
 
 /* ─── Composer ─── */
 function Composer() {
-  const [input, setInput] = useState('')
+  const activeConversationId = useAgentStore(s => s.activeConversationId)
+  const [input, setInput] = useState(() => useUIStore.getState().getDraft(activeConversationId))
   const [mode, setMode] = useState('default')
   const [showModeDropdown, setShowModeDropdown] = useState(false)
   const [showModelPicker, setShowModelPicker] = useState(false)
@@ -1456,8 +1458,23 @@ function Composer() {
 
   const { isStreaming, sendMessage, cancelAgent, currentMode, setMode: storeSetMode, startNewConversation, currentModel, setModel } = useAgentStore()
   const { workspaces } = useWorkspaceStore()
+  const setDraft = useUIStore(s => s.setDraft)
+  const clearDraft = useUIStore(s => s.clearDraft)
 
   useEffect(() => { setMode(currentMode) }, [currentMode])
+
+  // When the user switches conversations, swap the composer to that conversation's
+  // persisted draft (or empty for a fresh chat).
+  useEffect(() => {
+    const next = useUIStore.getState().getDraft(activeConversationId)
+    setInput(next)
+    requestAnimationFrame(() => {
+      const el = textareaRef.current
+      if (!el) return
+      el.style.height = 'auto'
+      el.style.height = Math.min(el.scrollHeight, 150) + 'px'
+    })
+  }, [activeConversationId])
 
   const resizeTextarea = () => {
     const el = textareaRef.current
@@ -1632,6 +1649,7 @@ function Composer() {
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value
     setInput(val)
+    setDraft(activeConversationId, val)
     const el = e.target
     el.style.height = 'auto'
     el.style.height = Math.min(el.scrollHeight, 150) + 'px'
@@ -1690,6 +1708,7 @@ function Composer() {
 
     sendMessage(text, attachments)
     setInput('')
+    clearDraft(activeConversationId)
     setAttachments([])
     setMeetingChips([])
     setPinnedAgent(null)
