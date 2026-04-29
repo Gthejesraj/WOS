@@ -1337,7 +1337,8 @@ const SLASH_COMMANDS = [
   { id: 'default',hint: '/default', desc: 'Switch to default mode' },
   { id: 'model',  hint: '/model',   desc: 'Choose AI model (provider + model selection)' },
   { id: 'new',    hint: '/new',     desc: 'Start a new conversation' },
-  { id: 'clear',  hint: '/clear',   desc: 'Clear input and attachments' },
+  { id: 'clear',  hint: '/clear',   desc: 'Start a fresh conversation (clear current chat)' },
+  { id: 'resume', hint: '/resume',  desc: 'Resume a recent conversation' },
   { id: 'export', hint: '/export',  desc: 'Export this conversation to a Markdown file' },
   { id: 'agent',  hint: '/agent',   desc: 'Pin a subagent (e.g. /agent meeting) for the next message' },
   { id: 'meeting',hint: '/meeting', desc: 'Attach an analyzed meeting as context' },
@@ -1470,8 +1471,39 @@ function Composer() {
         break
       }
       case 'clear': {
-        setAttachments([])
-        setMeetingChips([])
+        try {
+          await startNewConversation()
+          setAttachments([])
+          setMeetingChips([])
+          setInput('')
+          toast.success('Started a fresh conversation')
+        } catch {
+          /* swallow — store surfaces toast */
+        }
+        break
+      }
+      case 'resume': {
+        try {
+          const { conversations, loadConversations, loadConversation } = useAgentStore.getState()
+          if (!conversations.length) {
+            await loadConversations()
+          }
+          const list = useAgentStore.getState().conversations
+          if (!list.length) {
+            toast.message('No previous conversations found')
+            break
+          }
+          // Pick the most recently updated conversation that isn't already active.
+          const activeId = useAgentStore.getState().activeConversationId
+          const candidate = list.find(c => c.id !== activeId) ?? list[0]
+          if (candidate) {
+            await loadConversation(candidate.id)
+            toast.success(`Resumed: ${candidate.title || 'Untitled'}`)
+          }
+          setInput('')
+        } catch (err) {
+          toast.error(`Resume failed: ${err instanceof Error ? err.message : String(err)}`)
+        }
         break
       }
       case 'export': {
@@ -1637,7 +1669,7 @@ function Composer() {
       text = `[Web search enabled — please search the web as needed to answer this query]\n\n${text}`
     }
     if (pinnedAgent) {
-      text = `[Use the Task tool with subagent="${pinnedAgent}" to handle this request.]\n\n${text}`
+      text = `[Use the Task tool with preset="${pinnedAgent}" to handle this request.]\n\n${text}`
     }
     const nonWebAttachments = attachments.filter(a => a.type !== 'web')
 
