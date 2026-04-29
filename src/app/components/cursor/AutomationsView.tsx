@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Clock, Webhook, Shield, ListChecks, Pause, Play, Trash2, Pencil } from 'lucide-react'
+import { Clock, Webhook, Shield, ListChecks, Pause, Play, Trash2, Pencil, Zap } from 'lucide-react'
 import { cn } from '../../../lib/utils'
 import { NLAuthorBox } from './NLAuthorBox'
 
@@ -77,6 +77,7 @@ export function AutomationsView() {
 
 function ScheduledTab() {
   const [jobs, setJobs] = useState<ScheduledJob[]>([])
+  const [busyId, setBusyId] = useState<string | null>(null)
 
   const reload = async () => {
     const list = await wos().automations.listScheduled()
@@ -84,9 +85,48 @@ function ScheduledTab() {
   }
   useEffect(() => { void reload() }, [])
 
+  const onDraft = async (draft: Record<string, unknown>) => {
+    const r = await wos().automations.upsertScheduled({
+      name: draft.name,
+      cronExpr: draft.cronExpr ?? null,
+      runAt: draft.runAt ?? null,
+      tz: draft.tz ?? 'local',
+      target: draft.target ?? 'new',
+      prompt: draft.prompt ?? '',
+      enabled: draft.enabled ?? true,
+      deleteAfterRun: draft.deleteAfterRun ?? false,
+    })
+    if (!r?.ok) alert(r?.error ?? 'Could not save scheduled job')
+    void reload()
+  }
+
+  const togglePaused = async (j: ScheduledJob) => {
+    await wos().automations.upsertScheduled({
+      id: j.id,
+      name: j.name,
+      cronExpr: j.cronExpr ?? null,
+      runAt: j.runAt ?? null,
+      tz: 'local',
+      target: j.target,
+      prompt: j.prompt,
+      enabled: !j.enabled,
+    })
+    void reload()
+  }
+
+  const runNow = async (j: ScheduledJob) => {
+    setBusyId(j.id)
+    try {
+      await wos().automations.runScheduledNow(j.id)
+    } finally {
+      setBusyId(null)
+      void reload()
+    }
+  }
+
   return (
     <>
-      <NLAuthorBox kind="scheduled" onDraft={() => void reload()} />
+      <NLAuthorBox kind="scheduled" onDraft={onDraft} />
       {jobs.length === 0 ? (
         <EmptyState
           icon={<Clock size={24} />}
@@ -103,7 +143,10 @@ function ScheduledTab() {
               status={j.enabled ? 'enabled' : 'paused'}
               actions={
                 <>
-                  <IconButton aria-label={j.enabled ? 'Pause' : 'Resume'}>
+                  <IconButton aria-label="Run now" onClick={() => void runNow(j)} disabled={busyId === j.id}>
+                    <Zap size={13} />
+                  </IconButton>
+                  <IconButton aria-label={j.enabled ? 'Pause' : 'Resume'} onClick={() => void togglePaused(j)}>
                     {j.enabled ? <Pause size={13} /> : <Play size={13} />}
                   </IconButton>
                   <IconButton aria-label="Edit"><Pencil size={13} /></IconButton>
@@ -132,9 +175,21 @@ function HooksTab() {
   }
   useEffect(() => { void reload() }, [])
 
+  const onDraft = async (draft: Record<string, unknown>) => {
+    const r = await wos().automations.upsertHook({
+      name: draft.name,
+      event: draft.event,
+      type: draft.type ?? 'prompt',
+      config: draft.config ?? {},
+      enabled: draft.enabled ?? true,
+    })
+    if (!r?.ok) alert(r?.error ?? 'Could not save hook')
+    void reload()
+  }
+
   return (
     <>
-      <NLAuthorBox kind="hook" onDraft={() => void reload()} />
+      <NLAuthorBox kind="hook" onDraft={onDraft} />
       {hooks.length === 0 ? (
         <EmptyState
           icon={<Webhook size={24} />}
@@ -174,9 +229,20 @@ function StandingTab() {
   }
   useEffect(() => { void reload() }, [])
 
+  const onDraft = async (draft: Record<string, unknown>) => {
+    const r = await wos().automations.upsertStandingOrder({
+      name: draft.name,
+      body: draft.body,
+      scope: draft.scope ?? 'global',
+      enabled: draft.enabled ?? true,
+    })
+    if (!r?.ok) alert(r?.error ?? 'Could not save standing order')
+    void reload()
+  }
+
   return (
     <>
-      <NLAuthorBox kind="standing-order" onDraft={() => void reload()} />
+      <NLAuthorBox kind="standing-order" onDraft={onDraft} />
       {orders.length === 0 ? (
         <EmptyState
           icon={<Shield size={24} />}
@@ -304,12 +370,13 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-function IconButton({ children, onClick, ...rest }: { children: React.ReactNode; onClick?: () => void } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+function IconButton({ children, onClick, disabled, ...rest }: { children: React.ReactNode; onClick?: () => void; disabled?: boolean } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       {...rest}
-      className="p-1.5 rounded-md transition-colors"
+      className="p-1.5 rounded-md transition-colors disabled:opacity-50"
       style={{ color: 'var(--muted-foreground)' }}
       onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent)' }}
       onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}

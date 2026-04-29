@@ -72,6 +72,16 @@ app.whenReady().then(async () => {
   // Register IPC handlers
   registerIpcHandlers(mainWindow)
 
+  // Start the automations scheduler (cron + one-shot timers from DB).
+  try {
+    const { startScheduler } = await import('./automations/scheduler')
+    const { resumeOrCancelStrandedTasks } = await import('./automations/standingOrders')
+    resumeOrCancelStrandedTasks()
+    startScheduler()
+  } catch (err) {
+    console.warn('[main] startScheduler failed', err)
+  }
+
   // Scan skills and rules from disk so they're available to the first query.
   try {
     const { scanSkills } = await import('./skills/manager')
@@ -135,6 +145,10 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', async () => {
   globalShortcut.unregisterAll()
+  try {
+    const { stopScheduler } = await import('./automations/scheduler')
+    stopScheduler()
+  } catch { /* ignore */ }
   try {
     const { disconnectAll } = await import('./mcp/manager')
     await disconnectAll()

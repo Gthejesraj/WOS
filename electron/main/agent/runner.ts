@@ -8,6 +8,7 @@ import type { ConversationMessage, ContentBlock } from '../providers/types'
 import { eq, asc, and, desc } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { resolveAgent } from './settings'
+import { buildStandingOrdersFragment } from '../automations/standingOrders'
 
 const DEBUG = process.env.WOS_DEBUG === '1'
 const dlog = (...args: unknown[]) => { if (DEBUG) console.log('[wos:runner]', ...args) }
@@ -206,6 +207,8 @@ export class AgentRunner {
 
     try {
       const agentSettings = await resolveAgent('wos')
+      const standing = buildStandingOrdersFragment({ workspaceId: conv.workspaceId, conversationId })
+      const customPrompt = [agentSettings.systemPrompt || '', standing].filter(Boolean).join('\n').trim() || undefined
       for await (const event of queryLoop({
         model: conv.model,
         messages: history,
@@ -213,7 +216,7 @@ export class AgentRunner {
         workspacePath,
         mode: conv.mode as AgentMode,
         reasoningEffort,
-        systemPromptCustom: agentSettings.systemPrompt || undefined,
+        systemPromptCustom: customPrompt,
         apiKeyOverride: agentSettings.apiKeyOverride,
         signal,
         permissionStore: this.permissionStore,
@@ -420,6 +423,8 @@ export class AgentRunner {
 
     try {
       const agentSettings = await resolveAgent('wos')
+      const standing = buildStandingOrdersFragment({ workspaceId: conv.workspaceId, conversationId })
+      const customPrompt = [agentSettings.systemPrompt || '', standing].filter(Boolean).join('\n').trim() || undefined
       for await (const event of queryLoop({
         model: conv.model,
         messages: history,
@@ -427,7 +432,7 @@ export class AgentRunner {
         workspacePath,
         mode: conv.mode as AgentMode,
         reasoningEffort,
-        systemPromptCustom: agentSettings.systemPrompt || undefined,
+        systemPromptCustom: customPrompt,
         apiKeyOverride: agentSettings.apiKeyOverride,
         signal,
         permissionStore: this.permissionStore,

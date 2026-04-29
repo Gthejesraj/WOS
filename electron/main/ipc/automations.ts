@@ -2,6 +2,8 @@ import { ipcMain } from 'electron'
 import { randomUUID } from 'crypto'
 import { eq, desc } from 'drizzle-orm'
 import { getDb, schema, notifyWrite } from '../db'
+import { refreshScheduler, runJobNow } from '../automations/scheduler'
+import { authorAutomation } from '../automations/nlAuthor'
 
 type ScheduledJobInput = {
   id?: string
@@ -60,6 +62,7 @@ export function registerAutomationsHandlers() {
         updatedAt: now,
       }).where(eq(schema.scheduledJobs.id, job.id)).run()
       notifyWrite()
+      try { refreshScheduler() } catch { /* ignore */ }
       return { ok: true, id: job.id }
     }
     const id = randomUUID()
@@ -77,6 +80,7 @@ export function registerAutomationsHandlers() {
       updatedAt: now,
     }).run()
     notifyWrite()
+    try { refreshScheduler() } catch { /* ignore */ }
     return { ok: true, id }
   })
 
@@ -84,12 +88,18 @@ export function registerAutomationsHandlers() {
     const db = getDb()
     db.delete(schema.scheduledJobs).where(eq(schema.scheduledJobs.id, id)).run()
     notifyWrite()
+    try { refreshScheduler() } catch { /* ignore */ }
     return { ok: true }
   })
 
-  ipcMain.handle('automations:scheduled:run-now', async () => {
-    // Wired by the scheduler runner in the next workstream.
-    return { ok: false, error: 'Scheduler runner not yet implemented' }
+  ipcMain.handle('automations:scheduled:run-now', async (_e, { id }: { id: string }) => {
+    if (!id) return { ok: false, error: 'id is required' }
+    try {
+      void runJobNow(id)
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
   })
 
   ipcMain.handle('automations:scheduled:runs', (_e, { jobId }: { jobId?: string }) => {
@@ -219,9 +229,13 @@ export function registerAutomationsHandlers() {
   })
 
   // ----- Natural-language authoring -----
-  // Wired in workstream 3.7. Returns a structured "not yet implemented" so the UI
-  // can show a helpful empty-state confirm card instead of crashing.
-  ipcMain.handle('automations:author', async (_e, { kind }: { kind: string; prompt: string }) => {
-    return { ok: false, error: `NL authoring for "${kind}" is not yet implemented` }
+  // Returns a structured draft (not yet persisted) for the UI to confirm.
+  ipcMain.handle('automations:author', async (_e, { kind, prompt }: { kind: string; prompt: string }) => {
+    try {
+      const draft = await authorAutomation(kind, prompt)
+      return { ok: true, draft }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
   })
 }

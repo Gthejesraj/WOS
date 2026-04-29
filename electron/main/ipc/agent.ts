@@ -4,6 +4,7 @@ import { agentRunner } from '../agent/runner'
 import { getDb, schema, notifyWrite } from '../db'
 import { eq, asc } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
+import { emitHook } from '../automations/hookBus'
 
 export function registerAgentHandlers(_win: BrowserWindow) {
   ipcMain.handle(
@@ -21,10 +22,12 @@ export function registerAgentHandlers(_win: BrowserWindow) {
       }
     ) => {
       try {
+        void emitHook('message:received', { conversationId, message })
         await agentRunner.run(conversationId, message, attachments, event.sender)
         return { success: true }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
+        void emitHook('agent:error', { conversationId, message: msg })
         // Also surface an error event to the UI so the streaming spinner is
         // cleared and a visible error block appears in the current chat.
         if (!event.sender.isDestroyed()) {
@@ -104,6 +107,8 @@ export function registerAgentHandlers(_win: BrowserWindow) {
         updatedAt: now,
       }).run()
       notifyWrite()
+
+      void emitHook('conversation:new', { conversationId: id })
 
       return {
         id,
