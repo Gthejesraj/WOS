@@ -44,6 +44,14 @@
   --zinc-500: #71717a;
   --zinc-400: #a1a1aa;
   --zinc-300: #d4d4d8;
+  /* themed translucent surfaces — auto-flip in light mode */
+  --surface-subtle: rgba(255, 255, 255, 0.03);
+  --surface-base: rgba(255, 255, 255, 0.05);
+  --surface-raised: rgba(255, 255, 255, 0.07);
+  --surface-strong: rgba(255, 255, 255, 0.10);
+  --surface-stronger: rgba(255, 255, 255, 0.12);
+  /* selected-row tint that stays readable on cards */
+  --selection-bg: rgba(255, 255, 255, 0.06);
 }
 
 /* ── Light mode ── */
@@ -84,6 +92,13 @@
   --zinc-500: #71717a;
   --zinc-400: #52525b;
   --zinc-300: #3f3f46;
+  /* themed translucent surfaces — light mode flips to dark overlays */
+  --surface-subtle: rgba(0, 0, 0, 0.025);
+  --surface-base: rgba(0, 0, 0, 0.04);
+  --surface-raised: rgba(0, 0, 0, 0.06);
+  --surface-strong: rgba(0, 0, 0, 0.09);
+  --surface-stronger: rgba(0, 0, 0, 0.12);
+  --selection-bg: rgba(0, 0, 0, 0.06);
 }
 
 @theme inline {

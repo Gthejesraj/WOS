@@ -39,7 +39,7 @@ function NoWorkspacePromptHome({ onClose }: { onClose: () => void }) {
       <button
         onMouseDown={async () => { await addWorkspace(); onClose() }}
         className="text-left px-2 py-1 rounded text-xs flex items-center gap-1.5"
-        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+        style={{ background: 'var(--surface-subtle)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
       >
         <Plus size={11} />
         <span>Add workspace folder…</span>
@@ -299,7 +299,7 @@ export function HomeView({ onSendMessage, initialDraft, onDraftConsumed }: HomeV
                   onMouseDown={e => { e.preventDefault(); void executeSlash(cmd.id) }}
                   className="w-full text-left px-3 py-2 flex items-center gap-3 transition-colors"
                   style={{
-                    background: i === slashIndex ? 'var(--accent)' : 'transparent',
+                    background: i === slashIndex ? 'var(--surface-raised)' : 'transparent',
                     color: 'var(--foreground)',
                   }}
                 >
@@ -319,14 +319,14 @@ export function HomeView({ onSendMessage, initialDraft, onDraftConsumed }: HomeV
               <div className="flex flex-wrap gap-1.5 px-4 pt-3">
                 {attachments.map((a, i) => (
                   <div key={i} className="flex items-center gap-1 px-2 py-0.5 rounded-md text-xs"
-                    style={{ background: 'var(--accent)', color: 'var(--muted-foreground)', border: '1px solid var(--border)' }}>
+                    style={{ background: 'var(--surface-raised)', color: 'var(--foreground)', border: '1px solid var(--border)' }}>
                     <span className="max-w-[120px] truncate">{a.name}</span>
                     <button onClick={() => setAttachments(p => p.filter((_, j) => j !== i))} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
                   </div>
                 ))}
                 {meetingChips.map(m => (
                   <div key={m.id} className="flex items-center gap-1 px-2 py-0.5 rounded-md text-xs"
-                    style={{ background: 'var(--accent)', color: 'var(--muted-foreground)', border: '1px solid var(--border)' }}>
+                    style={{ background: 'var(--surface-raised)', color: 'var(--foreground)', border: '1px solid var(--border)' }}>
                     <span className="max-w-[120px] truncate">📅 {m.title}</span>
                     <button onClick={() => setMeetingChips(p => p.filter(x => x.id !== m.id))} className="ml-0.5 opacity-60 hover:opacity-100">✕</button>
                   </div>
@@ -531,7 +531,7 @@ export function HomeView({ onSendMessage, initialDraft, onDraftConsumed }: HomeV
                   setFilePickerOpen(false)
                 }}
                   className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors"
-                  style={{ background: i === filePickerIndex ? 'var(--accent)' : 'transparent', color: 'var(--foreground)' }}>
+                  style={{ background: i === filePickerIndex ? 'var(--surface-raised)' : 'transparent', color: 'var(--foreground)' }}>
                   <span style={{ color: 'var(--muted-foreground)', fontSize: '10px' }}>📄</span>
                   <span className="font-mono truncate">{f}</span>
                 </button>

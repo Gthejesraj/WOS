@@ -45,7 +45,7 @@ function NoWorkspacePrompt({ onClose }: { onClose: () => void }) {
       <button
         onMouseDown={async () => { await addWorkspace(); onClose() }}
         className="text-left px-2 py-1 rounded text-xs flex items-center gap-1.5"
-        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+        style={{ background: 'var(--surface-subtle)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
       >
         <Plus size={11} />
         <span>Add workspace folder…</span>
@@ -546,7 +546,7 @@ function PlanApprovalBlock({
   }
 
   return (
-    <div className="my-2 rounded-lg overflow-hidden" style={{ border: '1px solid var(--border-strong)', background: 'rgba(255,255,255,0.03)' }}>
+    <div className="my-2 rounded-lg overflow-hidden" style={{ border: '1px solid var(--border-strong)', background: 'var(--surface-subtle)' }}>
       <div className="flex items-center gap-2 px-3 py-2" style={{ borderBottom: '1px solid var(--border)' }}>
         <span style={{ color: 'var(--amber)' }}>📋</span>
         <span className="text-xs font-medium" style={{ color: 'var(--foreground)' }}>Plan ready — choose how to proceed</span>
@@ -581,7 +581,7 @@ function PlanApprovalBlock({
         <button
           onClick={handleApproveYolo}
           className="text-left text-sm px-3 py-2 rounded transition-colors hover:opacity-90"
-          style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--foreground)', border: '1px solid var(--border-strong)' }}
+          style={{ background: 'var(--surface-raised)', color: 'var(--foreground)', border: '1px solid var(--border-strong)' }}
         >
           ▶ Start in YOLO <span style={{ opacity: 0.7, fontSize: 11 }}>— auto-approve every tool</span>
         </button>
@@ -1329,7 +1329,7 @@ function StreamingIndicator({ blocks }: { blocks: MessageBlock[] }) {
         <span
           key={d}
           className="w-1 h-1 rounded-full animate-bounce"
-          style={{ background: slow ? 'rgba(255,255,255,0.15)' : 'var(--border-strong)', animationDelay: `${d}ms` }}
+          style={{ background: slow ? 'var(--surface-stronger)' : 'var(--border-strong)', animationDelay: `${d}ms` }}
         />
       ))}
       <span style={{ color: slow ? 'var(--foreground)' : 'var(--muted-foreground)', fontSize: '11px' }}>
@@ -1741,7 +1741,7 @@ function Composer() {
                 key={cmd.id}
                 onMouseDown={e => { e.preventDefault(); void executeSlash(cmd.id) }}
                 className="w-full flex items-center gap-3 px-3 py-2 text-left transition-colors"
-                style={{ background: i === slashIndex ? 'rgba(255,255,255,0.06)' : 'transparent' }}
+                style={{ background: i === slashIndex ? 'var(--selection-bg)' : 'transparent' }}
               >
                 <code className="text-xs font-mono shrink-0 w-20" style={{ color: 'var(--amber)' }}>{cmd.hint}</code>
                 <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{cmd.desc}</span>
@@ -1846,7 +1846,7 @@ function Composer() {
                     textareaRef.current?.focus()
                   }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-left transition-colors"
-                  style={{ background: i === filePickerIndex ? 'rgba(255,255,255,0.06)' : 'transparent' }}
+                  style={{ background: i === filePickerIndex ? 'var(--selection-bg)' : 'transparent' }}
                 >
                   <File size={11} style={{ color: 'var(--muted-foreground)', flexShrink: 0 }} />
                   <span className="text-xs truncate" style={{ color: 'var(--foreground)' }}>{f}</span>
@@ -1857,7 +1857,7 @@ function Composer() {
                 onMouseDown={() => { fileInputRef.current?.click(); setFilePickerOpen(false) }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left transition-colors"
                 style={{
-                  background: filePickerIndex === filePickerResults.length ? 'rgba(255,255,255,0.06)' : 'transparent',
+                  background: filePickerIndex === filePickerResults.length ? 'var(--selection-bg)' : 'transparent',
                   borderTop: '1px solid var(--border)',
                 }}
               >
@@ -1898,7 +1898,7 @@ function Composer() {
             <div className="flex flex-wrap gap-1.5 px-4 pt-3">
               {meetingChips.map(chip => (
                 <div key={chip.id} className="flex items-center gap-1.5 px-2 py-1 rounded-lg"
-                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-strong)' }}>
+                  style={{ background: 'var(--surface-base)', border: '1px solid var(--border-strong)' }}>
                   <span style={{ fontSize: '10px' }}>📋</span>
                   <span style={{ color: 'var(--foreground)', fontSize: '11px', maxWidth: '160px' }} className="truncate">{chip.title}</span>
                   <button

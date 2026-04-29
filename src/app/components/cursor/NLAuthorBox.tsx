@@ -68,7 +68,7 @@ export function NLAuthorBox({ kind, onDraft }: NLAuthorBoxProps) {
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-colors disabled:opacity-50"
           style={{
             background: 'var(--accent)',
-            color: 'var(--foreground)',
+            color: 'var(--accent-foreground)',
             border: '1px solid var(--border)',
           }}
         >

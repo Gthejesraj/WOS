@@ -9,8 +9,6 @@ import type { ModelInfo, AgentMode } from '../../../types'
 import { useSettingsStore } from '../../../store/settingsStore'
 import { useWorkspaceStore } from '../../../store/workspaceStore'
 import { useAgentStore } from '../../../store/agentStore'
-import { useSkillsStore } from '../../../store/skillsStore'
-import { useRulesStore } from '../../../store/rulesStore'
 import { modelSupportsReasoning } from '../../../lib/modelCapabilities'
 
 interface SettingsViewProps {
@@ -21,7 +19,7 @@ type SectionId = 'preferences' | 'ai-agents' | 'connections' | 'account'
 
 const SECTIONS: Array<{ id: SectionId; label: string; icon: React.ElementType; description: string }> = [
   { id: 'preferences', label: 'Preferences', icon: SettingsIcon, description: 'Appearance, theme, default mode' },
-  { id: 'ai-agents', label: 'AI & Agents', icon: Brain, description: 'Models, agents, skills, rules, workspaces' },
+  { id: 'ai-agents', label: 'AI & Agents', icon: Brain, description: 'Models, agents, workspaces' },
   { id: 'connections', label: 'Connections', icon: Link, description: 'API keys and integrations' },
   { id: 'account', label: 'Account', icon: BarChart2, description: 'Usage, billing, and about' },
 ]
@@ -101,9 +99,9 @@ function PreferencesSection() {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-colors"
                 style={{
                   fontSize: '12px',
-                  background: active ? 'var(--amber-muted)' : 'rgba(255,255,255,0.05)',
+                  background: active ? 'var(--amber-muted)' : 'var(--surface-base)',
                   color: active ? 'var(--amber)' : 'var(--muted-foreground)',
-                  border: active ? '1px solid rgba(255,255,255,0.12)' : '1px solid transparent',
+                  border: active ? '1px solid var(--surface-stronger)' : '1px solid transparent',
                 }}
               >
                 <Icon size={12} />
@@ -123,9 +121,9 @@ function PreferencesSection() {
               className="px-3 py-1.5 rounded-md capitalize transition-colors"
               style={{
                 fontSize: '12px',
-                background: defaultMode === m ? 'var(--amber-muted)' : 'rgba(255,255,255,0.05)',
+                background: defaultMode === m ? 'var(--amber-muted)' : 'var(--surface-base)',
                 color: defaultMode === m ? 'var(--amber)' : 'var(--muted-foreground)',
-                border: defaultMode === m ? '1px solid rgba(255,255,255,0.12)' : '1px solid transparent',
+                border: defaultMode === m ? '1px solid var(--surface-stronger)' : '1px solid transparent',
               }}
             >
               {m}
@@ -142,7 +140,7 @@ function PreferencesSection() {
   )
 }
 
-// AI & Agents = Model + Reasoning + Agents + Skills + Rules + Workspaces
+// AI & Agents = Model + Reasoning + Agents + Workspaces
 function AIAgentsSection() {
   const { defaultModel, reasoningEffort, saveSetting } = useSettingsStore()
   const { models, loading, refresh } = useSavedModels()
@@ -154,7 +152,7 @@ function AIAgentsSection() {
 
   return (
     <div className="space-y-10">
-      <SectionHeader title="AI & Agents" subtitle="Model, reasoning, agent configuration, skills, rules, and workspaces" />
+      <SectionHeader title="AI & Agents" subtitle="Model, reasoning, agent configuration, and workspaces. Skills and Rules now live under Apps & MCP." />
 
       {/* Model */}
       <div className="space-y-6">
@@ -187,9 +185,9 @@ function AIAgentsSection() {
                   className="px-3 py-1.5 rounded-md capitalize transition-colors"
                   style={{
                     fontSize: '12px',
-                    background: reasoningEffort === e ? 'var(--amber-muted)' : 'rgba(255,255,255,0.05)',
+                    background: reasoningEffort === e ? 'var(--amber-muted)' : 'var(--surface-base)',
                     color: reasoningEffort === e ? 'var(--amber)' : 'var(--muted-foreground)',
-                    border: reasoningEffort === e ? '1px solid rgba(255,255,255,0.12)' : '1px solid transparent',
+                    border: reasoningEffort === e ? '1px solid var(--surface-stronger)' : '1px solid transparent',
                   }}
                 >
                   {e}
@@ -206,22 +204,6 @@ function AIAgentsSection() {
       <div className="space-y-6">
         <h3 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Agents</h3>
         <AgentsSection />
-      </div>
-
-      <div style={{ height: '1px', background: 'var(--border)' }} />
-
-      {/* Skills */}
-      <div className="space-y-6">
-        <h3 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Skills</h3>
-        <SkillsSection />
-      </div>
-
-      <div style={{ height: '1px', background: 'var(--border)' }} />
-
-      {/* Rules */}
-      <div className="space-y-6">
-        <h3 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Rules</h3>
-        <RulesSection />
       </div>
 
       <div style={{ height: '1px', background: 'var(--border)' }} />
@@ -340,9 +322,9 @@ function GeneralSection() {
                 className="px-3 py-1 rounded-md capitalize transition-colors"
                 style={{
                   fontSize: '11px',
-                  background: reasoningEffort === e ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.05)',
+                  background: reasoningEffort === e ? 'var(--surface-raised)' : 'var(--surface-base)',
                   color: reasoningEffort === e ? 'var(--amber)' : 'var(--muted-foreground)',
-                  border: reasoningEffort === e ? '1px solid rgba(255,255,255,0.12)' : '1px solid transparent',
+                  border: reasoningEffort === e ? '1px solid var(--surface-stronger)' : '1px solid transparent',
                 }}
               >
                 {e}
@@ -361,9 +343,9 @@ function GeneralSection() {
               className="px-3 py-1 rounded-md capitalize transition-colors"
               style={{
                 fontSize: '11px',
-                background: defaultMode === m ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.05)',
+                background: defaultMode === m ? 'var(--surface-raised)' : 'var(--surface-base)',
                 color: defaultMode === m ? 'var(--amber)' : 'var(--muted-foreground)',
-                border: defaultMode === m ? '1px solid rgba(255,255,255,0.12)' : '1px solid transparent',
+                border: defaultMode === m ? '1px solid var(--surface-stronger)' : '1px solid transparent',
               }}
             >
               {m}
@@ -384,9 +366,9 @@ function GeneralSection() {
                 className="flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors"
                 style={{
                   fontSize: '11px',
-                  background: active ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.05)',
+                  background: active ? 'var(--surface-raised)' : 'var(--surface-base)',
                   color: active ? 'var(--amber)' : 'var(--muted-foreground)',
-                  border: active ? '1px solid rgba(255,255,255,0.12)' : '1px solid transparent',
+                  border: active ? '1px solid var(--surface-stronger)' : '1px solid transparent',
                 }}
               >
                 <Icon size={11} />
@@ -541,7 +523,7 @@ function AgentCard({
               className="px-3 py-1 rounded-md capitalize"
               style={{
                 fontSize: '11px',
-                background: mode === m ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.05)',
+                background: mode === m ? 'var(--surface-raised)' : 'var(--surface-base)',
                 color: mode === m ? 'var(--amber)' : 'var(--muted-foreground)',
               }}
             >
@@ -582,7 +564,7 @@ function AgentCard({
           ...(anthropicKey ? { anthropic: anthropicKey } : {}),
         }).then(() => { setOpenaiKey(''); setAnthropicKey('') })}
         className="px-3 py-1.5 rounded-md disabled:opacity-50"
-        style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--amber)', border: '1px solid rgba(255,255,255,0.10)', fontSize: '12px' }}
+        style={{ background: 'var(--surface-raised)', color: 'var(--amber)', border: '1px solid var(--surface-strong)', fontSize: '12px' }}
       >
         {saving ? 'Saving...' : 'Save Agent'}
       </button>
@@ -797,7 +779,7 @@ function ApiKeyRow({
           onClick={save}
           disabled={!value || state === 'testing'}
           className="px-3 py-1.5 rounded-md disabled:opacity-30 transition-colors"
-          style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--amber)', border: '1px solid rgba(255,255,255,0.12)', fontSize: '12px' }}
+          style={{ background: 'var(--surface-strong)', color: 'var(--amber)', border: '1px solid var(--surface-stronger)', fontSize: '12px' }}
         >
           Save
         </button>
@@ -862,7 +844,7 @@ function WorkspacesSection() {
       <button
         onClick={() => addWorkspace()}
         className="flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors"
-        style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--amber)', border: '1px solid rgba(255,255,255,0.10)', fontSize: '12px' }}
+        style={{ background: 'var(--surface-raised)', color: 'var(--amber)', border: '1px solid var(--surface-strong)', fontSize: '12px' }}
       >
         <Plus size={12} /> Open workspace…
       </button>
@@ -896,8 +878,8 @@ function StatCard({ label, value, highlight }: { label: string; value: string; h
     <div
       className="rounded-md p-3"
       style={{
-        background: highlight ? 'rgba(255,255,255,0.03)' : 'var(--card)',
-        border: `1px solid ${highlight ? 'rgba(255,255,255,0.08)' : 'var(--border)'}`,
+        background: highlight ? 'var(--surface-subtle)' : 'var(--card)',
+        border: `1px solid ${highlight ? 'var(--surface-strong)' : 'var(--border)'}`,
       }}
     >
       <div style={{ color: 'var(--muted-foreground)', fontSize: '11px' }}>{label}</div>
@@ -946,361 +928,3 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   )
 }
 
-// ---------------- Skills ----------------
-
-function SkillsSection() {
-  const { skills, loaded, load, reload, setEnabled, create, remove } = useSkillsStore()
-  const [showCreate, setShowCreate] = useState(false)
-  useEffect(() => { if (!loaded) void load() }, [loaded, load])
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <SectionHeader title="Skills" subtitle="Claude-style skill packs stored under ~/.wos/skills. Enable to expose them to the agent." />
-        <div className="flex gap-2">
-          <button onClick={() => reload()}
-            className="px-3 py-1.5 rounded-md wos-hover transition-colors"
-            style={{ background: 'var(--card)', color: 'var(--foreground)', border: '1px solid var(--border)', fontSize: '12px' }}>
-            <RefreshCw size={12} className="inline mr-1" /> Rescan
-          </button>
-          <button onClick={() => setShowCreate(true)}
-            className="px-3 py-1.5 rounded-md transition-colors"
-            style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--amber)', border: '1px solid rgba(255,255,255,0.10)', fontSize: '12px' }}>
-            <Plus size={12} className="inline mr-1" /> New skill
-          </button>
-        </div>
-      </div>
-
-      {showCreate && <NewSkillForm onCancel={() => setShowCreate(false)} onDone={async (input) => {
-        await create(input)
-        setShowCreate(false)
-      }} />}
-
-      {skills.length === 0 && !showCreate && (
-        <div style={{ color: 'var(--muted-foreground)', fontSize: '12px' }}>
-          No skills yet. Drop a folder with a <code>SKILL.md</code> into <code>~/.wos/skills/</code>, then click Rescan.
-        </div>
-      )}
-
-      <div className="space-y-2">
-        {skills.map(s => (
-          <div key={s.id} className="rounded-md p-3" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-            <div className="flex items-start gap-2">
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium" style={{ color: 'var(--foreground)', fontSize: '13px' }}>{s.name}</span>
-                  {!s.enabled && <span style={{ color: 'var(--muted-foreground)', fontSize: '10px' }}>disabled</span>}
-                </div>
-                <div style={{ color: 'var(--secondary-foreground)', fontSize: '11px' }}>{s.description || '—'}</div>
-                {s.triggers.length > 0 && (
-                  <div className="mt-1" style={{ color: 'var(--muted-foreground)', fontSize: '10px' }}>
-                    triggers: {s.triggers.join(', ')}
-                  </div>
-                )}
-                <div className="font-mono mt-1" style={{ color: 'var(--border-strong)', fontSize: '10px' }}>{s.path}</div>
-              </div>
-              <label className="flex items-center gap-1.5" style={{ color: 'var(--secondary-foreground)', fontSize: '11px' }}>
-                <input
-                  type="checkbox"
-                  checked={s.enabled}
-                  onChange={e => setEnabled(s.id, e.target.checked)}
-                />
-                Enabled
-              </label>
-              <button onClick={() => remove(s.id)} className="p-1 rounded hover:text-red-400 transition-colors" style={{ color: 'var(--border-strong)' }}>
-                <Trash2 size={12} />
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function NewSkillForm({ onCancel, onDone }: {
-  onCancel: () => void
-  onDone: (input: { name: string; description: string; body: string; triggers: string[] }) => Promise<void>
-}) {
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [triggers, setTriggers] = useState('')
-  const [body, setBody] = useState('')
-  const [saving, setSaving] = useState(false)
-
-  const inputStyle = { background: 'var(--input)', border: '1px solid var(--border)', color: 'var(--foreground)', fontSize: '12px' }
-
-  return (
-    <form
-      onSubmit={async (e) => {
-        e.preventDefault()
-        setSaving(true)
-        await onDone({
-          name: name.trim(),
-          description: description.trim(),
-          body,
-          triggers: triggers.split(',').map(s => s.trim()).filter(Boolean),
-        })
-        setSaving(false)
-      }}
-      className="space-y-3 p-4 rounded-md"
-      style={{ background: 'var(--background)', border: '1px solid var(--border)' }}
-    >
-      <Field label="Name">
-        <input required value={name} onChange={e => setName(e.target.value)}
-          className="w-full px-3 py-2 rounded-md outline-none"
-          style={inputStyle} />
-      </Field>
-      <Field label="Description" hint="One-liner shown in the agent's skill index.">
-        <input value={description} onChange={e => setDescription(e.target.value)}
-          className="w-full px-3 py-2 rounded-md outline-none"
-          style={inputStyle} />
-      </Field>
-      <Field label="Triggers" hint="Comma-separated keywords that hint when to use this skill.">
-        <input value={triggers} onChange={e => setTriggers(e.target.value)} placeholder="pptx, slide deck, presentation"
-          className="w-full px-3 py-2 rounded-md outline-none"
-          style={inputStyle} />
-      </Field>
-      <Field label="Body (markdown)">
-        <textarea required value={body} onChange={e => setBody(e.target.value)}
-          className="w-full px-3 py-2 rounded-md font-mono min-h-[160px] outline-none"
-          style={inputStyle} />
-      </Field>
-      <div className="flex gap-2">
-        <button type="button" onClick={onCancel}
-          className="px-3 py-1.5 rounded-md wos-hover transition-colors"
-          style={{ background: 'var(--card)', color: 'var(--foreground)', border: '1px solid var(--border)', fontSize: '12px' }}>
-          Cancel
-        </button>
-        <button type="submit" disabled={saving}
-          className="px-3 py-1.5 rounded-md disabled:opacity-50 transition-colors"
-          style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--amber)', border: '1px solid rgba(255,255,255,0.10)', fontSize: '12px' }}>
-          {saving ? 'Saving…' : 'Create skill'}
-        </button>
-      </div>
-    </form>
-  )
-}
-
-// ---------------- Rules ----------------
-
-function RulesSection() {
-  const { rules, loaded, load, reload, setEnabled, create, update, remove } = useRulesStore()
-  const [showCreate, setShowCreate] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  useEffect(() => { if (!loaded) void load() }, [loaded, load])
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <SectionHeader title="Rules" subtitle="User rules live in ~/.wos/rules. Workspace rules use the Cursor-compatible .cursor/rules/*.mdc format." />
-        <div className="flex gap-2">
-          <button onClick={() => reload()}
-            className="px-3 py-1.5 rounded-md wos-hover transition-colors"
-            style={{ background: 'var(--card)', color: 'var(--foreground)', border: '1px solid var(--border)', fontSize: '12px' }}>
-            <RefreshCw size={12} className="inline mr-1" /> Rescan
-          </button>
-          <button onClick={() => setShowCreate(true)}
-            className="px-3 py-1.5 rounded-md transition-colors"
-            style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--amber)', border: '1px solid rgba(255,255,255,0.10)', fontSize: '12px' }}>
-            <Plus size={12} className="inline mr-1" /> New rule
-          </button>
-        </div>
-      </div>
-
-      {showCreate && (
-        <NewRuleForm
-          onCancel={() => setShowCreate(false)}
-          onDone={async (input) => { await create(input); setShowCreate(false) }}
-        />
-      )}
-
-      <div className="space-y-2">
-        {rules.length === 0 && !showCreate && (
-          <div style={{ color: 'var(--muted-foreground)', fontSize: '12px' }}>No rules yet.</div>
-        )}
-        {rules.map(r => (
-          <div key={r.id} className="rounded-md p-3" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-            <div className="flex items-start gap-2">
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium" style={{ color: 'var(--foreground)', fontSize: '13px' }}>{r.name}</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'var(--background)', color: 'var(--secondary-foreground)' }}>{r.scope}</span>
-                  {r.alwaysApply && <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--amber)' }}>always</span>}
-                  {r.globs.length > 0 && <span className="text-[10px]" style={{ color: 'var(--secondary-foreground)' }}>{r.globs.join(', ')}</span>}
-                </div>
-                <div style={{ color: 'var(--secondary-foreground)', fontSize: '11px' }}>{r.description || '—'}</div>
-                <div className="font-mono mt-1" style={{ color: 'var(--border-strong)', fontSize: '10px' }}>{r.path}</div>
-              </div>
-              <label className="flex items-center gap-1.5" style={{ color: 'var(--secondary-foreground)', fontSize: '11px' }}>
-                <input
-                  type="checkbox"
-                  checked={r.enabled}
-                  onChange={e => setEnabled(r.id, e.target.checked)}
-                />
-                Enabled
-              </label>
-              <button onClick={() => setEditingId(editingId === r.id ? null : r.id)}
-                className="px-2 transition-colors"
-                style={{ color: 'var(--secondary-foreground)', fontSize: '11px' }}>
-                {editingId === r.id ? 'Close' : 'Edit'}
-              </button>
-              <button onClick={() => remove(r.id)} className="p-1 rounded hover:text-red-400 transition-colors" style={{ color: 'var(--border-strong)' }}>
-                <Trash2 size={12} />
-              </button>
-            </div>
-
-            {editingId === r.id && (
-              <RuleEditor rule={r} onSave={async (patch) => { await update(r.id, patch); setEditingId(null) }} />
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function NewRuleForm({ onCancel, onDone }: {
-  onCancel: () => void
-  onDone: (input: {
-    scope: 'user' | 'workspace'
-    name: string
-    description: string
-    alwaysApply: boolean
-    globs: string[]
-    body: string
-  }) => Promise<void>
-}) {
-  const [scope, setScope] = useState<'user' | 'workspace'>('user')
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [alwaysApply, setAlwaysApply] = useState(true)
-  const [globs, setGlobs] = useState('')
-  const [body, setBody] = useState('')
-  const [saving, setSaving] = useState(false)
-
-  const inputStyle = { background: 'var(--input)', border: '1px solid var(--border)', color: 'var(--foreground)', fontSize: '12px' }
-
-  return (
-    <form
-      onSubmit={async (e) => {
-        e.preventDefault()
-        setSaving(true)
-        await onDone({
-          scope,
-          name: name.trim(),
-          description: description.trim(),
-          alwaysApply,
-          globs: globs.split(',').map(s => s.trim()).filter(Boolean),
-          body,
-        })
-        setSaving(false)
-      }}
-      className="space-y-3 p-4 rounded-md"
-      style={{ background: 'var(--background)', border: '1px solid var(--border)' }}
-    >
-      <Field label="Scope">
-        <div className="flex gap-2">
-          {(['user', 'workspace'] as const).map(s => (
-            <button
-              type="button"
-              key={s}
-              onClick={() => setScope(s)}
-              className="px-3 py-1.5 rounded-md transition-colors"
-              style={{
-                background: scope === s ? 'rgba(255,255,255,0.07)' : 'var(--card)',
-                color: scope === s ? 'var(--amber)' : 'var(--muted-foreground)',
-                border: '1px solid ' + (scope === s ? 'rgba(255,255,255,0.12)' : 'var(--border)'),
-                fontSize: '11px',
-              }}
-            >
-              {s === 'user' ? 'User (~/.wos/rules)' : 'Workspace (.cursor/rules)'}
-            </button>
-          ))}
-        </div>
-      </Field>
-      <Field label="Name">
-        <input required value={name} onChange={e => setName(e.target.value)}
-          className="w-full px-3 py-2 rounded-md outline-none" style={inputStyle} />
-      </Field>
-      <Field label="Description">
-        <input value={description} onChange={e => setDescription(e.target.value)}
-          className="w-full px-3 py-2 rounded-md outline-none" style={inputStyle} />
-      </Field>
-      <div className="flex gap-3 items-start">
-        <Field label="Always apply" hint="Inlined into every system prompt.">
-          <input type="checkbox" checked={alwaysApply} onChange={e => setAlwaysApply(e.target.checked)} />
-        </Field>
-        <div className="flex-1">
-          <Field label="Globs (optional)" hint="Comma-separated, e.g. **/*.ts,**/*.tsx">
-            <input value={globs} onChange={e => setGlobs(e.target.value)}
-              className="w-full px-3 py-2 rounded-md outline-none" style={inputStyle} />
-          </Field>
-        </div>
-      </div>
-      <Field label="Body (markdown)">
-        <textarea required value={body} onChange={e => setBody(e.target.value)}
-          className="w-full px-3 py-2 rounded-md font-mono min-h-[160px] outline-none"
-          style={inputStyle} />
-      </Field>
-      <div className="flex gap-2">
-        <button type="button" onClick={onCancel}
-          className="px-3 py-1.5 rounded-md wos-hover transition-colors"
-          style={{ background: 'var(--card)', color: 'var(--foreground)', border: '1px solid var(--border)', fontSize: '12px' }}>
-          Cancel
-        </button>
-        <button type="submit" disabled={saving}
-          className="px-3 py-1.5 rounded-md disabled:opacity-50 transition-colors"
-          style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--amber)', border: '1px solid rgba(255,255,255,0.10)', fontSize: '12px' }}>
-          {saving ? 'Saving…' : 'Create rule'}
-        </button>
-      </div>
-    </form>
-  )
-}
-
-function RuleEditor({ rule, onSave }: {
-  rule: RuleInfo
-  onSave: (patch: { body: string; alwaysApply: boolean; globs: string[] }) => Promise<void>
-}) {
-  const [body, setBody] = useState('')
-  const [alwaysApply, setAlwaysApply] = useState(rule.alwaysApply)
-  const [globs, setGlobs] = useState(rule.globs.join(', '))
-  const [saving, setSaving] = useState(false)
-
-  useEffect(() => {
-    void window.wos.rules.read(rule.id).then(r => {
-      if (r.success) setBody(r.body ?? '')
-    })
-  }, [rule.id])
-
-  const inputStyle = { background: 'var(--input)', border: '1px solid var(--border)', color: 'var(--foreground)', fontSize: '11px' }
-
-  return (
-    <div className="mt-3 space-y-3 p-3 rounded" style={{ background: 'var(--background)', border: '1px solid var(--border)' }}>
-      <div className="flex gap-3 items-center">
-        <label className="flex items-center gap-1" style={{ color: 'var(--secondary-foreground)', fontSize: '11px' }}>
-          <input type="checkbox" checked={alwaysApply} onChange={e => setAlwaysApply(e.target.checked)} /> alwaysApply
-        </label>
-        <input value={globs} onChange={e => setGlobs(e.target.value)} placeholder="globs (comma-separated)"
-          className="flex-1 px-2 py-1 rounded outline-none" style={inputStyle} />
-      </div>
-      <textarea value={body} onChange={e => setBody(e.target.value)}
-        className="w-full px-3 py-2 rounded-md font-mono min-h-[160px] outline-none"
-        style={{ ...inputStyle, fontSize: '12px' }} />
-      <div className="flex gap-2">
-        <button
-          onClick={async () => {
-            setSaving(true)
-            await onSave({ body, alwaysApply, globs: globs.split(',').map(s => s.trim()).filter(Boolean) })
-            setSaving(false)
-          }}
-          disabled={saving}
-          className="px-3 py-1.5 rounded-md disabled:opacity-50 transition-colors"
-          style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--amber)', border: '1px solid rgba(255,255,255,0.10)', fontSize: '12px' }}>
-          {saving ? 'Saving…' : 'Save'}
-        </button>
-      </div>
-    </div>
-  )
-}

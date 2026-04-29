@@ -2,8 +2,9 @@ import { useEffect, useState, useMemo } from 'react'
 import { useAppsStore } from '../../../store/appsStore'
 import { useMcpStore } from '../../../store/mcpStore'
 import { cn } from '../../../lib/utils'
+import { SkillsTab, RulesTab } from './RulesAndSkills'
 
-type Tab = 'marketplace' | 'apps' | 'mcp'
+type Tab = 'marketplace' | 'apps' | 'mcp' | 'skills' | 'rules'
 
 export function AppsView() {
   const [tab, setTab] = useState<Tab>('marketplace')
@@ -69,6 +70,8 @@ export function AppsView() {
           <TabButton active={tab === 'mcp'} onClick={() => setTab('mcp')}>
             Installed MCP {mcpStore.servers.length > 0 && <Pill>{mcpStore.servers.length}</Pill>}
           </TabButton>
+          <TabButton active={tab === 'skills'} onClick={() => setTab('skills')}>Skills</TabButton>
+          <TabButton active={tab === 'rules'} onClick={() => setTab('rules')}>Rules</TabButton>
         </div>
       </div>
 
@@ -102,6 +105,8 @@ export function AppsView() {
                 onAdd={() => setAddingMcp(true)}
               />
             )}
+            {tab === 'skills' && <SkillsTab />}
+            {tab === 'rules' && <RulesTab />}
           </div>
         </div>
       )}
@@ -463,7 +468,7 @@ function MarketplaceTab({
             onClick={() => { setSection(s.id); setSearch('') }}
             className="flex items-center gap-2 px-3 py-2 text-left transition-colors w-full"
             style={{
-              background: section === s.id ? 'rgba(255,255,255,0.06)' : 'transparent',
+              background: section === s.id ? 'var(--selection-bg)' : 'transparent',
               color: section === s.id ? 'var(--foreground)' : 'var(--muted-foreground)',
               borderLeft: section === s.id ? '2px solid var(--amber)' : '2px solid transparent',
               fontSize: '12px',
@@ -597,7 +602,7 @@ function MarketplaceTab({
                               disabled={installingMcp === s.qualifiedName || installedMcps.has(s.qualifiedName)}
                               className="text-[10px] px-2 py-0.5 rounded transition-colors"
                               style={{
-                                background: installedMcps.has(s.qualifiedName) ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.07)',
+                                background: installedMcps.has(s.qualifiedName) ? 'rgba(34,197,94,0.15)' : 'var(--surface-raised)',
                                 color: installedMcps.has(s.qualifiedName) ? '#22c55e' : 'var(--foreground)',
                                 border: `1px solid ${installedMcps.has(s.qualifiedName) ? 'rgba(34,197,94,0.4)' : 'var(--border-strong)'}`,
                                 opacity: installingMcp === s.qualifiedName ? 0.6 : 1,

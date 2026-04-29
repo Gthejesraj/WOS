@@ -432,7 +432,7 @@ function SavedTranscriptSidebar({
               className="group w-full rounded-xl p-3 text-left transition-colors"
               style={{
                 border: selectedId === meeting.id ? '1px solid var(--amber)' : '1px solid var(--border)',
-                background: selectedId === meeting.id ? 'var(--accent)' : 'var(--background)',
+                background: selectedId === meeting.id ? 'var(--surface-raised)' : 'var(--background)',
               }}
             >
               <div className="mb-1 flex items-start justify-between gap-2">
@@ -487,7 +487,7 @@ function UploadCard({
       className="rounded-2xl p-8 text-center cursor-pointer transition-colors"
       style={{
         border: `2px dashed ${dragActive ? 'var(--amber)' : 'var(--border)'}`,
-        background: dragActive ? 'rgba(255,255,255,0.03)' : 'var(--card)',
+        background: dragActive ? 'var(--surface-subtle)' : 'var(--card)',
       }}
     >
       <Upload className="mx-auto mb-3 h-8 w-8" style={{ color: dragActive ? 'var(--amber)' : 'var(--muted-foreground)' }} />

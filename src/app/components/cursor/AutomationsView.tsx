@@ -363,9 +363,9 @@ function FilterChip({ label, active, onClick }: { label: string; active: boolean
       onClick={onClick}
       className="px-2.5 py-1 rounded-full transition-colors"
       style={{
-        background: active ? 'var(--accent)' : 'var(--muted)',
+        background: active ? 'var(--surface-raised)' : 'var(--muted)',
         color: active ? 'var(--foreground)' : 'var(--muted-foreground)',
-        border: '1px solid var(--border)',
+        border: '1px solid ' + (active ? 'var(--border-strong)' : 'var(--border)'),
       }}
     >
       {label}
@@ -449,7 +449,7 @@ function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { bg: string; fg: string; label: string }> = {
     enabled: { bg: 'var(--secondary)', fg: 'var(--foreground)', label: 'Enabled' },
     paused: { bg: 'var(--muted)', fg: 'var(--muted-foreground)', label: 'Paused' },
-    running: { bg: 'var(--muted)', fg: 'var(--accent-foreground)', label: 'Running' },
+    running: { bg: 'var(--surface-raised)', fg: 'var(--foreground)', label: 'Running' },
     queued: { bg: 'var(--muted)', fg: 'var(--muted-foreground)', label: 'Queued' },
     success: { bg: 'var(--secondary)', fg: 'var(--foreground)', label: 'Success' },
     error: { bg: 'var(--destructive)', fg: 'var(--destructive-foreground)', label: 'Error' },
@@ -514,7 +514,7 @@ function IconButton({ children, onClick, disabled, ...rest }: { children: React.
       {...rest}
       className="p-1.5 rounded-md transition-colors disabled:opacity-50"
       style={{ color: 'var(--muted-foreground)' }}
-      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent)' }}
+      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface-raised)' }}
       onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
     >
       {children}
