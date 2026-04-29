@@ -19,6 +19,41 @@ const MODES = [
   { id: 'yolo', label: 'Yolo', icon: Zap, description: 'Fully autonomous — no interruptions' },
 ] as const
 
+/* ─── No-workspace inline prompt (shown inside @-file picker when none selected) ─── */
+function NoWorkspacePrompt({ onClose }: { onClose: () => void }) {
+  const { workspaces, addWorkspace, setActiveWorkspace } = useWorkspaceStore()
+  const hasWorkspaces = workspaces.length > 0
+  return (
+    <div className="px-3 py-3 flex flex-col gap-2">
+      <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+        {hasWorkspaces ? 'No workspace is active. Pick one to browse files:' : 'No workspace selected. Add one to browse files:'}
+      </div>
+      {hasWorkspaces ? (
+        <div className="flex flex-col gap-1 max-h-32 overflow-y-auto">
+          {workspaces.map(ws => (
+            <button
+              key={ws.id}
+              onMouseDown={async () => { await setActiveWorkspace(ws.id); onClose() }}
+              className="text-left px-2 py-1 rounded text-xs wos-hover-sm"
+              style={{ color: 'var(--foreground)' }}
+            >
+              {ws.name}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <button
+        onMouseDown={async () => { await addWorkspace(); onClose() }}
+        className="text-left px-2 py-1 rounded text-xs flex items-center gap-1.5"
+        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+      >
+        <Plus size={11} />
+        <span>Add workspace folder…</span>
+      </button>
+    </div>
+  )
+}
+
 /* ─── Markdown / text renderer ─── */
 function MarkdownContent({ content }: { content: string }) {
   const raw = (typeof content === 'string' ? content : String(content ?? '')).replace(/\n+$/, '')
@@ -1346,11 +1381,7 @@ const SLASH_COMMANDS = [
   { id: 'help',   hint: '/help',    desc: 'Show all commands' },
 ] as const
 
-const AT_COMMANDS = [
-  { id: 'file',    hint: '@file',    desc: 'Attach a file' },
-  { id: 'meeting', hint: '@meeting', desc: 'Attach an analyzed meeting' },
-  { id: 'web',     hint: '@web',     desc: 'Search the web' },
-] as const
+// `@` is a pure file typeahead — no static menu. Use slash commands (`/meeting`) for non-file attachments.
 
 /* ─── Composer ─── */
 function Composer() {
@@ -1371,11 +1402,6 @@ function Composer() {
   const [meetingSubOpen, setMeetingSubOpen] = useState(false)
   const [analyzedMeetings, setAnalyzedMeetings] = useState<MeetingChip[]>([])
   const [pinnedAgent, setPinnedAgent] = useState<string | null>(null)
-
-  // @ command state
-  const [atOpen, setAtOpen] = useState(false)
-  const [atFilter, setAtFilter] = useState('')
-  const [atIndex, setAtIndex] = useState(0)
 
   // File fuzzy-search sub-picker state
   const [filePickerOpen, setFilePickerOpen] = useState(false)
@@ -1404,13 +1430,9 @@ function Composer() {
   const filteredSlashCmds = SLASH_COMMANDS.filter(c =>
     c.id.startsWith(slashFilter.toLowerCase()) || slashFilter === ''
   )
-  const filteredAtCmds = AT_COMMANDS.filter(c =>
-    c.id.startsWith(atFilter.toLowerCase()) || atFilter === ''
-  )
 
   const closeMenus = () => {
     setSlashOpen(false)
-    setAtOpen(false)
     setMeetingSubOpen(false)
     setFilePickerOpen(false)
   }
@@ -1562,34 +1584,6 @@ function Composer() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openFilePicker])
 
-  const executeAt = useCallback(async (cmdId: string) => {
-    // Remove the @word trigger from input
-    setInput(prev => prev.replace(/(?:^|\s)@\w*$/, m => m.startsWith(' ') ? ' ' : ''))
-    closeMenus()
-    setTimeout(resizeTextarea, 0)
-
-    switch (cmdId) {
-      case 'file': void openFilePicker(''); break
-      case 'meeting': {
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const raw = await (window.wos as any).listAnalyzedMeetings?.() ?? []
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          setAnalyzedMeetings(raw.map((m: any) => ({ id: m.id ?? m.meetingId, title: m.title, date: m.date ?? m.startTime })))
-        } catch {
-          setAnalyzedMeetings([])
-        }
-        setMeetingSubOpen(true)
-        break
-      }
-      case 'web':
-        // @web: add chip that signals agent to search the web — handled in handleSend
-        setAttachments(prev => [...prev, { name: '@web', content: '__web_search__', type: 'web' }])
-        break
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openFilePicker])
-
   const addMeetingChip = (meeting: MeetingChip) => {
     setMeetingChips(prev => prev.some(m => m.id === meeting.id) ? prev : [...prev, meeting])
     setMeetingSubOpen(false)
@@ -1609,31 +1603,18 @@ function Composer() {
       setSlashFilter(filter)
       setSlashOpen(true)
       setSlashIndex(0)
-      setAtOpen(false)
       setMeetingSubOpen(false)
     } else {
       setSlashOpen(false)
     }
 
-    // @ detection: last token starts with @
+    // @ detection: open the workspace file typeahead immediately with whatever the user is typing.
     const atMatch = /(?:^|\s)@(\w*)$/.exec(val)
     if (atMatch) {
       const q = atMatch[1] ?? ''
-      setAtFilter(q)
       setSlashOpen(false)
-      // If user is typing a query (>=1 char) that doesn't exactly match a static @ category,
-      // open the workspace file typeahead directly. Empty query keeps the static menu.
-      const staticIds: string[] = AT_COMMANDS.map(c => c.id)
-      if (q.length >= 1 && !staticIds.includes(q.toLowerCase())) {
-        if (!filePickerOpen) void openFilePicker(q)
-        else void refreshFileSearch(q)
-        setAtOpen(false)
-      } else {
-        setAtOpen(true)
-        setAtIndex(0)
-      }
-    } else {
-      setAtOpen(false)
+      if (!filePickerOpen) void openFilePicker(q)
+      else void refreshFileSearch(q)
     }
   }
 
@@ -1645,15 +1626,6 @@ function Composer() {
       if (e.key === 'Enter')     { e.preventDefault(); void executeSlash(filteredSlashCmds[slashIndex]?.id ?? ''); return }
       if (e.key === 'Escape')    { e.preventDefault(); closeMenus(); return }
       if (e.key === 'Tab')       { e.preventDefault(); void executeSlash(filteredSlashCmds[slashIndex]?.id ?? ''); return }
-    }
-
-    // Navigate @ menu
-    if (atOpen && filteredAtCmds.length > 0) {
-      if (e.key === 'ArrowDown') { e.preventDefault(); setAtIndex(i => Math.min(i + 1, filteredAtCmds.length - 1)); return }
-      if (e.key === 'ArrowUp')   { e.preventDefault(); setAtIndex(i => Math.max(i - 1, 0)); return }
-      if (e.key === 'Enter')     { e.preventDefault(); void executeAt(filteredAtCmds[atIndex]?.id ?? ''); return }
-      if (e.key === 'Escape')    { e.preventDefault(); closeMenus(); return }
-      if (e.key === 'Tab')       { e.preventDefault(); void executeAt(filteredAtCmds[atIndex]?.id ?? ''); return }
     }
 
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1673,17 +1645,11 @@ function Composer() {
       text += '\n\n[Attached meeting context: ' + meetingChips.map(m => m.title).join(', ') + ']'
     }
 
-    // @web chip: inject web-search instruction so the agent knows to use web search
-    const hasWebChip = attachments.some(a => a.type === 'web')
-    if (hasWebChip) {
-      text = `[Web search enabled — please search the web as needed to answer this query]\n\n${text}`
-    }
     if (pinnedAgent) {
       text = `[Use the Task tool with preset="${pinnedAgent}" to handle this request.]\n\n${text}`
     }
-    const nonWebAttachments = attachments.filter(a => a.type !== 'web')
 
-    sendMessage(text, nonWebAttachments)
+    sendMessage(text, attachments)
     setInput('')
     setAttachments([])
     setMeetingChips([])
@@ -1826,7 +1792,10 @@ function Composer() {
               </button>
             </div>
             <div className="overflow-y-auto flex-1">
-              {filePickerResults.length === 0 && filePickerQuery !== '' && (
+              {!workspaces[0] && (
+                <NoWorkspacePrompt onClose={() => setFilePickerOpen(false)} />
+              )}
+              {workspaces[0] && filePickerResults.length === 0 && filePickerQuery !== '' && (
                 <div className="px-3 py-4 text-center text-xs" style={{ color: 'var(--muted-foreground)' }}>No files found</div>
               )}
               {filePickerResults.map((f, i) => (
@@ -1857,24 +1826,6 @@ function Composer() {
                 <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Browse computer…</span>
               </button>
             </div>
-          </div>
-        )}
-
-        {/* @ command picker */}
-        {atOpen && filteredAtCmds.length > 0 && (
-          <div className="absolute bottom-full mb-2 left-0 right-0 z-50 rounded-xl overflow-hidden py-1"
-            style={{ background: 'var(--popover)', border: '1px solid var(--border)', boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}>
-            {filteredAtCmds.map((cmd, i) => (
-              <button
-                key={cmd.id}
-                onMouseDown={e => { e.preventDefault(); void executeAt(cmd.id) }}
-                className="w-full flex items-center gap-3 px-3 py-2 text-left transition-colors"
-                style={{ background: i === atIndex ? 'rgba(255,255,255,0.06)' : 'transparent' }}
-              >
-                <code className="text-xs font-mono shrink-0 w-16" style={{ color: 'var(--primary)' }}>{cmd.hint}</code>
-                <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{cmd.desc}</span>
-              </button>
-            ))}
           </div>
         )}
 
@@ -1961,7 +1912,7 @@ function Composer() {
               value={input}
               onChange={handleInput}
               onKeyDown={handleKeyDown}
-              placeholder="Send a message… (/ for commands, @ for mentions)"
+              placeholder="Send a message… (/ for commands, @ to attach a file)"
               disabled={isStreaming}
               className="w-full bg-transparent outline-none resize-none leading-relaxed disabled:cursor-not-allowed"
               style={{ minHeight: '32px', maxHeight: '150px', fontSize: '13px', color: 'var(--foreground)' }}

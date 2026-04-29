@@ -14,6 +14,40 @@ interface HomeViewProps {
   onDraftConsumed?: () => void
 }
 
+function NoWorkspacePromptHome({ onClose }: { onClose: () => void }) {
+  const { workspaces, addWorkspace, setActiveWorkspace } = useWorkspaceStore()
+  const hasWorkspaces = workspaces.length > 0
+  return (
+    <div className="px-3 py-3 flex flex-col gap-2">
+      <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+        {hasWorkspaces ? 'No workspace is active. Pick one to browse files:' : 'No workspace selected. Add one to browse files:'}
+      </div>
+      {hasWorkspaces && (
+        <div className="flex flex-col gap-1 max-h-32 overflow-y-auto">
+          {workspaces.map(ws => (
+            <button
+              key={ws.id}
+              onMouseDown={async () => { await setActiveWorkspace(ws.id); onClose() }}
+              className="text-left px-2 py-1 rounded text-xs"
+              style={{ color: 'var(--foreground)', background: 'transparent' }}
+            >
+              {ws.name}
+            </button>
+          ))}
+        </div>
+      )}
+      <button
+        onMouseDown={async () => { await addWorkspace(); onClose() }}
+        className="text-left px-2 py-1 rounded text-xs flex items-center gap-1.5"
+        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+      >
+        <Plus size={11} />
+        <span>Add workspace folder…</span>
+      </button>
+    </div>
+  )
+}
+
 const MODES = [
   { id: 'default', label: 'Default', icon: Shield },
   { id: 'plan', label: 'Plan', icon: BookOpen },
@@ -37,11 +71,6 @@ const SLASH_COMMANDS = [
   { id: 'help',   hint: '/help',    desc: 'Show all commands' },
 ] as const
 
-const AT_COMMANDS = [
-  { id: 'file',    hint: '@file',    desc: 'Attach a file' },
-  { id: 'web',     hint: '@web',     desc: 'Search the web' },
-] as const
-
 type MeetingChip = { id: string; title: string; date?: string }
 
 export function HomeView({ onSendMessage, initialDraft, onDraftConsumed }: HomeViewProps) {
@@ -56,11 +85,6 @@ export function HomeView({ onSendMessage, initialDraft, onDraftConsumed }: HomeV
   const [slashOpen, setSlashOpen] = useState(false)
   const [slashFilter, setSlashFilter] = useState('')
   const [slashIndex, setSlashIndex] = useState(0)
-
-  // @ command state
-  const [atOpen, setAtOpen] = useState(false)
-  const [atFilter, setAtFilter] = useState('')
-  const [atIndex, setAtIndex] = useState(0)
 
   // File picker state
   const [filePickerOpen, setFilePickerOpen] = useState(false)
@@ -101,13 +125,10 @@ export function HomeView({ onSendMessage, initialDraft, onDraftConsumed }: HomeV
   const filteredSlashCmds = SLASH_COMMANDS.filter(c =>
     c.id.startsWith(slashFilter.toLowerCase()) || slashFilter === ''
   )
-  const filteredAtCmds = AT_COMMANDS.filter(c =>
-    c.id.startsWith(atFilter.toLowerCase()) || atFilter === ''
-  )
 
   const closeMenus = () => {
     setSlashOpen(false)
-    setAtOpen(false)
+    setFilePickerOpen(false)
   }
 
   const resizeTextarea = () => {
@@ -173,19 +194,6 @@ export function HomeView({ onSendMessage, initialDraft, onDraftConsumed }: HomeV
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openFilePicker])
 
-  const executeAt = useCallback(async (cmdId: string) => {
-    setInput(prev => prev.replace(/(?:^|\s)@\w*$/, m => m.startsWith(' ') ? ' ' : ''))
-    closeMenus()
-    setTimeout(resizeTextarea, 0)
-    switch (cmdId) {
-      case 'file': void openFilePicker(); break
-      case 'web':
-        setAttachments(prev => [...prev, { name: '@web', content: '[web search enabled]', type: 'web' as const }])
-        break
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openFilePicker])
-
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value
     setInput(val)
@@ -198,20 +206,17 @@ export function HomeView({ onSendMessage, initialDraft, onDraftConsumed }: HomeV
       setSlashFilter(val.slice(1))
       setSlashOpen(true)
       setSlashIndex(0)
-      setAtOpen(false)
     } else {
       setSlashOpen(false)
     }
 
-    // @ detection
+    // @ detection: open the workspace file typeahead immediately.
     const atMatch = /(?:^|\s)@(\w*)$/.exec(val)
     if (atMatch) {
-      setAtFilter(atMatch[1])
-      setAtOpen(true)
-      setAtIndex(0)
+      const q = atMatch[1] ?? ''
       setSlashOpen(false)
-    } else {
-      setAtOpen(false)
+      if (!filePickerOpen) void openFilePicker(q)
+      else void refreshFileSearch(q)
     }
   }
 
@@ -222,13 +227,6 @@ export function HomeView({ onSendMessage, initialDraft, onDraftConsumed }: HomeV
       if (e.key === 'Enter')     { e.preventDefault(); void executeSlash(filteredSlashCmds[slashIndex]?.id ?? ''); return }
       if (e.key === 'Escape')    { e.preventDefault(); closeMenus(); return }
       if (e.key === 'Tab')       { e.preventDefault(); void executeSlash(filteredSlashCmds[slashIndex]?.id ?? ''); return }
-    }
-    if (atOpen && filteredAtCmds.length > 0) {
-      if (e.key === 'ArrowDown') { e.preventDefault(); setAtIndex(i => Math.min(i + 1, filteredAtCmds.length - 1)); return }
-      if (e.key === 'ArrowUp')   { e.preventDefault(); setAtIndex(i => Math.max(i - 1, 0)); return }
-      if (e.key === 'Enter')     { e.preventDefault(); void executeAt(filteredAtCmds[atIndex]?.id ?? ''); return }
-      if (e.key === 'Escape')    { e.preventDefault(); closeMenus(); return }
-      if (e.key === 'Tab')       { e.preventDefault(); void executeAt(filteredAtCmds[atIndex]?.id ?? ''); return }
     }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -244,10 +242,7 @@ export function HomeView({ onSendMessage, initialDraft, onDraftConsumed }: HomeV
     if (meetingChips.length > 0) {
       text += '\n\n[Attached meeting context: ' + meetingChips.map(m => m.title).join(', ') + ']'
     }
-    const webSearch = attachments.some(a => a.type === 'web')
-    const fileAttachments = attachments.filter(a => a.type !== 'web')
-    if (webSearch) text = '[Web search enabled — use your search tools to find current information]\n\n' + text
-    onSendMessage(text, fileAttachments)
+    onSendMessage(text, attachments)
     setInput('')
     setAttachments([])
     setMeetingChips([])
@@ -309,34 +304,6 @@ export function HomeView({ onSendMessage, initialDraft, onDraftConsumed }: HomeV
                   }}
                 >
                   <span className="font-mono text-xs shrink-0" style={{ color: 'var(--muted-foreground)', minWidth: '72px' }}>{cmd.hint}</span>
-                  <span style={{ fontSize: '11px', color: 'var(--muted-foreground)' }}>{cmd.desc}</span>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* @ command picker */}
-          {atOpen && filteredAtCmds.length > 0 && (
-            <div
-              className="absolute bottom-full mb-1.5 left-0 rounded-xl overflow-hidden z-50 py-1"
-              style={{
-                background: 'var(--popover)',
-                border: '1px solid var(--border)',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-                minWidth: '200px',
-              }}
-            >
-              {filteredAtCmds.map((cmd, i) => (
-                <button
-                  key={cmd.id}
-                  onMouseDown={e => { e.preventDefault(); void executeAt(cmd.id) }}
-                  className="w-full text-left px-3 py-2 flex items-center gap-3 transition-colors"
-                  style={{
-                    background: i === atIndex ? 'var(--accent)' : 'transparent',
-                    color: 'var(--foreground)',
-                  }}
-                >
-                  <span className="font-mono text-xs shrink-0" style={{ color: 'var(--muted-foreground)', minWidth: '60px' }}>{cmd.hint}</span>
                   <span style={{ fontSize: '11px', color: 'var(--muted-foreground)' }}>{cmd.desc}</span>
                 </button>
               ))}
@@ -550,9 +517,12 @@ export function HomeView({ onSendMessage, initialDraft, onDraftConsumed }: HomeV
               />
             </div>
             <div className="overflow-y-auto flex-1">
-              {filePickerResults.length === 0 && (
+              {!workspaces[0] && (
+                <NoWorkspacePromptHome onClose={() => setFilePickerOpen(false)} />
+              )}
+              {workspaces[0] && filePickerResults.length === 0 && (
                 <div className="px-3 py-6 text-center text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                  {activeWorkspace ? 'No files found — try a different search' : 'Open a workspace to search files'}
+                  No files found — try a different search
                 </div>
               )}
               {filePickerResults.map((f, i) => (

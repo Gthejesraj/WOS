@@ -496,9 +496,6 @@ function AgentCard({
   const [mode, setMode] = useState((agent?.mode ?? resolved?.mode ?? 'default') as AgentMode)
   const [systemPrompt, setSystemPrompt] = useState(agent?.systemPrompt ?? resolved?.systemPrompt ?? '')
   const [inherit, setInherit] = useState(inherits)
-  const [liveSource, setLiveSource] = useState((agent?.config?.liveSource as string) ?? 'captions')
-  const [autoSummarize, setAutoSummarize] = useState((agent?.config?.autoSummarize as boolean | undefined) ?? true)
-  const [slackChannel, setSlackChannel] = useState((agent?.config?.defaultSlackChannel as string) ?? '')
   const [openaiKey, setOpenaiKey] = useState('')
   const [anthropicKey, setAnthropicKey] = useState('')
 
@@ -507,9 +504,6 @@ function AgentCard({
     setMode((agent?.mode ?? resolved?.mode ?? 'default') as AgentMode)
     setSystemPrompt(agent?.systemPrompt ?? resolved?.systemPrompt ?? '')
     setInherit(agentKey === 'meeting' && (agent?.inheritFrom ?? 'wos') === 'wos')
-    setLiveSource((agent?.config?.liveSource as string) ?? 'captions')
-    setAutoSummarize((agent?.config?.autoSummarize as boolean | undefined) ?? true)
-    setSlackChannel((agent?.config?.defaultSlackChannel as string) ?? '')
   }, [agent, resolved, agentKey])
 
   const disabledByInherit = agentKey === 'meeting' && inherit
@@ -567,26 +561,6 @@ function AgentCard({
         />
       </Field>
 
-      {agentKey === 'meeting' && (
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Live Source">
-            <select value={liveSource} onChange={e => setLiveSource(e.target.value)} className="w-full px-3 py-2 rounded-md outline-none" style={inputStyle}>
-              <option value="captions">Captions (recommended)</option>
-            </select>
-            <p className="mt-1" style={{ color: 'var(--muted-foreground)', fontSize: '11px' }}>
-              v1 ships captions-only. WebRTC audio capture is paused while we build out a webm→wav decoder.
-            </p>
-          </Field>
-          <Field label="Default Slack Channel">
-            <input value={slackChannel} onChange={e => setSlackChannel(e.target.value)} className="w-full px-3 py-2 rounded-md outline-none" style={inputStyle} placeholder="#meetings" />
-          </Field>
-          <label className="flex items-center gap-2" style={{ color: 'var(--secondary-foreground)', fontSize: '12px' }}>
-            <input type="checkbox" checked={autoSummarize} onChange={e => setAutoSummarize(e.target.checked)} />
-            Auto-summarize after meeting ends
-          </label>
-        </div>
-      )}
-
       <div className="grid grid-cols-2 gap-3">
         <Field label={`OpenAI key ${agent?.config?.openaiApiKeySet ? '(configured)' : ''}`}>
           <input type="password" value={openaiKey} onChange={e => setOpenaiKey(e.target.value)} className="w-full px-3 py-2 rounded-md outline-none" style={inputStyle} placeholder="Leave blank to keep current" />
@@ -603,7 +577,6 @@ function AgentCard({
           model: disabledByInherit ? null : model,
           mode: disabledByInherit ? null : mode,
           systemPrompt: disabledByInherit ? null : systemPrompt,
-          config: { liveSource, autoSummarize, defaultSlackChannel: slackChannel },
         }, {
           ...(openaiKey ? { openai: openaiKey } : {}),
           ...(anthropicKey ? { anthropic: anthropicKey } : {}),
