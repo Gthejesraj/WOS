@@ -94,6 +94,7 @@ export function AutomationsView() {
 function ScheduledTab() {
   const [jobs, setJobs] = useState<ScheduledJob[]>([])
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [editing, setEditing] = useState<ScheduledJob | null>(null)
 
   const reload = async () => {
     const list = await wos().automations.listScheduled()
@@ -143,6 +144,13 @@ function ScheduledTab() {
   return (
     <>
       <NLAuthorBox kind="scheduled" onDraft={onDraft} />
+      {editing && (
+        <EditScheduledModal
+          job={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); void reload() }}
+        />
+      )}
       {jobs.length === 0 ? (
         <EmptyState
           icon={<Clock size={24} />}
@@ -165,7 +173,7 @@ function ScheduledTab() {
                   <IconButton aria-label={j.enabled ? 'Pause' : 'Resume'} onClick={() => void togglePaused(j)}>
                     {j.enabled ? <Pause size={13} /> : <Play size={13} />}
                   </IconButton>
-                  <IconButton aria-label="Edit"><Pencil size={13} /></IconButton>
+                  <IconButton aria-label="Edit" onClick={() => setEditing(j)}><Pencil size={13} /></IconButton>
                   <IconButton aria-label="Delete" onClick={async () => {
                     await wos().automations.deleteScheduled(j.id)
                     void reload()
@@ -184,6 +192,7 @@ function ScheduledTab() {
 
 function HooksTab() {
   const [hooks, setHooks] = useState<Hook[]>([])
+  const [editing, setEditing] = useState<Hook | null>(null)
 
   const reload = async () => {
     const list = await wos().automations.listHooks()
@@ -206,6 +215,13 @@ function HooksTab() {
   return (
     <>
       <NLAuthorBox kind="hook" onDraft={onDraft} />
+      {editing && (
+        <EditHookModal
+          hook={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); void reload() }}
+        />
+      )}
       {hooks.length === 0 ? (
         <EmptyState
           icon={<Webhook size={24} />}
@@ -221,12 +237,15 @@ function HooksTab() {
               subtitle={`${h.event} → ${h.type}`}
               status={h.enabled ? 'enabled' : 'paused'}
               actions={
-                <IconButton aria-label="Delete" onClick={async () => {
-                  await wos().automations.deleteHook(h.id)
-                  void reload()
-                }}>
-                  <Trash2 size={13} />
-                </IconButton>
+                <>
+                  <IconButton aria-label="Edit" onClick={() => setEditing(h)}><Pencil size={13} /></IconButton>
+                  <IconButton aria-label="Delete" onClick={async () => {
+                    await wos().automations.deleteHook(h.id)
+                    void reload()
+                  }}>
+                    <Trash2 size={13} />
+                  </IconButton>
+                </>
               }
             />
           ))}
@@ -238,6 +257,7 @@ function HooksTab() {
 
 function StandingTab() {
   const [orders, setOrders] = useState<StandingOrder[]>([])
+  const [editing, setEditing] = useState<StandingOrder | null>(null)
 
   const reload = async () => {
     const list = await wos().automations.listStandingOrders()
@@ -259,6 +279,13 @@ function StandingTab() {
   return (
     <>
       <NLAuthorBox kind="standing-order" onDraft={onDraft} />
+      {editing && (
+        <EditStandingModal
+          order={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); void reload() }}
+        />
+      )}
       {orders.length === 0 ? (
         <EmptyState
           icon={<Shield size={24} />}
@@ -274,12 +301,15 @@ function StandingTab() {
               subtitle={o.body.length > 90 ? `${o.body.slice(0, 90)}…` : o.body}
               status={o.enabled ? 'enabled' : 'paused'}
               actions={
-                <IconButton aria-label="Delete" onClick={async () => {
-                  await wos().automations.deleteStandingOrder(o.id)
-                  void reload()
-                }}>
-                  <Trash2 size={13} />
-                </IconButton>
+                <>
+                  <IconButton aria-label="Edit" onClick={() => setEditing(o)}><Pencil size={13} /></IconButton>
+                  <IconButton aria-label="Delete" onClick={async () => {
+                    await wos().automations.deleteStandingOrder(o.id)
+                    void reload()
+                  }}>
+                    <Trash2 size={13} />
+                  </IconButton>
+                </>
               }
             />
           ))}
@@ -531,5 +561,259 @@ function EmptyState({ icon, title, description }: { icon: React.ReactNode; title
       <div className="text-sm" style={{ color: 'var(--foreground)' }}>{title}</div>
       <div className="text-xs max-w-md" style={{ color: 'var(--muted-foreground)' }}>{description}</div>
     </div>
+  )
+}
+
+// ── Edit modals ────────────────────────────────────────────────────
+
+function ModalShell({ title, onClose, children, footer }: { title: string; onClose: () => void; children: React.ReactNode; footer: React.ReactNode }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.45)' }}
+      onClick={onClose}
+    >
+      <div
+        className="rounded-xl w-full max-w-lg flex flex-col"
+        style={{ background: 'var(--card)', border: '1px solid var(--border)', maxHeight: '90vh' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
+          <div className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>{title}</div>
+        </div>
+        <div className="px-4 py-3 flex-1 overflow-y-auto flex flex-col gap-3">{children}</div>
+        <div className="px-4 py-3 border-t flex items-center justify-end gap-2" style={{ borderColor: 'var(--border)' }}>
+          {footer}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function FormField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{label}</span>
+      {children}
+    </label>
+  )
+}
+
+function inputStyle(): React.CSSProperties {
+  return {
+    background: 'var(--input)',
+    color: 'var(--foreground)',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius-sm, 6px)',
+    padding: '6px 10px',
+    fontSize: '13px',
+    outline: 'none',
+  }
+}
+
+function btnPrimary(): React.CSSProperties {
+  return {
+    background: 'var(--foreground)',
+    color: 'var(--background)',
+    border: '1px solid var(--border-strong)',
+    borderRadius: 'var(--radius-sm, 6px)',
+    padding: '6px 12px',
+    fontSize: '13px',
+  }
+}
+
+function btnSecondary(): React.CSSProperties {
+  return {
+    background: 'transparent',
+    color: 'var(--muted-foreground)',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius-sm, 6px)',
+    padding: '6px 12px',
+    fontSize: '13px',
+  }
+}
+
+function EditScheduledModal({ job, onClose, onSaved }: { job: ScheduledJob; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(job.name)
+  const [cronExpr, setCronExpr] = useState(job.cronExpr ?? '')
+  const [runAt, setRunAt] = useState(job.runAt ? new Date(job.runAt).toISOString().slice(0, 16) : '')
+  const [target, setTarget] = useState(job.target)
+  const [prompt, setPrompt] = useState(job.prompt)
+  const [enabled, setEnabled] = useState<boolean>(!!job.enabled)
+  const [saving, setSaving] = useState(false)
+
+  const submit = async () => {
+    setSaving(true)
+    try {
+      const r = await wos().automations.upsertScheduled({
+        id: job.id,
+        name,
+        cronExpr: cronExpr.trim() ? cronExpr.trim() : null,
+        runAt: runAt ? new Date(runAt).getTime() : null,
+        tz: 'local',
+        target,
+        prompt,
+        enabled,
+      })
+      if (!r?.ok) {
+        alert(r?.error ?? 'Could not save')
+        return
+      }
+      onSaved()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <ModalShell
+      title="Edit scheduled job"
+      onClose={onClose}
+      footer={
+        <>
+          <button onClick={onClose} style={btnSecondary()}>Cancel</button>
+          <button onClick={() => void submit()} disabled={saving || !name || !target || !prompt} style={btnPrimary()}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </>
+      }
+    >
+      <FormField label="Name">
+        <input style={inputStyle()} value={name} onChange={e => setName(e.target.value)} />
+      </FormField>
+      <FormField label="Cron expression (5-field)">
+        <input style={inputStyle()} value={cronExpr} placeholder="e.g. 0 9 * * 1-5" onChange={e => setCronExpr(e.target.value)} />
+      </FormField>
+      <FormField label="One-shot run at (leave empty for cron)">
+        <input style={inputStyle()} type="datetime-local" value={runAt} onChange={e => setRunAt(e.target.value)} />
+      </FormField>
+      <FormField label="Target conversation">
+        <input style={inputStyle()} value={target} placeholder='"new" or conversation id' onChange={e => setTarget(e.target.value)} />
+      </FormField>
+      <FormField label="Prompt">
+        <textarea style={{ ...inputStyle(), minHeight: 80, fontFamily: 'inherit' }} value={prompt} onChange={e => setPrompt(e.target.value)} />
+      </FormField>
+      <label className="flex items-center gap-2 text-xs" style={{ color: 'var(--foreground)' }}>
+        <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} />
+        Enabled
+      </label>
+    </ModalShell>
+  )
+}
+
+const HOOK_EVENTS = [
+  'message:received',
+  'conversation:new',
+  'conversation:reset',
+  'app:connected',
+  'app:disconnected',
+  'agent:bootstrap',
+  'agent:error',
+  'session:compact:before',
+  'session:compact:after',
+]
+
+function EditHookModal({ hook, onClose, onSaved }: { hook: Hook; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(hook.name)
+  const [event, setEvent] = useState(hook.event)
+  const [type, setType] = useState<string>(hook.type)
+  const [configText, setConfigText] = useState(() => {
+    try { return JSON.stringify((hook as unknown as { config?: unknown }).config ?? {}, null, 2) } catch { return '{}' }
+  })
+  const [enabled, setEnabled] = useState<boolean>(!!hook.enabled)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const submit = async () => {
+    setErr(null)
+    let config: Record<string, unknown>
+    try { config = JSON.parse(configText || '{}') as Record<string, unknown> } catch { setErr('Config must be valid JSON'); return }
+    setSaving(true)
+    try {
+      const r = await wos().automations.upsertHook({ id: hook.id, name, event, type, config, enabled })
+      if (!r?.ok) { setErr(r?.error ?? 'Could not save'); return }
+      onSaved()
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <ModalShell
+      title="Edit hook"
+      onClose={onClose}
+      footer={
+        <>
+          <button onClick={onClose} style={btnSecondary()}>Cancel</button>
+          <button onClick={() => void submit()} disabled={saving || !name} style={btnPrimary()}>{saving ? 'Saving…' : 'Save'}</button>
+        </>
+      }
+    >
+      <FormField label="Name">
+        <input style={inputStyle()} value={name} onChange={e => setName(e.target.value)} />
+      </FormField>
+      <FormField label="Event">
+        <select style={inputStyle()} value={event} onChange={e => setEvent(e.target.value)}>
+          {HOOK_EVENTS.map(ev => <option key={ev} value={ev}>{ev}</option>)}
+        </select>
+      </FormField>
+      <FormField label="Type">
+        <select style={inputStyle()} value={type} onChange={e => setType(e.target.value)}>
+          <option value="prompt">prompt</option>
+          <option value="skill">skill</option>
+          <option value="tool">tool</option>
+        </select>
+      </FormField>
+      <FormField label="Config (JSON)">
+        <textarea style={{ ...inputStyle(), minHeight: 100, fontFamily: 'ui-monospace, monospace' }} value={configText} onChange={e => setConfigText(e.target.value)} />
+      </FormField>
+      <label className="flex items-center gap-2 text-xs" style={{ color: 'var(--foreground)' }}>
+        <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} />
+        Enabled
+      </label>
+      {err && <div className="text-xs" style={{ color: 'var(--destructive)' }}>{err}</div>}
+    </ModalShell>
+  )
+}
+
+function EditStandingModal({ order, onClose, onSaved }: { order: StandingOrder; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(order.name)
+  const [body, setBody] = useState(order.body)
+  const [scope, setScope] = useState(order.scope || 'global')
+  const [enabled, setEnabled] = useState<boolean>(!!order.enabled)
+  const [saving, setSaving] = useState(false)
+
+  const submit = async () => {
+    setSaving(true)
+    try {
+      const r = await wos().automations.upsertStandingOrder({ id: order.id, name, body, scope, enabled })
+      if (!r?.ok) { alert(r?.error ?? 'Could not save'); return }
+      onSaved()
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <ModalShell
+      title="Edit standing order"
+      onClose={onClose}
+      footer={
+        <>
+          <button onClick={onClose} style={btnSecondary()}>Cancel</button>
+          <button onClick={() => void submit()} disabled={saving || !name || !body} style={btnPrimary()}>{saving ? 'Saving…' : 'Save'}</button>
+        </>
+      }
+    >
+      <FormField label="Name">
+        <input style={inputStyle()} value={name} onChange={e => setName(e.target.value)} />
+      </FormField>
+      <FormField label="Scope">
+        <input style={inputStyle()} value={scope} placeholder='"global" or conversation/workspace id' onChange={e => setScope(e.target.value)} />
+      </FormField>
+      <FormField label="Body (markdown)">
+        <textarea style={{ ...inputStyle(), minHeight: 140, fontFamily: 'inherit' }} value={body} onChange={e => setBody(e.target.value)} />
+      </FormField>
+      <label className="flex items-center gap-2 text-xs" style={{ color: 'var(--foreground)' }}>
+        <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} />
+        Enabled
+      </label>
+    </ModalShell>
   )
 }

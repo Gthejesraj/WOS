@@ -16,6 +16,7 @@ import { buildMcpTools } from '../mcp/manager'
 import { readSkillTool, readAppSkillTool } from '../skills/manager'
 import { readRuleTool } from '../rules/manager'
 import { meetingTools } from './meetings'
+import { automationTools } from './automations'
 import path from 'node:path'
 
 export interface ToolContext {
@@ -100,6 +101,7 @@ export function getAllTools(): Tool[] {
     readAppSkillTool,
     readRuleTool,
     ...ensureValidNames(meetingTools, 'meetings'),
+    ...ensureValidNames(automationTools, 'automations'),
     ...ensureValidNames(buildConnectedAppTools(), 'apps'),
     ...ensureValidNames(buildMcpTools(), 'mcp'),
   ]
