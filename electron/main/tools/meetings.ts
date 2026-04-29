@@ -63,10 +63,10 @@ export const meetingTools: Tool[] = [
       properties: { id: { type: 'string' } },
       required: ['id'],
     },
-    async execute(input) {
+    async execute(input, ctx) {
       const meeting = getMeeting((input as { id: string }).id)
       if (!meeting?.transcript) return { output: {}, error: 'Meeting not found or has no transcript.' }
-      const result = await analyzeTranscript(meeting.transcript, meeting.title)
+      const result = await analyzeTranscript(meeting.transcript, meeting.title, ctx.signal)
       return { output: result }
     },
   },
@@ -78,10 +78,10 @@ export const meetingTools: Tool[] = [
       properties: { id: { type: 'string' } },
       required: ['id'],
     },
-    async execute(input) {
+    async execute(input, ctx) {
       const meeting = getMeeting((input as { id: string }).id)
       if (!meeting?.transcript) return { output: {}, error: 'Meeting not found or has no transcript.' }
-      const result = await analyzeTranscript(meeting.transcript, meeting.title)
+      const result = await analyzeTranscript(meeting.transcript, meeting.title, ctx.signal)
       return { output: { actionItems: result.actionItems, decisions: result.decisions } }
     },
   },

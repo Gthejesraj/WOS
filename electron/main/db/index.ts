@@ -3,6 +3,7 @@ import { app } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import * as schema from './schema'
+import { runMigrations } from './migrations'
 
 type WosDb = ReturnType<typeof drizzle<typeof schema>>
 
@@ -247,6 +248,7 @@ export async function initDatabase(): Promise<WosDb> {
   try { _sqlDb.run('ALTER TABLE meetings ADD COLUMN processing_message TEXT') } catch { /* already exists */ }
   try { _sqlDb.run('ALTER TABLE meetings ADD COLUMN processing_progress INTEGER DEFAULT 100') } catch { /* already exists */ }
   try { _sqlDb.run('ALTER TABLE meetings ADD COLUMN last_error TEXT') } catch { /* already exists */ }
+  runMigrations(_sqlDb)
   markDirty()
 
   // Seed default settings on first run

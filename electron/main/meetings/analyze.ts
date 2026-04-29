@@ -102,7 +102,7 @@ export function asResult(input: unknown): MeetingAnalysisResult {
   }
 }
 
-export async function analyzeTranscript(transcript: string, title?: string): Promise<MeetingAnalysisResult> {
+export async function analyzeTranscript(transcript: string, title?: string, signal?: AbortSignal): Promise<MeetingAnalysisResult> {
   if (!transcript || !transcript.trim()) {
     throw new Error('Cannot analyze an empty transcript.')
   }
@@ -137,6 +137,7 @@ ${clampTranscript(transcript)}`
     // pad heavily so we never run out mid-JSON. Reasoning models also need
     // headroom for the hidden chain-of-thought.
     maxTokens: 16_384,
+    signal,
   })) {
     if (event.type === 'tool_use_start' && event.name === SAVE_NOTES_TOOL.name) {
       toolInput = event.input
