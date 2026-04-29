@@ -130,6 +130,7 @@ export function applyEvent(blocks: MessageBlock[], event: AgentEvent): MessageBl
           question: event.question,
           questionId: event.questionId,
           choices: event.choices,
+          extras: event.extras,
         },
       ]
 

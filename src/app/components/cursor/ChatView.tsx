@@ -569,8 +569,171 @@ function PlanApprovalBlock({
   )
 }
 
+function AskUserConfirmBlock({
+  question, questionId,
+}: {
+  question: string; questionId: string
+}) {
+  const { answerQuestion } = useAgentStore()
+  return (
+    <div className="my-2 rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--card)' }}>
+      <div className="flex items-center gap-2 px-3 py-2" style={{ borderBottom: '1px solid var(--border)' }}>
+        <HelpCircle size={12} style={{ color: 'var(--amber)' }} />
+        <span className="text-xs font-medium" style={{ color: 'var(--foreground)' }}>Confirm</span>
+      </div>
+      <div className="px-3 py-2.5">
+        <div className="text-sm mb-3" style={{ color: 'var(--secondary-foreground)' }}>{question}</div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => answerQuestion(questionId, 'yes')}
+            className="text-xs px-4 py-1.5 rounded-lg font-medium"
+            style={{ background: 'var(--amber)', color: '#000' }}
+          >
+            Yes
+          </button>
+          <button
+            onClick={() => answerQuestion(questionId, 'no')}
+            className="text-xs px-4 py-1.5 rounded-lg wos-hover"
+            style={{ border: '1px solid var(--border)', color: 'var(--secondary-foreground)' }}
+          >
+            No
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AskUserFileDropBlock({
+  question, questionId, accept,
+}: {
+  question: string; questionId: string; accept?: string[]
+}) {
+  const { answerQuestion } = useAgentStore()
+  const [hover, setHover] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const handleFiles = useCallback(async (files: FileList | File[]) => {
+    const arr = Array.from(files)
+    const summaries = await Promise.all(
+      arr.map(async f => ({
+        name: f.name,
+        size: f.size,
+        type: f.type,
+        path: ((f as unknown) as { path?: string }).path ?? '',
+      }))
+    )
+    void answerQuestion(questionId, JSON.stringify(summaries))
+  }, [answerQuestion, questionId])
+
+  const acceptStr = accept?.join(',')
+
+  return (
+    <div className="my-2 rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--card)' }}>
+      <div className="flex items-center gap-2 px-3 py-2" style={{ borderBottom: '1px solid var(--border)' }}>
+        <HelpCircle size={12} style={{ color: 'var(--amber)' }} />
+        <span className="text-xs font-medium" style={{ color: 'var(--foreground)' }}>Drop files</span>
+      </div>
+      <div className="px-3 py-2.5">
+        <div className="text-sm mb-3" style={{ color: 'var(--secondary-foreground)' }}>{question}</div>
+        <div
+          onDragOver={e => { e.preventDefault(); setHover(true) }}
+          onDragLeave={() => setHover(false)}
+          onDrop={e => {
+            e.preventDefault(); setHover(false)
+            if (e.dataTransfer.files.length > 0) void handleFiles(e.dataTransfer.files)
+          }}
+          onClick={() => inputRef.current?.click()}
+          className="rounded-lg border-2 border-dashed flex flex-col items-center justify-center gap-1 py-6 cursor-pointer transition-colors"
+          style={{
+            borderColor: hover ? 'var(--amber)' : 'var(--border)',
+            background: hover ? 'rgba(245,158,11,0.05)' : 'var(--background)',
+            color: 'var(--secondary-foreground)',
+          }}
+        >
+          <span className="text-xs">Drop files here or click to browse</span>
+          {accept && accept.length > 0 && (
+            <span className="text-[10px]" style={{ color: 'var(--border-strong)' }}>Accepts: {accept.join(', ')}</span>
+          )}
+        </div>
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          accept={acceptStr}
+          className="hidden"
+          onChange={e => { if (e.target.files) void handleFiles(e.target.files) }}
+        />
+      </div>
+    </div>
+  )
+}
+
+function AskUserFormBlock({
+  question, questionId, fields,
+}: {
+  question: string; questionId: string; fields: import('../../../types').AskUserFormField[]
+}) {
+  const { answerQuestion } = useAgentStore()
+  const [vals, setVals] = useState<Record<string, string | boolean | number>>({})
+  const submit = () => {
+    const missing = fields.filter(f => f.required && (vals[f.key] === undefined || vals[f.key] === ''))
+    if (missing.length) return
+    void answerQuestion(questionId, JSON.stringify(vals))
+  }
+  return (
+    <div className="my-2 rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--card)' }}>
+      <div className="flex items-center gap-2 px-3 py-2" style={{ borderBottom: '1px solid var(--border)' }}>
+        <HelpCircle size={12} style={{ color: 'var(--amber)' }} />
+        <span className="text-xs font-medium" style={{ color: 'var(--foreground)' }}>Form</span>
+      </div>
+      <div className="px-3 py-2.5 space-y-2">
+        <div className="text-sm mb-1" style={{ color: 'var(--secondary-foreground)' }}>{question}</div>
+        {fields.map(f => (
+          <div key={f.key} className="flex flex-col gap-1">
+            <label className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+              {f.label}{f.required ? ' *' : ''}
+            </label>
+            {f.type === 'textarea' ? (
+              <textarea
+                placeholder={f.placeholder}
+                value={(vals[f.key] as string) ?? ''}
+                onChange={e => setVals(v => ({ ...v, [f.key]: e.target.value }))}
+                className="text-sm rounded-lg px-3 py-1.5 outline-none min-h-[60px]"
+                style={{ background: 'var(--background)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+              />
+            ) : f.type === 'boolean' ? (
+              <input
+                type="checkbox"
+                checked={Boolean(vals[f.key])}
+                onChange={e => setVals(v => ({ ...v, [f.key]: e.target.checked }))}
+              />
+            ) : (
+              <input
+                type={f.type === 'number' ? 'number' : 'text'}
+                placeholder={f.placeholder}
+                value={(vals[f.key] as string) ?? ''}
+                onChange={e => setVals(v => ({ ...v, [f.key]: f.type === 'number' ? Number(e.target.value) : e.target.value }))}
+                className="text-sm rounded-lg px-3 py-1.5 outline-none"
+                style={{ background: 'var(--background)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+              />
+            )}
+          </div>
+        ))}
+        <button
+          onClick={submit}
+          className="text-xs px-3 py-1.5 rounded-lg font-medium mt-2"
+          style={{ background: 'var(--amber)', color: '#000' }}
+        >
+          Submit
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function AskUserBlock({
-  question, questionId, choices, answer, interrupted,
+  question, questionId, choices, answer, interrupted, extras,
 }: Extract<MessageBlock, { type: 'ask_user' }>) {
   const [localAnswer, setLocalAnswer] = useState('')
   const { answerQuestion } = useAgentStore()
@@ -581,11 +744,26 @@ function AskUserBlock({
       <div className="rounded-lg px-3 py-2 my-2 opacity-60" style={{ border: '1px solid var(--border)', background: 'var(--card)' }}>
         <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>❓ {question}</div>
         <div className="text-sm mt-0.5" style={{ color: cancelled ? 'var(--amber)' : 'var(--secondary-foreground)' }}>
-          {cancelled ? '⚠ cancelled — previous run did not finish' : `→ ${answer}`}
+          {cancelled ? '⚠ cancelled — previous run did not finish' : `→ ${answer.length > 200 ? answer.slice(0, 200) + '…' : answer}`}
         </div>
       </div>
     )
   }
+
+  const kind = extras?.kind ?? (choices && choices.length > 0 ? 'choice' : 'text')
+
+  if (kind === 'confirm') {
+    return <AskUserConfirmBlock question={question} questionId={questionId} />
+  }
+  if (kind === 'fileDrop') {
+    return <AskUserFileDropBlock question={question} questionId={questionId} accept={extras?.accept} />
+  }
+  if (kind === 'form' && extras?.fields && extras.fields.length > 0) {
+    return <AskUserFormBlock question={question} questionId={questionId} fields={extras.fields} />
+  }
+  // 'picker' falls through to text+choices for now (fed by the agent into `choices`).
+  // 'text' and 'choice' share the original UI.
+  const allowFreeform = extras?.allowFreeform !== false
 
   return (
     <div className="my-2 rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--card)' }}>
@@ -609,35 +787,37 @@ function AskUserBlock({
             ))}
           </div>
         )}
-        {choices && choices.length > 0 && (
+        {choices && choices.length > 0 && allowFreeform && (
           <div className="flex items-center gap-2 mb-2.5">
             <div className="h-px flex-1" style={{ background: 'var(--border)' }} />
             <span className="text-[10px]" style={{ color: 'var(--border-strong)' }}>or type your answer</span>
             <div className="h-px flex-1" style={{ background: 'var(--border)' }} />
           </div>
         )}
-        <div className="flex gap-2">
-          <input
-            value={localAnswer}
-            onChange={e => setLocalAnswer(e.target.value)}
-            placeholder="Type your answer…"
-            className="flex-1 text-sm rounded-lg px-3 py-1.5 outline-none"
-            style={{ background: 'var(--background)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && localAnswer.trim()) {
-                answerQuestion(questionId, localAnswer.trim())
-              }
-            }}
-          />
-          <button
-            onClick={() => { if (localAnswer.trim()) answerQuestion(questionId, localAnswer.trim()) }}
-            disabled={!localAnswer.trim()}
-            className="text-xs px-3 py-1.5 rounded-lg disabled:opacity-40 transition-colors font-medium"
-            style={{ background: 'var(--amber)', color: '#000' }}
-          >
-            Send
-          </button>
-        </div>
+        {(allowFreeform || !choices || choices.length === 0) && (
+          <div className="flex gap-2">
+            <input
+              value={localAnswer}
+              onChange={e => setLocalAnswer(e.target.value)}
+              placeholder="Type your answer…"
+              className="flex-1 text-sm rounded-lg px-3 py-1.5 outline-none"
+              style={{ background: 'var(--background)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && localAnswer.trim()) {
+                  answerQuestion(questionId, localAnswer.trim())
+                }
+              }}
+            />
+            <button
+              onClick={() => { if (localAnswer.trim()) answerQuestion(questionId, localAnswer.trim()) }}
+              disabled={!localAnswer.trim()}
+              className="text-xs px-3 py-1.5 rounded-lg disabled:opacity-40 transition-colors font-medium"
+              style={{ background: 'var(--amber)', color: '#000' }}
+            >
+              Send
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

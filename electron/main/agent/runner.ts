@@ -219,8 +219,8 @@ export class AgentRunner {
         permissionStore: this.permissionStore,
         onPermissionRequest: (toolName, toolId, args) =>
           this.requestPermission(toolName, toolId, args, emit),
-        onAskUser: (question, questionId, choices) =>
-          this.askUser(question, questionId, choices, emit),
+        onAskUser: (question, questionId, choices, extras) =>
+          this.askUser(question, questionId, choices, emit, extras),
         onEvent: emit,
       })) {
         if (signal.aborted) break
@@ -433,8 +433,8 @@ export class AgentRunner {
         permissionStore: this.permissionStore,
         onPermissionRequest: (toolName, toolId, args) =>
           this.requestPermission(toolName, toolId, args, emit),
-        onAskUser: (question, questionId, choices) =>
-          this.askUser(question, questionId, choices, emit),
+        onAskUser: (question, questionId, choices, extras) =>
+          this.askUser(question, questionId, choices, emit, extras),
         onEvent: emit,
       })) {
         if (signal.aborted) break
@@ -525,9 +525,10 @@ export class AgentRunner {
     questionId: string,
     choices: string[] | undefined,
     emit: (e: AgentEvent) => void,
+    extras?: import('../../../src/types').AskUserExtras,
   ): Promise<string> {
     return new Promise(resolve => {
-      emit({ type: 'ask_user', question, questionId, choices })
+      emit({ type: 'ask_user', question, questionId, choices, extras })
       this.askUserResolvers.set(questionId, { resolve, emit })
     })
   }

@@ -23,7 +23,7 @@ export interface ToolContext {
   signal: AbortSignal
   yieldEvent: (event: AgentEvent) => void | Promise<void>
   onPermissionRequest: (toolName: string, toolId: string, args: unknown) => Promise<'allow' | 'allow-session' | 'deny'>
-  onAskUser: (question: string, questionId: string, choices?: string[]) => Promise<string>
+  onAskUser: (question: string, questionId: string, choices?: string[], extras?: import('../../../src/types').AskUserExtras) => Promise<string>
   toolId?: string
   /** Parent conversation history — available to Task (subagent) tool for fork mode. */
   parentMessages?: ReadonlyArray<{ role: 'user' | 'assistant'; content: unknown }>

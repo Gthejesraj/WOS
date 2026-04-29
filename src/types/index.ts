@@ -1,6 +1,37 @@
 export type AgentMode = 'default' | 'plan' | 'yolo'
 export type ViewType = 'home' | 'chat' | 'settings' | 'apps' | 'meetings'
 
+/**
+ * Render-component protocol for `ask_user`. The agent declares the kind of
+ * input it wants from the user and ChatView renders the matching component
+ * inline. `kind` is optional/back-compat: omitting it means plain text
+ * (or 'choice' if `choices` is set).
+ */
+export type AskUserKind = 'text' | 'choice' | 'confirm' | 'fileDrop' | 'picker' | 'form'
+
+export interface AskUserFormField {
+  key: string
+  label: string
+  type: 'text' | 'textarea' | 'number' | 'boolean'
+  placeholder?: string
+  required?: boolean
+}
+
+export interface AskUserExtras {
+  /** Render kind. If omitted, treat as 'text' (or 'choice' when `choices` set). */
+  kind?: AskUserKind
+  /** For fileDrop: accepted MIME types or extensions. */
+  accept?: string[]
+  /** For picker: source registry name (channel|repo|meeting|calendar). */
+  source?: 'channel' | 'repo' | 'meeting' | 'calendar'
+  /** For picker: allow multiple selections. */
+  multi?: boolean
+  /** For choice: also allow free-text answer. */
+  allowFreeform?: boolean
+  /** For form: schema. */
+  fields?: AskUserFormField[]
+}
+
 export type AgentEvent =
   | { type: 'text_delta'; content: string }
   | { type: 'reasoning_delta'; content: string }
@@ -15,7 +46,7 @@ export type AgentEvent =
   | { type: 'subagent_end'; agentId: string; result: string }
   | { type: 'permission_request'; toolName: string; toolId: string; args: unknown }
   | { type: 'permission_decided'; toolId: string; decision: 'allowed' | 'denied' }
-  | { type: 'ask_user'; question: string; questionId: string; choices?: string[] }
+  | { type: 'ask_user'; question: string; questionId: string; choices?: string[]; extras?: AskUserExtras }
   | { type: 'ask_user_answered'; questionId: string; answer: string }
   | { type: 'plan_ready' }
   | { type: 'turn_start' }
@@ -31,7 +62,7 @@ export type MessageBlock =
   | { type: 'tool_result'; toolId: string; result: unknown; error?: string }
   | { type: 'subagent'; agentId: string; prompt: string; events: AgentEvent[]; result?: string; collapsed?: boolean; interrupted?: boolean }
   | { type: 'permission_request'; toolName: string; toolId: string; args: unknown; decision?: 'allowed' | 'denied'; interrupted?: boolean }
-  | { type: 'ask_user'; question: string; questionId: string; choices?: string[]; answer?: string; interrupted?: boolean }
+  | { type: 'ask_user'; question: string; questionId: string; choices?: string[]; answer?: string; interrupted?: boolean; extras?: AskUserExtras }
   | { type: 'diff'; filePath: string; diff: string; collapsed?: boolean }
   | { type: 'error'; message: string; retryable: boolean }
   | { type: 'compact_notice'; summary: string }

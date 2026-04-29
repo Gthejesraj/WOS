@@ -18,7 +18,7 @@ export type AgentEvent =
   | { type: 'subagent_end'; agentId: string; result: string }
   | { type: 'permission_request'; toolName: string; toolId: string; args: unknown }
   | { type: 'permission_decided'; toolId: string; decision: 'allowed' | 'denied' }
-  | { type: 'ask_user'; question: string; questionId: string; choices?: string[] }
+  | { type: 'ask_user'; question: string; questionId: string; choices?: string[]; extras?: import('../../../src/types').AskUserExtras }
   | { type: 'ask_user_answered'; questionId: string; answer: string }
   | { type: 'plan_ready' }
   | { type: 'turn_start' }
@@ -37,7 +37,7 @@ export interface QueryOptions {
   signal?: AbortSignal
   permissionStore: PermissionStore
   onPermissionRequest: (toolName: string, toolId: string, args: unknown) => Promise<'allow' | 'allow-session' | 'deny'>
-  onAskUser: (question: string, questionId: string, choices?: string[]) => Promise<string>
+  onAskUser: (question: string, questionId: string, choices?: string[], extras?: import('../../../src/types').AskUserExtras) => Promise<string>
   maxDepth?: number
   /** Priority stack (applied in order: override REPLACES base; others append). */
   systemPromptOverride?: string
