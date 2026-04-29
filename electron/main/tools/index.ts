@@ -112,7 +112,31 @@ export async function executeTools(
   const all = getAllTools()
   const tool = all.find(t => t.name === toolName)
   if (!tool) return { output: null as unknown as string, error: `Unknown tool: ${toolName}` }
-  return tool.execute(input, context)
+
+  const { runPreToolUse, runPostToolUse, runOnError } = await import('../hooks/manager')
+  const hookCtx = { workspacePath: context.workspacePath ?? null }
+
+  const pre = await runPreToolUse(toolName, input, hookCtx)
+  if (pre.block) {
+    return {
+      output: '',
+      error: `Blocked by hook: ${pre.reason ?? 'pre-tool-use hook returned block'}`,
+    }
+  }
+
+  let result: ToolResult
+  try {
+    result = await tool.execute(pre.args, context)
+  } catch (err) {
+    const handled = await runOnError(toolName, err, hookCtx)
+    if (handled.handled && handled.result !== undefined) {
+      return handled.result as ToolResult
+    }
+    throw err
+  }
+
+  const mutated = await runPostToolUse(toolName, pre.args, result, hookCtx)
+  return (mutated as ToolResult) ?? result
 }
 
 export function validatePath(filePath: string, workspacePath: string | null): void {

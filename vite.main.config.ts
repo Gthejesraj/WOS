@@ -59,9 +59,6 @@ export default defineConfig({
         'node:assert',
         // Heavy CJS deps that do dynamic requires / native bindings — must be
         // resolved from node_modules at runtime instead of bundled.
-        'playwright',
-        'playwright-core',
-        'chromium-bidi',
         'mammoth',
         'pdf-parse',
         'pdfjs-dist',

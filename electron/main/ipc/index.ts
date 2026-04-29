@@ -7,7 +7,7 @@ import { registerAppsHandlers } from './apps'
 import { registerMcpHandlers } from './mcp'
 import { registerSkillsHandlers } from './skills'
 import { registerRulesHandlers } from './rules'
-import { registerMeetingsHandlers, setMainWindowForMeetings } from './meetings'
+import { registerMeetingsHandlers } from './meetings'
 import { registerDictationHandlers } from './dictation'
 
 let registered = false
@@ -23,7 +23,6 @@ export function registerIpcHandlers(win: BrowserWindow) {
   registerMcpHandlers()
   registerSkillsHandlers()
   registerRulesHandlers()
-  setMainWindowForMeetings(win)
   registerMeetingsHandlers()
   registerDictationHandlers()
 }

@@ -36,6 +36,15 @@ export const subAgentTool: Tool = {
     const preset = (input as SubAgentInput).presetKey ?? (input as SubAgentInput).preset
     const agentId = randomUUID()
 
+    const { runBeforeSubagent } = await import('../hooks/manager')
+    const gate = await runBeforeSubagent(preset ?? 'wos', input, { workspacePath: ctx.workspacePath ?? null })
+    if (gate.block) {
+      const reason = gate.reason ?? 'blocked by hook'
+      await ctx.yieldEvent({ type: 'subagent_start', agentId, prompt: description })
+      await ctx.yieldEvent({ type: 'subagent_end', agentId, result: `Blocked: ${reason}` })
+      return { output: `Subagent blocked: ${reason}`, error: reason }
+    }
+
     await ctx.yieldEvent({ type: 'subagent_start', agentId, prompt: description })
 
     let result = ''
@@ -91,6 +100,7 @@ export const subAgentTool: Tool = {
         onPermissionRequest: ctx.onPermissionRequest,
         onAskUser: ctx.onAskUser,
         maxDepth: 1,
+        agentKey: preset ?? 'wos',
         // Forward side-channel events (stdout/stderr deltas from Bash, etc.)
         // up to the parent runner so the UI can render live output.
         onEvent: (e) => ctx.yieldEvent({ type: 'subagent_event', agentId, event: e }),

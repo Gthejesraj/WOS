@@ -10,8 +10,7 @@
     "package": "env -u ELECTRON_RUN_AS_NODE electron-forge package",
     "make": "env -u ELECTRON_RUN_AS_NODE electron-forge make",
     "lint": "tsc --noEmit",
-    "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test": "vitest run"
   },
   "devDependencies": {
     "@electron-forge/cli": "^7.11.1",
@@ -19,7 +18,6 @@
     "@electron-forge/maker-zip": "^7.11.1",
     "@electron-forge/plugin-vite": "^7.11.1",
     "@electron-forge/shared-types": "^7.11.1",
-    "@playwright/test": "^1.59.1",
     "@tailwindcss/vite": "^4.1.0",
     "@types/node": "^22.15.0",
     "@types/react": "^18.3.0",
@@ -59,7 +57,6 @@
     "motion": "^12.0.0",
     "openai": "^4.99.0",
     "pdf-parse": "^2.4.5",
-    "playwright": "^1.59.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.0.0",

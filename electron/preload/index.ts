@@ -190,15 +190,6 @@ contextBridge.exposeInMainWorld('wos', {
     listCalendarEvents: (): Promise<{ events: unknown[]; error: string | null; connected: boolean }> =>
       ipcRenderer.invoke('meetings:calendar:list'),
 
-    joinInWos: (params: { url: string; title: string }): Promise<{ ok: boolean; error?: string }> =>
-      ipcRenderer.invoke('meetings:join-in-wos', params),
-
-    signInToGoogle: (): Promise<{ ok: boolean; error?: string }> =>
-      ipcRenderer.invoke('meetings:google:sign-in'),
-
-    leaveLiveMeeting: (): Promise<{ ok: boolean; error?: string }> =>
-      ipcRenderer.invoke('meetings:leave-live'),
-
     getPathForFile: (file: File): string =>
       webUtils.getPathForFile(file),
 

@@ -1,4 +1,5 @@
 import type { Tool } from '../tools'
+import type { HookHandlers } from '../hooks/manager'
 
 export interface AppAuthField {
   key: string
@@ -21,6 +22,20 @@ export interface AppManifest {
   authType?: 'token' | 'oauth'
 }
 
+/**
+ * Markdown skill shipped alongside an app. Skills are short procedural
+ * documents the agent can read on-demand (similar to Claude-Code skills).
+ * They show up in the global skill index so the agent knows they exist.
+ */
+export interface AppSkill {
+  /** Stable id, scoped under the app id (e.g. "post-update"). */
+  id: string
+  /** One-line description rendered into the skill index. */
+  description: string
+  /** Markdown body fetched on demand via read_skill. */
+  body: string
+}
+
 export interface AppModule {
   manifest: AppManifest
   /**
@@ -39,4 +54,9 @@ export interface AppModule {
    * return the full credentials (including tokens) that should be persisted.
    */
   initiateOAuth?(creds: Record<string, string>): Promise<{ ok: true; identity: Record<string, unknown>; fullCreds: Record<string, string> } | { ok: false; error: string }>
+  /** Optional: skills shipped with this app (markdown snippets). */
+  skills?: AppSkill[]
+  /** Optional: lifecycle/tool hooks the app wants to register. */
+  hooks?: HookHandlers
 }
+

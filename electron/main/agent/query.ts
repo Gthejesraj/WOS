@@ -47,6 +47,10 @@ export interface QueryOptions {
   /** Direct callback for side-channel events (tool_stdout_delta, etc.) that
    * tools emit during execute() — these are pushed out-of-band with yielded events. */
   onEvent?: (event: AgentEvent) => void
+  /** Identifies which agent definition is running. Drives tool curation
+   * (e.g. "meeting" sees a curated subset) and system-prompt augmentation.
+   * Defaults to "wos". */
+  agentKey?: string
 }
 
 const SYSTEM_PROMPT = `You are WOS, an AI agent assistant. You have access to tools to help accomplish tasks.
@@ -80,7 +84,10 @@ export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEve
     model, messages, userMessage, workspacePath, mode, reasoningEffort,
     signal, permissionStore, onPermissionRequest, onAskUser, maxDepth = 0,
     systemPromptOverride, systemPromptCustom, systemPromptAppend, apiKeyOverride, onEvent,
+    agentKey,
   } = options
+  const { getAgentDef } = await import('./agentDefs')
+  const agentDef = getAgentDef(agentKey ?? 'wos')
 
   // effectiveMode may change mid-run when the user approves a plan in yolo/default mode.
   let effectiveMode: AgentMode = mode
@@ -112,6 +119,7 @@ export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEve
     if (rulesSection) systemPrompt += `\n\n${rulesSection}`
     if (skillsSection) systemPrompt += `\n\n${skillsSection}`
     if (systemPromptCustom) systemPrompt += `\n\n## Custom Instructions\n${systemPromptCustom}`
+    if (agentDef?.systemPrompt) systemPrompt += `\n${agentDef.systemPrompt}`
   }
   if (systemPromptAppend) systemPrompt += `\n\n${systemPromptAppend}`
 
@@ -127,7 +135,8 @@ export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEve
     if (signal?.aborted) return
 
     const { getAllTools } = await import('../tools')
-    const allTools = getAllTools()
+    const allToolsRaw = getAllTools()
+    const allTools = agentDef ? agentDef.toolFilter(allToolsRaw) : allToolsRaw
     const toolDefs = (maxDepth > 0
       ? allTools.filter(t => t.name !== 'Task') // No recursive subagents
       : allTools
@@ -265,6 +274,7 @@ export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEve
           if (rulesSection) systemPrompt += `\n\n${rulesSection}`
           if (skillsSection) systemPrompt += `\n\n${skillsSection}`
           if (systemPromptCustom) systemPrompt += `\n\n## Custom Instructions\n${systemPromptCustom}`
+          if (agentDef?.systemPrompt) systemPrompt += `\n${agentDef.systemPrompt}`
           if (systemPromptAppend) systemPrompt += `\n\n${systemPromptAppend}`
         }
         if (isSynthetic) {

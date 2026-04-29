@@ -745,7 +745,7 @@ function InstalledMcpTab({
       {servers.length === 0 ? (
         <EmptyState
           title="No MCP servers yet"
-          description="Add an MCP server to give WOS access to new tools like Playwright, Git, or filesystem explorers."
+          description="Add an MCP server to give WOS access to new tools like Git, GitHub, or filesystem explorers."
         />
       ) : (
         <div className="grid grid-cols-1 gap-3">
@@ -1255,7 +1255,7 @@ function AddMcpForm({ onBack, onAdded }: { onBack: () => void; onAdded: () => vo
 
         <form onSubmit={onSubmit} className="space-y-4">
           <Field label="Name">
-            <input required value={name} onChange={e => setName(e.target.value)} placeholder="playwright"
+            <input required value={name} onChange={e => setName(e.target.value)} placeholder="filesystem"
               className="w-full px-3 py-2 rounded text-sm outline-none" style={inputStyle} />
           </Field>
 

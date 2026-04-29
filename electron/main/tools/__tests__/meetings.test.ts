@@ -10,13 +10,10 @@ describe('meeting tool naming', () => {
     }
   })
 
-  it('exposes the six-tool surface the agent expects', () => {
+  it('exposes the persisted-meeting tool surface the agent expects', () => {
     const names = meetingTools.map(t => t.name).sort()
     expect(names).toEqual(
       [
-        'meeting_join',
-        'meeting_leave',
-        'meeting_status',
         'meeting_list',
         'meeting_search',
         'meeting_summarize',

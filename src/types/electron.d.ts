@@ -96,9 +96,6 @@ interface WosAPI {
 
   meetings: {
     listCalendarEvents: () => Promise<{ events: unknown[]; error: string | null; connected: boolean }>
-    joinInWos: (params: { url: string; title: string }) => Promise<{ ok: boolean; error?: string }>
-    signInToGoogle: () => Promise<{ ok: boolean; error?: string }>
-    leaveLiveMeeting: () => Promise<{ ok: boolean; error?: string }>
     getPathForFile: (file: File) => string
     openFileDialog: () => Promise<{ file: { name: string; path: string; mimeType: string; size: number } | null; error?: string }>
     findDriveFolder: () => Promise<{ folderId: string | null; error: string | null }>
@@ -108,7 +105,7 @@ interface WosAPI {
     processFile: (params: { filePath: string; fileName: string; mimeType: string }) => Promise<{ transcript: string | null; error: string | null; format?: string }>
     createPending: (params: { title: string; source: 'upload' | 'drive'; sourceUri?: string | null }) => Promise<{ id: string | null; error: string | null }>
     updateStatus: (params: { id: string; status: string; message?: string | null; progress?: number | null; lastError?: string | null }) => Promise<{ ok: boolean; error?: string }>
-    analyze: (params: { id?: string; transcript: string; title?: string; source?: 'upload' | 'drive' | 'live'; sourceUri?: string | null }) => Promise<{ id?: string; result: unknown | null; error: string | null }>
+    analyze: (params: { id?: string; transcript: string; title?: string; source?: 'upload' | 'drive'; sourceUri?: string | null }) => Promise<{ id?: string; result: unknown | null; error: string | null }>
     listSaved: (params?: { query?: string }) => Promise<{ meetings: unknown[]; error: string | null }>
     deleteSaved: (params: { ids: string[] }) => Promise<{ ok: boolean; error?: string }>
     renameSaved: (params: { id: string; title: string }) => Promise<{ ok: boolean; error?: string }>

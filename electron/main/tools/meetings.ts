@@ -1,5 +1,4 @@
 import type { Tool } from './index'
-import { getCurrentLiveSession, leaveLiveSession, startLiveSession } from '../meetings/liveSession'
 import { getMeeting, listMeetings, searchMeetings } from '../meetings/store'
 import { analyzeTranscript } from '../meetings/analyze'
 
@@ -9,51 +8,6 @@ import { analyzeTranscript } from '../meetings/analyze'
 // "Invalid 'tools[N].name'" error users hit when sending a chat message after
 // the meeting registry was added. Always use underscores here.
 export const meetingTools: Tool[] = [
-  {
-    name: 'meeting_join',
-    description: 'Join a Google Meet URL in the WOS-managed Chrome profile.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        url: { type: 'string' },
-        title: { type: 'string' },
-      },
-      required: ['url'],
-    },
-    async execute(input) {
-      const { url, title } = input as { url: string; title?: string }
-      await startLiveSession(url, title ?? 'Live Meeting')
-      return { output: { ok: true } }
-    },
-  },
-  {
-    name: 'meeting_leave',
-    description: 'Leave the current live meeting and save any captured transcript.',
-    inputSchema: { type: 'object', properties: {} },
-    async execute() {
-      await leaveLiveSession()
-      return { output: { ok: true } }
-    },
-  },
-  {
-    name: 'meeting_status',
-    description: 'Get the current live meeting status and recent captured captions.',
-    inputSchema: { type: 'object', properties: {} },
-    async execute() {
-      const session = getCurrentLiveSession()
-      return {
-        output: session
-          ? {
-              live: true,
-              title: session.title,
-              url: session.url,
-              startedAt: session.startedAt,
-              captions: session.captions.slice(-10),
-            }
-          : { live: false },
-      }
-    },
-  },
   {
     name: 'meeting_list',
     description: 'List recently saved meetings.',

@@ -55,7 +55,7 @@ export function registerAppsHandlers() {
   })
 
   ipcMain.handle('apps:disconnect', async (_e, appId: string) => {
-    disconnectApp(appId)
+    await disconnectApp(appId)
     return { success: true }
   })
 

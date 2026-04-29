@@ -1,4 +1,4 @@
-import { BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
+import { clipboard, dialog, ipcMain, shell } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -21,14 +21,8 @@ import {
 } from '../meetings/store'
 import type { MeetingProcessingStatus } from '../meetings/store'
 import { extractTranscript, parseSrt, parseVtt } from '../transcription'
-import { finalizeLiveSession, leaveLiveSession, setMeetingsWindow, startLiveSession } from '../meetings/liveSession'
-import { openChromeInstallPage, openGoogleSignIn } from '../meetings/playwrightSession'
 
 /* ── helpers ── */
-
-function setMainWindowForMeetings(win: BrowserWindow) {
-  setMeetingsWindow(win)
-}
 
 async function getGoogleCreds(): Promise<{ creds: GoogleCreds; connected: boolean } | { error: string; connected: false }> {
   const conn = getConnection('google')
@@ -131,8 +125,6 @@ async function listSlackDestinations(token: string) {
 
 /* ── IPC Handlers ── */
 
-export { setMainWindowForMeetings }
-
 export function registerMeetingsHandlers() {
   ipcMain.handle('meetings:calendar:list', async () => {
     const g = await getGoogleCreds()
@@ -147,35 +139,6 @@ export function registerMeetingsHandlers() {
       return { events: data.items ?? [], error: null, connected: true }
     } catch (err) {
       return { events: [], error: String(err), connected: true }
-    }
-  })
-
-  ipcMain.handle('meetings:google:sign-in', async () => {
-    try {
-      await openGoogleSignIn()
-      return { ok: true }
-    } catch (err) {
-      await openChromeInstallPage().catch(() => {})
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
-    }
-  })
-
-  ipcMain.handle('meetings:join-in-wos', async (_e, { url, title }: { url: string; title: string }) => {
-    try {
-      await startLiveSession(url, title)
-      return { ok: true }
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
-    }
-  })
-
-  ipcMain.handle('meetings:leave-live', async () => {
-    try {
-      await leaveLiveSession()
-      await finalizeLiveSession()
-      return { ok: true }
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }
   })
 

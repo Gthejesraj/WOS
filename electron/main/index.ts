@@ -9,7 +9,7 @@ import { registerIpcHandlers } from './ipc'
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string
 declare const MAIN_WINDOW_VITE_NAME: string
 
-// Enable Chrome DevTools Protocol for E2E testing (Playwright) when debug env is set.
+// Enable Chrome DevTools Protocol for remote debugging when debug env is set.
 if (process.env.WOS_DEBUG === '1' || process.env.WOS_CDP_PORT) {
   const port = process.env.WOS_CDP_PORT || '9222'
   app.commandLine.appendSwitch('remote-debugging-port', port)

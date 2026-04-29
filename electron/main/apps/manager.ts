@@ -7,6 +7,7 @@ import { jiraApp } from './jira'
 import { googleApp } from './google'
 import type { AppModule, AppManifest } from './types'
 import type { Tool } from '../tools'
+import { registerHooks, runOnConnect, runOnDisconnect } from '../hooks/manager'
 
 const REGISTRY: Record<string, AppModule> = {
   [slackApp.manifest.id]: slackApp,
@@ -94,6 +95,7 @@ export async function connectApp(
     }).run()
   }
   notifyWrite()
+  await runAppOnConnect(appId, creds)
   return { success: true, metadata: test.identity }
 }
 
@@ -129,13 +131,17 @@ export async function initiateOAuthApp(
     }).run()
   }
   notifyWrite()
+  if (result.fullCreds) {
+    await runAppOnConnect(appId, result.fullCreds)
+  }
   return { success: true, metadata: result.identity }
 }
 
-export function disconnectApp(appId: string) {
+export async function disconnectApp(appId: string): Promise<void> {
   const db = getDb()
   db.delete(schema.appConnections).where(eq(schema.appConnections.appId, appId)).run()
   notifyWrite()
+  await runAppOnDisconnect(appId)
 }
 
 export function setAppEnabled(appId: string, enabled: boolean) {
@@ -148,10 +154,36 @@ export function setAppEnabled(appId: string, enabled: boolean) {
 }
 
 /**
+ * Register every app-declared hook with the central dispatcher exactly once
+ * per process. Apps may export `hooks` on their `AppModule` and we wire
+ * them under a stable source id (`app:<id>`) so they can be cleared on
+ * disconnect if needed in the future.
+ */
+let APP_HOOKS_REGISTERED = false
+function registerAppHooksOnce(): void {
+  if (APP_HOOKS_REGISTERED) return
+  APP_HOOKS_REGISTERED = true
+  for (const app of Object.values(REGISTRY)) {
+    if (app.hooks) registerHooks(`app:${app.manifest.id}`, app.hooks)
+  }
+}
+
+async function runAppOnConnect(appId: string, creds: Record<string, string>): Promise<void> {
+  registerAppHooksOnce()
+  await runOnConnect(appId, creds)
+}
+
+async function runAppOnDisconnect(appId: string): Promise<void> {
+  registerAppHooksOnce()
+  await runOnDisconnect(appId)
+}
+
+/**
  * Build tool implementations for every connected and enabled app.
  * Called by the query loop at tool-list construction time.
  */
 export function buildConnectedAppTools(): Tool[] {
+  registerAppHooksOnce()
   const out: Tool[] = []
   for (const c of listConnections()) {
     if (!c.enabled) continue
