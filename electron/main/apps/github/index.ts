@@ -1,5 +1,5 @@
 import type { AppModule } from '../types'
-import { getAuthenticatedUser } from './api'
+import { getAuthenticatedUser, listRepos } from './api'
 import { buildGitHubTools } from './tools'
 
 export const githubApp: AppModule = {
@@ -39,6 +39,15 @@ export const githubApp: AppModule = {
   },
   buildTools(creds) {
     return buildGitHubTools(creds as { token: string })
+  },
+  async snapshot(creds) {
+    const repos = await listRepos(creds.token, { sort: 'pushed', per_page: 100 })
+    const mapped = (repos as Array<{ full_name: string; description: string | null; default_branch: string }>).map(r => ({
+      full_name: r.full_name,
+      description: r.description,
+      default_branch: r.default_branch,
+    }))
+    return { repos: mapped }
   },
   skills: [
     {

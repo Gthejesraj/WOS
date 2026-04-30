@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { desc, eq, inArray } from 'drizzle-orm'
-import { getDb, isFts5Available, notifyWrite, queryRaw, schema } from '../db'
+import { getDb, notifyWrite, queryRaw, schema } from '../db'
 
 export interface MeetingAnalysis {
   summary?: string
@@ -88,28 +88,14 @@ export function listMeetings() {
 export function searchMeetings(query: string) {
   const q = query.trim()
   if (!q) return listMeetings()
-  if (isFts5Available()) {
-    return queryRaw(`
-      SELECT m.*
-      FROM meetings_fts f
-      JOIN meetings m ON m.rowid = f.rowid
-      WHERE meetings_fts MATCH ?
-      ORDER BY rank
-      LIMIT 100
-    `, [q])
-  }
-  // Fallback: case-insensitive LIKE across the same fields. Slower for large
-  // tables but identical semantics for our typical "few hundred meetings" load.
-  const like = `%${q.replace(/[%_]/g, m => '\\' + m)}%`
   return queryRaw(`
-    SELECT *
-    FROM meetings
-    WHERE title LIKE ? ESCAPE '\\'
-       OR transcript LIKE ? ESCAPE '\\'
-       OR summary LIKE ? ESCAPE '\\'
-    ORDER BY started_at DESC
+    SELECT m.*
+    FROM meetings_fts f
+    JOIN meetings m ON m.rowid = f.rowid
+    WHERE meetings_fts MATCH ?
+    ORDER BY rank
     LIMIT 100
-  `, [like, like, like])
+  `, [q])
 }
 
 export function deleteMeetings(ids: string[]) {

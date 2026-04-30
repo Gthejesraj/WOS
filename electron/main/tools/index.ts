@@ -17,6 +17,8 @@ import { readSkillTool, readAppSkillTool } from '../skills/manager'
 import { readRuleTool } from '../rules/manager'
 import { meetingTools } from './meetings'
 import { automationTools } from './automations'
+import { buildPluginToolsSync } from '../plugins/loader'
+import { CONTEXT_TOOLS } from './context'
 import path from 'node:path'
 
 export interface ToolContext {
@@ -49,6 +51,8 @@ export interface Tool {
   name: string
   description: string
   inputSchema: object
+  /** When true, this tool only reads data and does not modify state. */
+  readOnly?: boolean
   execute(input: unknown, context: ToolContext): Promise<ToolResult>
 }
 
@@ -100,10 +104,12 @@ export function getAllTools(): Tool[] {
     readSkillTool,
     readAppSkillTool,
     readRuleTool,
+    ...ensureValidNames(CONTEXT_TOOLS, 'context'),
     ...ensureValidNames(meetingTools, 'meetings'),
     ...ensureValidNames(automationTools, 'automations'),
     ...ensureValidNames(buildConnectedAppTools(), 'apps'),
     ...ensureValidNames(buildMcpTools(), 'mcp'),
+    ...ensureValidNames(buildPluginToolsSync(), 'plugins'),
   ]
 }
 

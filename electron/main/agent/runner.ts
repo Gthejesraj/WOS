@@ -6,7 +6,7 @@ import { PermissionStore } from './permissions'
 import { getDb, schema, notifyWrite } from '../db'
 import type { ConversationMessage, ContentBlock } from '../providers/types'
 import { eq, asc, and, desc } from 'drizzle-orm'
-import { randomUUID } from 'crypto'
+import { randomUUID } from 'node:crypto'
 import { resolveAgent } from './settings'
 import { buildStandingOrdersFragment } from '../automations/standingOrders'
 
@@ -207,8 +207,9 @@ export class AgentRunner {
 
     try {
       const agentSettings = await resolveAgent('wos')
-      const standing = buildStandingOrdersFragment({ workspaceId: conv.workspaceId, conversationId })
-      const customPrompt = [agentSettings.systemPrompt || '', standing].filter(Boolean).join('\n').trim() || undefined
+      const standingOrders = buildStandingOrdersFragment()
+      const baseCustom = (agentSettings.systemPrompt || '').trim()
+      const customPrompt = (baseCustom + standingOrders).trim() || undefined
       for await (const event of queryLoop({
         model: conv.model,
         messages: history,
@@ -424,8 +425,9 @@ export class AgentRunner {
 
     try {
       const agentSettings = await resolveAgent('wos')
-      const standing = buildStandingOrdersFragment({ workspaceId: conv.workspaceId, conversationId })
-      const customPrompt = [agentSettings.systemPrompt || '', standing].filter(Boolean).join('\n').trim() || undefined
+      const standingOrders = buildStandingOrdersFragment()
+      const baseCustom = (agentSettings.systemPrompt || '').trim()
+      const customPrompt = (baseCustom + standingOrders).trim() || undefined
       for await (const event of queryLoop({
         model: conv.model,
         messages: history,

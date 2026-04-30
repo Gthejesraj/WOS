@@ -1,13 +1,31 @@
 import { app, BrowserWindow, globalShortcut, nativeImage } from 'electron'
-import path from 'path'
+import path from 'node:path'
+import { eq } from 'drizzle-orm'
 import { createWindow } from './window'
 import { setupTray } from './tray'
 import { setupAutoUpdater } from './updater'
-import { initDatabase } from './db'
+import { initDatabase, getDb, schema, notifyWrite } from './db'
+import { encryptApiKey } from './crypto'
+import { getSettingJSON, readAllSettings } from './db/settings'
 import { registerIpcHandlers } from './ipc'
+import { automationsRuntime } from './automations'
+import { getLoadedPlugins } from './plugins/loader'
+import { scanSkills } from './skills/manager'
+import { scanRules } from './rules/manager'
+import { disconnectAll } from './mcp/manager'
+import { startContextScheduler, stopContextScheduler } from './context/scheduler'
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string
 declare const MAIN_WINDOW_VITE_NAME: string
+
+// E2E hook: when WOS_E2E=1, redirect userData to a hermetic tmp dir provided by
+// the harness. Must run BEFORE any code calls app.getPath('userData') (which
+// happens lazily during whenReady, so setting it here is safe).
+const isE2E = process.env.WOS_E2E === '1'
+if (isE2E && process.env.WOS_USER_DATA) {
+  app.setPath('userData', process.env.WOS_USER_DATA)
+  console.log('[main] WOS_E2E userData ->', process.env.WOS_USER_DATA)
+}
 
 // Enable Chrome DevTools Protocol for remote debugging when debug env is set.
 if (process.env.WOS_DEBUG === '1' || process.env.WOS_CDP_PORT) {
@@ -16,14 +34,27 @@ if (process.env.WOS_DEBUG === '1' || process.env.WOS_CDP_PORT) {
   console.log('[main] CDP enabled on', port)
 }
 
+// Under E2E, force the Chrome DevTools port to be enabled on an ephemeral
+// port. Playwright's _electron.launch() passes --remote-debugging-port=0 on
+// the CLI, but in some packaged builds chromium ignores the CLI switch
+// unless we also append it programmatically before whenReady. Without this
+// the harness times out waiting for "DevTools listening on…".
+if (isE2E) {
+  app.commandLine.appendSwitch('remote-debugging-port', '0')
+}
+
 // Expose for use in other modules
 export let mainWindow: BrowserWindow | null = null
 export { MAIN_WINDOW_VITE_DEV_SERVER_URL, MAIN_WINDOW_VITE_NAME }
 
-// Handle single instance
-const gotLock = app.requestSingleInstanceLock()
-if (!gotLock) {
-  app.quit()
+// Handle single instance. Under E2E we skip the lock so concurrent harness
+// runs (each with its own hermetic WOS_USER_DATA) don't fight each other or
+// a leftover dev/manual Electron for a global lock.
+if (!isE2E) {
+  const gotLock = app.requestSingleInstanceLock()
+  if (!gotLock) {
+    app.quit()
+  }
 }
 
 app.on('second-instance', () => {
@@ -33,20 +64,45 @@ app.on('second-instance', () => {
   }
 })
 
+// Defense-in-depth: never let a stray async error from a child process,
+// timer, or unhandled promise take down the whole app. Log loudly and
+// continue running so the tray daemon and IPC stay alive.
+process.on('uncaughtException', (err) => {
+  console.error('[main] uncaughtException', err)
+})
+process.on('unhandledRejection', (reason) => {
+  console.error('[main] unhandledRejection', reason)
+})
+
 app.whenReady().then(async () => {
   console.log('[main] app ready')
   try {
-    // Init DB first (async with sql.js WASM)
     console.log('[main] initializing database...')
     await initDatabase()
     console.log('[main] database initialized')
 
+    // Start background context refresh scheduler after DB is ready.
+    try {
+      startContextScheduler()
+    } catch (err) {
+      console.warn('[main] context scheduler failed to start', err)
+    }
+
+    // E2E: expose a tiny query helper so Playwright tests can introspect the
+    // DB through `app.evaluate(...)`. This avoids loading better-sqlite3 in
+    // the test runner (it's compiled against Electron's Node ABI, not the
+    // host Node), and reuses the live main-process binding.
+    if (isE2E) {
+      const dbMod = await import('./db')
+      ;(globalThis as { __wos_db?: { queryRaw: (s: string, p: unknown[]) => unknown[] } }).__wos_db = {
+        queryRaw: (sql, params) => dbMod.queryRaw(sql, (params || []) as never),
+      }
+      console.log('[main] WOS_E2E exposed __wos_db helper')
+    }
+
     // Dev-only: seed OpenAI API key from env so E2E runs work out of the box.
     if (process.env.WOS_DEV_OPENAI_KEY) {
       try {
-        const { getDb, schema, notifyWrite } = await import('./db')
-        const { encryptApiKey } = await import('./crypto')
-        const { eq } = await import('drizzle-orm')
         const db = getDb()
         const existing = db.select().from(schema.apiKeys).where(eq(schema.apiKeys.provider, 'openai')).get()
         if (!existing) {
@@ -72,37 +128,43 @@ app.whenReady().then(async () => {
   // Register IPC handlers
   registerIpcHandlers(mainWindow)
 
-  // Start the automations scheduler (cron + one-shot timers from DB).
+  // Automations runtime — boots cron, heartbeat, hook bus, webhooks, task flows.
   try {
-    const { startScheduler } = await import('./automations/scheduler')
-    const { resumeOrCancelStrandedTasks } = await import('./automations/standingOrders')
-    resumeOrCancelStrandedTasks()
-    startScheduler()
+    const cfg = readAllSettings()
+    if (cfg['automations.masterEnabled'] === false) {
+      console.log('[main] automations master switch off, skipping start')
+    } else {
+      automationsRuntime.configure({
+        webhookPort: typeof cfg['automations.webhookPort'] === 'number' ? cfg['automations.webhookPort'] as number : undefined,
+        tunnelProvider: (cfg['automations.tunnelProvider'] as 'cloudflared' | 'none' | undefined) ?? undefined,
+      })
+      automationsRuntime.start()
+      console.log('[main] automations runtime started')
+    }
   } catch (err) {
-    console.warn('[main] startScheduler failed', err)
+    console.warn('[main] automations runtime failed to start', err)
+  }
+
+  // Discover and load WOS plugins (~/.wos/plugins/<id>/) before tools are first built.
+  try {
+    await getLoadedPlugins()
+  } catch (err) {
+    console.warn('[main] plugin discovery failed', err)
   }
 
   // Scan skills and rules from disk so they're available to the first query.
   try {
-    const { scanSkills } = await import('./skills/manager')
     scanSkills()
   } catch (err) {
     console.warn('[main] scanSkills failed', err)
   }
   try {
-    const { scanRules } = await import('./rules/manager')
-    const { getDb, schema } = await import('./db')
-    const { eq } = await import('drizzle-orm')
-    const db = getDb()
-    const row = db.select().from(schema.settings).where(eq(schema.settings.key, 'activeWorkspaceId')).get()
+    const wsId = getSettingJSON<string | null>('activeWorkspaceId', null)
     let wsPath: string | null = null
-    let wsId: string | null = null
-    if (row) {
-      try { wsId = JSON.parse(row.value as string) as string | null } catch { wsId = null }
-      if (wsId) {
-        const ws = db.select().from(schema.workspaces).where(eq(schema.workspaces.id, wsId)).get()
-        wsPath = ws?.path ?? null
-      }
+    if (wsId) {
+      const db = getDb()
+      const ws = db.select().from(schema.workspaces).where(eq(schema.workspaces.id, wsId)).get()
+      wsPath = ws?.path ?? null
     }
     scanRules(wsPath, wsId)
   } catch (err) {
@@ -115,8 +177,18 @@ app.whenReady().then(async () => {
     app.dock?.setIcon(nativeImage.createFromPath(iconPath))
   }
 
-  // Setup tray
-  setupTray(mainWindow)
+  // Setup tray (skip in E2E to avoid leaking a tray icon across runs).
+  if (!isE2E) setupTray(mainWindow)
+
+  // Apply launch-at-login preference (read from settings).
+  try {
+    const launchAtLogin = getSettingJSON<boolean>('automations.launchAtLogin', false)
+    if (app.isPackaged && !isE2E) {
+      app.setLoginItemSettings({ openAtLogin: launchAtLogin, openAsHidden: true })
+    }
+  } catch (err) {
+    console.warn('[main] launch-at-login apply failed', err)
+  }
 
   // Setup auto updater (only in production)
   if (app.isPackaged) {
@@ -127,30 +199,31 @@ app.whenReady().then(async () => {
   globalShortcut.register('CommandOrControl+N', () => {
     mainWindow?.webContents.send('shortcut:new-conversation')
   })
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      mainWindow = createWindow()
-      registerIpcHandlers(mainWindow)
-    }
-    mainWindow?.show()
-  })
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
+  // Tray daemon: never auto-quit on window close. Automations keep running.
+  // Quit only happens via Tray > Quit (which sets isQuitting + app.quit()).
+})
+
+app.on('before-quit', () => {
+  ;(app as unknown as { isQuitting: boolean }).isQuitting = true
+})
+
+app.on('activate', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    mainWindow = createWindow()
+    registerIpcHandlers(mainWindow)
+  } else {
+    mainWindow.show()
+    mainWindow.focus()
   }
+  if (process.platform === 'darwin') app.dock?.show()
 })
 
 app.on('will-quit', async () => {
   globalShortcut.unregisterAll()
-  try {
-    const { stopScheduler } = await import('./automations/scheduler')
-    stopScheduler()
-  } catch { /* ignore */ }
-  try {
-    const { disconnectAll } = await import('./mcp/manager')
-    await disconnectAll()
-  } catch { /* ignore */ }
+  try { stopContextScheduler() } catch { /* ignore */ }
+  try { automationsRuntime.stop() } catch { /* ignore */ }
+  try { await disconnectAll() } catch { /* ignore */ }
 })

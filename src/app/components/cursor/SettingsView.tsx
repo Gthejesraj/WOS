@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft, Key, Settings as SettingsIcon, Info, CheckCircle2, XCircle, Loader2, RefreshCw,
   ChevronDown, Eye, Brain, Folder, Trash2, Plus, Sparkles, ScrollText, Sun, Moon, Monitor,
-  Link, BarChart2,
+  Link, BarChart2, Activity,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { ModelInfo, AgentMode } from '../../../types'
@@ -15,11 +15,12 @@ interface SettingsViewProps {
   onBack: () => void
 }
 
-type SectionId = 'preferences' | 'ai-agents' | 'connections' | 'account'
+type SectionId = 'preferences' | 'ai-agents' | 'automations' | 'connections' | 'account'
 
 const SECTIONS: Array<{ id: SectionId; label: string; icon: React.ElementType; description: string }> = [
   { id: 'preferences', label: 'Preferences', icon: SettingsIcon, description: 'Appearance, theme, default mode' },
   { id: 'ai-agents', label: 'AI & Agents', icon: Brain, description: 'Models, agents, workspaces' },
+  { id: 'automations', label: 'Automations', icon: Activity, description: 'Background runs, webhooks, safety' },
   { id: 'connections', label: 'Connections', icon: Link, description: 'API keys and integrations' },
   { id: 'account', label: 'Account', icon: BarChart2, description: 'Usage, billing, and about' },
 ]
@@ -65,6 +66,7 @@ export function SettingsView({ onBack }: SettingsViewProps) {
         <div className="max-w-2xl mx-auto p-8">
           {section === 'preferences' && <PreferencesSection />}
           {section === 'ai-agents' && <AIAgentsSection />}
+          {section === 'automations' && <AutomationsSection />}
           {section === 'connections' && <ConnectionsSection />}
           {section === 'account' && <AccountSection />}
         </div>
@@ -903,6 +905,259 @@ function AboutSection() {
       >
         Open logs folder
       </button>
+    </div>
+  )
+}
+
+// ---------------- Automations ----------------
+
+interface AutomationsConfig {
+  masterEnabled: boolean
+  launchAtLogin: boolean
+  defaultTimezone: string
+  webhookPort: number
+  tunnelProvider: 'cloudflared' | 'none'
+  heartbeatMinSec: number
+  ledgerRetentionDays: number
+  sandboxDir: string
+  subagentPromptOverride: string
+}
+
+const AUTOMATIONS_DEFAULTS: AutomationsConfig = {
+  masterEnabled: true,
+  launchAtLogin: false,
+  defaultTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+  webhookPort: 47817,
+  tunnelProvider: 'none',
+  heartbeatMinSec: 30,
+  ledgerRetentionDays: 30,
+  sandboxDir: '',
+  subagentPromptOverride: '',
+}
+
+const AUTOMATIONS_KEYS: (keyof AutomationsConfig)[] = [
+  'masterEnabled', 'launchAtLogin', 'defaultTimezone', 'webhookPort',
+  'tunnelProvider', 'heartbeatMinSec', 'ledgerRetentionDays', 'sandboxDir',
+  'subagentPromptOverride',
+]
+
+function AutomationsSection() {
+  const [cfg, setCfg] = useState<AutomationsConfig>(AUTOMATIONS_DEFAULTS)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState<string | null>(null)
+  const [counts, setCounts] = useState<{ total: number; enabled: number }>({ total: 0, enabled: 0 })
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const all = (await window.wos.getSettings()) as Record<string, unknown>
+        if (cancelled) return
+        const next: AutomationsConfig = { ...AUTOMATIONS_DEFAULTS }
+        for (const k of AUTOMATIONS_KEYS) {
+          const v = all[`automations.${k}`]
+          if (v !== undefined && v !== null) (next as unknown as Record<string, unknown>)[k] = v
+        }
+        setCfg(next)
+        try {
+          const list = await window.wos.automations.list()
+          setCounts({ total: list.length, enabled: list.filter(a => a.enabled).length })
+        } catch { /* ignore */ }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  const update = async <K extends keyof AutomationsConfig>(key: K, value: AutomationsConfig[K]) => {
+    setSaving(key as string)
+    setCfg(c => ({ ...c, [key]: value }))
+    try {
+      await window.wos.setSetting(`automations.${key}`, value)
+      // Trigger runtime reload so changes apply (esp. webhook port / tunnel)
+      try { await window.wos.automations.reloadAll() } catch { /* ignore */ }
+      toast.success('Saved', { id: 'auto-save', duration: 1200 })
+    } catch (err) {
+      toast.error(`Save failed: ${(err as Error).message}`)
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="h-4 w-4 animate-spin" style={{ color: 'var(--muted-foreground)' }} />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-10">
+      <SectionHeader
+        title="Automations"
+        subtitle={`${counts.enabled} active · ${counts.total} total. Settings affect the background daemon.`}
+      />
+
+      {/* Master controls */}
+      <div className="space-y-6">
+        <h3 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Master controls</h3>
+
+        <Toggle
+          label="Automations enabled"
+          hint="Master switch. When off, no schedules, hooks, or webhooks fire."
+          checked={cfg.masterEnabled}
+          saving={saving === 'masterEnabled'}
+          onChange={v => update('masterEnabled', v)}
+        />
+
+        <Toggle
+          label="Launch at login"
+          hint="Start WOS in the background when you log in so automations run unattended."
+          checked={cfg.launchAtLogin}
+          saving={saving === 'launchAtLogin'}
+          onChange={v => update('launchAtLogin', v)}
+        />
+
+        <Field label="Default timezone" hint="Used when scheduling new cron automations.">
+          <input
+            type="text"
+            value={cfg.defaultTimezone}
+            onChange={e => setCfg(c => ({ ...c, defaultTimezone: e.target.value }))}
+            onBlur={e => update('defaultTimezone', e.target.value)}
+            className="w-full px-2 py-1.5 rounded-md font-mono"
+            style={{ background: 'var(--surface-base)', border: '1px solid var(--border)', color: 'var(--foreground)', fontSize: '12px' }}
+          />
+        </Field>
+      </div>
+
+      {/* Webhooks */}
+      <div className="space-y-6">
+        <h3 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Webhooks & tunnels</h3>
+
+        <Field label="Local webhook port" hint="Embedded HTTP server for incoming webhook events.">
+          <input
+            type="number"
+            min={1024}
+            max={65535}
+            value={cfg.webhookPort}
+            onChange={e => setCfg(c => ({ ...c, webhookPort: Number(e.target.value) }))}
+            onBlur={e => update('webhookPort', Number(e.target.value))}
+            className="w-32 px-2 py-1.5 rounded-md font-mono"
+            style={{ background: 'var(--surface-base)', border: '1px solid var(--border)', color: 'var(--foreground)', fontSize: '12px' }}
+          />
+        </Field>
+
+        <Field label="Public tunnel" hint="How webhook URLs are exposed to the internet.">
+          <div className="flex items-center gap-1">
+            {(['cloudflared', 'none'] as const).map(p => (
+              <button
+                key={p}
+                onClick={() => update('tunnelProvider', p)}
+                className="px-3 py-1.5 rounded-md transition-colors"
+                style={{
+                  fontSize: '12px',
+                  background: cfg.tunnelProvider === p ? 'var(--amber-muted)' : 'var(--surface-base)',
+                  color: cfg.tunnelProvider === p ? 'var(--amber)' : 'var(--muted-foreground)',
+                  border: cfg.tunnelProvider === p ? '1px solid var(--surface-stronger)' : '1px solid transparent',
+                }}
+              >
+                {p === 'cloudflared' ? 'Cloudflared (auto-tunnel)' : 'None (local only)'}
+              </button>
+            ))}
+          </div>
+        </Field>
+      </div>
+
+      {/* Limits & safety */}
+      <div className="space-y-6">
+        <h3 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Limits & safety</h3>
+
+        <Field label="Minimum heartbeat interval (seconds)" hint="Floor for `heartbeat` automations to prevent runaway loops.">
+          <input
+            type="number"
+            min={5}
+            value={cfg.heartbeatMinSec}
+            onChange={e => setCfg(c => ({ ...c, heartbeatMinSec: Number(e.target.value) }))}
+            onBlur={e => update('heartbeatMinSec', Number(e.target.value))}
+            className="w-32 px-2 py-1.5 rounded-md font-mono"
+            style={{ background: 'var(--surface-base)', border: '1px solid var(--border)', color: 'var(--foreground)', fontSize: '12px' }}
+          />
+        </Field>
+
+        <Field label="Tasks ledger retention (days)" hint="Older entries are auto-pruned.">
+          <input
+            type="number"
+            min={1}
+            value={cfg.ledgerRetentionDays}
+            onChange={e => setCfg(c => ({ ...c, ledgerRetentionDays: Number(e.target.value) }))}
+            onBlur={e => update('ledgerRetentionDays', Number(e.target.value))}
+            className="w-32 px-2 py-1.5 rounded-md font-mono"
+            style={{ background: 'var(--surface-base)', border: '1px solid var(--border)', color: 'var(--foreground)', fontSize: '12px' }}
+          />
+        </Field>
+
+        <Field label="Sandbox directory override" hint="Defaults to ~/.wos/automations/runs/ — leave blank for default.">
+          <input
+            type="text"
+            value={cfg.sandboxDir}
+            placeholder="~/.wos/automations/runs/"
+            onChange={e => setCfg(c => ({ ...c, sandboxDir: e.target.value }))}
+            onBlur={e => update('sandboxDir', e.target.value)}
+            className="w-full px-2 py-1.5 rounded-md font-mono"
+            style={{ background: 'var(--surface-base)', border: '1px solid var(--border)', color: 'var(--foreground)', fontSize: '12px' }}
+          />
+        </Field>
+      </div>
+
+      {/* Author subagent */}
+      <div className="space-y-6">
+        <h3 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Automation author subagent</h3>
+        <Field
+          label="System prompt override"
+          hint="Leave blank to use the built-in prompt. Custom prompt is appended after the default."
+        >
+          <textarea
+            value={cfg.subagentPromptOverride}
+            onChange={e => setCfg(c => ({ ...c, subagentPromptOverride: e.target.value }))}
+            onBlur={e => update('subagentPromptOverride', e.target.value)}
+            rows={6}
+            placeholder="(uses default automation_author prompt)"
+            className="w-full px-2 py-1.5 rounded-md font-mono"
+            style={{ background: 'var(--surface-base)', border: '1px solid var(--border)', color: 'var(--foreground)', fontSize: '11px' }}
+          />
+        </Field>
+      </div>
+    </div>
+  )
+}
+
+function Toggle({ label, hint, checked, saving, onChange }: {
+  label: string
+  hint?: string
+  checked: boolean
+  saving?: boolean
+  onChange: (v: boolean) => void
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="flex items-center justify-between gap-3">
+        <span style={{ color: 'var(--secondary-foreground)', fontSize: '12px' }}>{label}</span>
+        <button
+          type="button"
+          onClick={() => onChange(!checked)}
+          disabled={saving}
+          className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
+          style={{ background: checked ? 'var(--amber)' : 'var(--surface-base)', border: '1px solid var(--border)' }}
+        >
+          <span
+            className="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
+            style={{ transform: checked ? 'translateX(18px)' : 'translateX(2px)' }}
+          />
+        </button>
+      </label>
+      {hint && <div style={{ color: 'var(--muted-foreground)', fontSize: '11px' }}>{hint}</div>}
     </div>
   )
 }

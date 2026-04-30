@@ -171,72 +171,8 @@ export const meetingsFts = sqliteTable('meetings_fts', {
   summary: text('summary'),
 })
 
-// ─── Automations (OpenClaw-inspired, scoped to user-installed apps) ──────────
-
-// Scheduled jobs — cron expressions or one-shot runAt; agent runs happen in main process.
-export const scheduledJobs = sqliteTable('scheduled_jobs', {
-  id: text('id').primaryKey(),
-  name: text('name').notNull(),
-  cronExpr: text('cron_expr'),
-  runAt: integer('run_at', { mode: 'timestamp' }),
-  tz: text('tz').notNull().default('local'),
-  target: text('target').notNull(), // 'new' | conversationId
-  prompt: text('prompt').notNull(),
-  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
-  deleteAfterRun: integer('delete_after_run', { mode: 'boolean' }).notNull().default(false),
-  lastRunAt: integer('last_run_at', { mode: 'timestamp' }),
-  nextRunAt: integer('next_run_at', { mode: 'timestamp' }),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
-})
-
-export const scheduledRuns = sqliteTable('scheduled_runs', {
-  id: text('id').primaryKey(),
-  jobId: text('job_id').notNull(),
-  startedAt: integer('started_at', { mode: 'timestamp' }).notNull(),
-  endedAt: integer('ended_at', { mode: 'timestamp' }),
-  status: text('status').notNull(), // 'running' | 'success' | 'error' | 'cancelled'
-  error: text('error'),
-  conversationId: text('conversation_id'),
-})
-
-// Hooks — react to in-process events ('message:received', 'app:connected', ...).
-export const hooks = sqliteTable('hooks', {
-  id: text('id').primaryKey(),
-  name: text('name').notNull(),
-  event: text('event').notNull(),
-  type: text('type').notNull(), // 'skill' | 'prompt' | 'tool'
-  config: text('config', { mode: 'json' }).notNull(),
-  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
-  lastFiredAt: integer('last_fired_at', { mode: 'timestamp' }),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
-})
-
-export const hookRuns = sqliteTable('hook_runs', {
-  id: text('id').primaryKey(),
-  hookId: text('hook_id').notNull(),
-  firedAt: integer('fired_at', { mode: 'timestamp' }).notNull(),
-  status: text('status').notNull(), // 'success' | 'error' | 'timeout'
-  error: text('error'),
-  contextJson: text('context_json', { mode: 'json' }),
-})
-
-// Standing orders — long-lived rules injected into every system prompt.
-// Stored separately from `rules` so we can attach scheduling/escalation metadata.
-export const standingOrders = sqliteTable('standing_orders', {
-  id: text('id').primaryKey(),
-  name: text('name').notNull(),
-  body: text('body').notNull(),
-  scope: text('scope').notNull().default('global'), // 'global' | conversation/workspace id
-  triggersJson: text('triggers_json', { mode: 'json' }),
-  approvalsJson: text('approvals_json', { mode: 'json' }),
-  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
-})
-
-// Tasks — durable ledger for any detached run (scheduled, sub-agent, multi-step flow).
+// ─── Automations ─────────────────────────────────────────────────────────────
+// New schema is defined in Phase 2 of the automations rebuild (see plan.md).
 export const tasks = sqliteTable('tasks', {
   id: text('id').primaryKey(),
   parentId: text('parent_id'),
@@ -272,4 +208,116 @@ export const subagentRuns = sqliteTable('subagent_runs', {
   tokensOut: integer('tokens_out').notNull().default(0),
   startedAt: integer('started_at', { mode: 'timestamp' }).notNull(),
   endedAt: integer('ended_at', { mode: 'timestamp' }),
+})
+
+// ─── Automations v2 ──────────────────────────────────────────────────────────
+// OpenClaw-parity rebuild. See plan.md and electron/main/automations/.
+
+export type AutomationKind =
+  | 'cron'
+  | 'heartbeat'
+  | 'hook'
+  | 'standing_order'
+  | 'task_flow'
+  | 'webhook'
+
+export type AutomationResultDelivery = 'silent' | 'notify' | 'chat' | 'external'
+
+export const automations = sqliteTable('automations', {
+  id: text('id').primaryKey(),
+  kind: text('kind').notNull(), // AutomationKind
+  name: text('name').notNull(),
+  description: text('description'),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  prompt: text('prompt').notNull().default(''),
+  toolsAllow: text('tools_allow', { mode: 'json' }).notNull().default('[]'),
+  config: text('config', { mode: 'json' }).notNull().default('{}'),
+  resultDelivery: text('result_delivery').notNull().default('silent'),
+  resultTarget: text('result_target'),
+  owner: text('owner'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  lastRunAt: integer('last_run_at', { mode: 'timestamp' }),
+  nextRunAt: integer('next_run_at', { mode: 'timestamp' }),
+})
+
+export const automationRuns = sqliteTable('automation_runs', {
+  id: text('id').primaryKey(),
+  automationId: text('automation_id').notNull(),
+  startedAt: integer('started_at', { mode: 'timestamp' }).notNull(),
+  endedAt: integer('ended_at', { mode: 'timestamp' }),
+  status: text('status').notNull(), // 'running' | 'success' | 'error' | 'cancelled' | 'dryrun'
+  trigger: text('trigger', { mode: 'json' }),
+  toolCalls: text('tool_calls', { mode: 'json' }),
+  output: text('output'),
+  error: text('error'),
+  scratchDir: text('scratch_dir'),
+})
+
+export const automationWebhooks = sqliteTable('automation_webhooks', {
+  automationId: text('automation_id').primaryKey(),
+  slug: text('slug').notNull().unique(),
+  secretHmac: text('secret_hmac').notNull(),
+  publicUrl: text('public_url'),
+  lastSeenAt: integer('last_seen_at', { mode: 'timestamp' }),
+})
+
+export const automationHeartbeats = sqliteTable('automation_heartbeats', {
+  automationId: text('automation_id').primaryKey(),
+  intervalSec: integer('interval_sec').notNull(),
+  jitterSec: integer('jitter_sec').notNull().default(0),
+  lastTickAt: integer('last_tick_at', { mode: 'timestamp' }),
+})
+
+export const automationTaskFlows = sqliteTable('automation_task_flows', {
+  automationId: text('automation_id').primaryKey(),
+  currentStep: integer('current_step').notNull().default(0),
+  paused: integer('paused', { mode: 'boolean' }).notNull().default(false),
+  revision: integer('revision').notNull().default(0),
+  state: text('state', { mode: 'json' }).notNull().default('{}'),
+})
+
+export const automationTaskFlowSteps = sqliteTable('automation_task_flow_steps', {
+  id: text('id').primaryKey(),
+  automationId: text('automation_id').notNull(),
+  idx: integer('idx').notNull(),
+  label: text('label').notNull(),
+  status: text('status').notNull().default('pending'),
+  requiresHuman: integer('requires_human', { mode: 'boolean' }).notNull().default(false),
+  input: text('input', { mode: 'json' }),
+  output: text('output', { mode: 'json' }),
+  error: text('error'),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+})
+
+export const automationTasksLedger = sqliteTable('automation_tasks_ledger', {
+  id: text('id').primaryKey(),
+  automationId: text('automation_id'),
+  runId: text('run_id'),
+  kind: text('kind').notNull(),
+  payload: text('payload', { mode: 'json' }),
+  status: text('status').notNull().default('open'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  completedAt: integer('completed_at', { mode: 'timestamp' }),
+})
+
+export const automationConsentGrants = sqliteTable('automation_consent_grants', {
+  id: text('id').primaryKey(),
+  automationId: text('automation_id').notNull(),
+  tool: text('tool').notNull(),
+  scope: text('scope').notNull().default('always'),
+  grantedAt: integer('granted_at', { mode: 'timestamp' }).notNull(),
+  expiresAt: integer('expires_at', { mode: 'timestamp' }),
+})
+
+// ─── App Context Snapshots ────────────────────────────────────────────────────
+// Lightweight cache of connected-app resources (channels, repos, etc.).
+// Populated on connect, refreshed on schedule. The cache is awareness-only —
+// agent answers always use live tool calls.
+export const appContextSnapshots = sqliteTable('app_context_snapshots', {
+  appId: text('app_id').notNull(),
+  scope: text('scope').notNull(),
+  dataJson: text('data_json').notNull().default('[]'),
+  fetchedAt: integer('fetched_at').notNull(),
+  etag: text('etag'),
 })

@@ -112,12 +112,38 @@ the standard permission rules.
 
 ## Testing
 
-The Playwright suite lives in `tests/e2e/`. Build first (so the `.vite/build`
-directory exists), then run:
+### Unit tests (vitest)
 
 ```bash
-npx electron-forge package
-npm run test:e2e
+npm test           # rebuilds better-sqlite3 for Node, runs vitest
 ```
 
-Tests that require a real LLM call are gated behind `WOS_E2E_LIVE=1`.
+### Visual E2E harness (Playwright)
+
+The harness in `e2e/` launches the real Electron app under Playwright control
+with a hermetic `userData` dir, captured main + renderer logs, and a DB query
+helper that runs queries inside the live main process (no ABI mismatch).
+
+```bash
+npm run e2e:build   # one-time: produces .vite/{build,renderer}
+npm run e2e:smoke   # boot → window → DB sanity check (~1s)
+npm run e2e:live    # opens Playwright Inspector — drive the app interactively
+npm run e2e:trace   # records video + trace under e2e/scratch/
+```
+
+Each `e2e:*` script has a `pre` hook that rebuilds `better-sqlite3` against
+Electron's Node ABI; running `npm test` first rebuilds it against the host
+Node ABI, so always run e2e via `npm run e2e:smoke` (not directly via
+`playwright test`) to keep the binding correct.
+
+Inside a spec, the `wos`, `harnessDb`, and `dump` fixtures are available:
+
+```ts
+test('example', async ({ wos, harnessDb, dump }) => {
+  await wos.window.click('text=Settings')
+  const rows = await harnessDb.queryAll("SELECT * FROM workspaces")
+  await dump('after-settings-open')   // screenshot + DOM + logs to e2e/scratch
+})
+```
+
+Live LLM-backed flows are gated behind `WOS_E2E_LIVE=1`.

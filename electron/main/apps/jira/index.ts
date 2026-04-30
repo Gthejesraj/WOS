@@ -1,5 +1,5 @@
 import type { AppModule } from '../types'
-import { getMyself } from './api'
+import { getMyself, listProjects } from './api'
 import { buildJiraTools } from './tools'
 
 export const jiraApp: AppModule = {
@@ -55,5 +55,14 @@ export const jiraApp: AppModule = {
   },
   buildTools(creds) {
     return buildJiraTools(creds as { baseUrl: string; email: string; token: string })
+  },
+  async snapshot(creds) {
+    const data = await listProjects(creds.baseUrl, creds.email, creds.token)
+    const projects = (data.values as Array<{ key: string; name: string; projectTypeKey: string }>).map(p => ({
+      key: p.key,
+      name: p.name,
+      projectTypeKey: p.projectTypeKey,
+    }))
+    return { projects }
   },
 }

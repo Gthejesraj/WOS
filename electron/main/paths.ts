@@ -1,7 +1,7 @@
 import { app } from 'electron'
-import path from 'path'
-import fs from 'fs'
-import os from 'os'
+import path from 'node:path'
+import fs from 'node:fs'
+import os from 'node:os'
 
 /**
  * WOS keeps user-editable configuration in a dedicated top-level folder
@@ -49,6 +49,10 @@ export function skillsDir(): string {
 
 export function userRulesDir(): string {
   return wosSubpath('rules')
+}
+
+export function pluginsDir(): string {
+  return wosSubpath('plugins')
 }
 
 /**

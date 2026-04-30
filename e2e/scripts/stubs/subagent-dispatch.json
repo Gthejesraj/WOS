@@ -1,0 +1,25 @@
+{
+  "turns": [
+    [
+      {
+        "type": "tool_use_start",
+        "id": "e2e-tool-1",
+        "name": "Task",
+        "input": {
+          "description": "E2E subagent task",
+          "prompt": "Say hello and finish",
+          "fork": false
+        }
+      },
+      { "type": "message_stop", "stopReason": "tool_use", "usage": { "inputTokens": 5, "outputTokens": 10 } }
+    ],
+    [
+      { "type": "text_delta", "content": "Subagent says: hello from within the task!" },
+      { "type": "message_stop", "stopReason": "end_turn", "usage": { "inputTokens": 3, "outputTokens": 8 } }
+    ],
+    [
+      { "type": "text_delta", "content": "Subagent task completed." },
+      { "type": "message_stop", "stopReason": "end_turn", "usage": { "inputTokens": 5, "outputTokens": 10 } }
+    ]
+  ]
+}

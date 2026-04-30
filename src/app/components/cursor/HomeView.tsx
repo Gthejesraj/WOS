@@ -522,7 +522,17 @@ export function HomeView({ onSendMessage }: HomeViewProps) {
                   if (e.key === 'ArrowUp')   { e.preventDefault(); setFilePickerIndex(i => Math.max(i - 1, 0)) }
                   if (e.key === 'Enter' && filePickerResults[filePickerIndex]) {
                     const f = filePickerResults[filePickerIndex]
-                    setAttachments(prev => [...prev, { name: f, content: `[File: ${f}]`, type: 'text/plain' }])
+                    void (async () => {
+                      const wsId = workspaces[0]?.id
+                      let content = `[File: ${f}]`
+                      if (wsId) {
+                        try {
+                          const res = await window.wos.readWorkspaceFile({ workspaceId: wsId, relPath: f })
+                          if (res.ok && typeof res.content === 'string') content = res.content
+                        } catch { /* fall back to placeholder */ }
+                      }
+                      setAttachments(prev => [...prev, { name: f, content, type: 'text/plain' }])
+                    })()
                     setFilePickerOpen(false)
                   }
                   if (e.key === 'Escape') setFilePickerOpen(false)
@@ -543,7 +553,17 @@ export function HomeView({ onSendMessage }: HomeViewProps) {
               )}
               {filePickerResults.map((f, i) => (
                 <button key={f} onMouseDown={() => {
-                  setAttachments(prev => [...prev, { name: f, content: `[File: ${f}]`, type: 'text/plain' }])
+                  void (async () => {
+                    const wsId = workspaces[0]?.id
+                    let content = `[File: ${f}]`
+                    if (wsId) {
+                      try {
+                        const res = await window.wos.readWorkspaceFile({ workspaceId: wsId, relPath: f })
+                        if (res.ok && typeof res.content === 'string') content = res.content
+                      } catch { /* fall back to placeholder */ }
+                    }
+                    setAttachments(prev => [...prev, { name: f, content, type: 'text/plain' }])
+                  })()
                   setFilePickerOpen(false)
                 }}
                   className="w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition-colors"

@@ -16,6 +16,8 @@ interface WosAPI {
   globWorkspace: (params: { workspaceId: string; query: string }) => Promise<{ files: string[] }>
   saveWorkspaceFile: (params: { workspaceId: string; relPath: string; content: string }) =>
     Promise<{ ok: boolean; absPath?: string; error?: string }>
+  readWorkspaceFile: (params: { workspaceId: string; relPath: string }) =>
+    Promise<{ ok: boolean; content?: string; absPath?: string; error?: string }>
 
   dictation: {
     start: (sessionId: string) => Promise<{ ok: boolean; error?: string; unavailable?: boolean }>

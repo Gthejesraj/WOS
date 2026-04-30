@@ -1,0 +1,17 @@
+{
+  "turns": [
+    [
+      {
+        "type": "tool_use_start",
+        "id": "e2e-tool-1",
+        "name": "automation_dryRun",
+        "input": { "kind": "cron", "name": "Test Cron", "prompt": "Do something on a schedule" }
+      },
+      { "type": "message_stop", "stopReason": "tool_use", "usage": { "inputTokens": 5, "outputTokens": 10 } }
+    ],
+    [
+      { "type": "text_delta", "content": "The automation_dryRun tool is deprecated." },
+      { "type": "message_stop", "stopReason": "end_turn", "usage": { "inputTokens": 5, "outputTokens": 10 } }
+    ]
+  ]
+}

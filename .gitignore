@@ -89,3 +89,4 @@ drizzle/meta/
 drizzle/**/*.snapshot.json
 drizzle/**/*.snap
 !drizzle/**/*.sql
+e2e/scratch/

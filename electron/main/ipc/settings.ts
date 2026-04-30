@@ -1,4 +1,5 @@
-import { ipcMain, app } from 'electron'
+import { ipcMain, app, shell } from 'electron'
+import { autoUpdater } from 'electron-updater'
 import { getDb, schema, notifyWrite } from '../db'
 import { eq } from 'drizzle-orm'
 import { encryptApiKey, decryptApiKey } from '../crypto'
@@ -194,12 +195,10 @@ export function registerSettingsHandlers() {
   ipcMain.handle('app:version', () => app.getVersion())
 
   ipcMain.handle('app:open-logs', () => {
-    const { shell } = require('electron')
     shell.openPath(app.getPath('logs'))
   })
 
   ipcMain.handle('app:restart-and-update', () => {
-    const { autoUpdater } = require('electron-updater')
     autoUpdater.quitAndInstall()
   })
 }

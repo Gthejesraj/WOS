@@ -15,7 +15,7 @@ export default defineConfig({
     rollupOptions: {
       external: [
         'electron',
-        'sql.js',
+        'better-sqlite3',
         // Node builtins (also covered by builtinModules but listed for clarity)
         'fs',
         'fs/promises',
@@ -69,7 +69,7 @@ export default defineConfig({
         'gray-matter',
         'glob',
         'drizzle-orm',
-        'drizzle-orm/sql-js',
+        'drizzle-orm/better-sqlite3',
         'drizzle-orm/sqlite-core',
         'electron-updater',
       ],

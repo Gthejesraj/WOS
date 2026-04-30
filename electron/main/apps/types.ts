@@ -58,5 +58,11 @@ export interface AppModule {
   skills?: AppSkill[]
   /** Optional: lifecycle/tool hooks the app wants to register. */
   hooks?: HookHandlers
+  /**
+   * Optional: build a lightweight resource snapshot for this app. Called once
+   * after a successful connect. Returns a plain object whose top-level keys
+   * become individual snapshot scopes (e.g. "channels", "repos").
+   */
+  snapshot?(creds: Record<string, string>): Promise<Record<string, unknown[]>>
 }
 

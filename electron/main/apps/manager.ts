@@ -9,6 +9,14 @@ import type { AppModule, AppManifest } from './types'
 import type { Tool } from '../tools'
 import { registerHooks, runOnConnect, runOnDisconnect } from '../hooks/manager'
 import { getUserAppSkills, loadAllUserAppHooksOnce } from './userExtensions'
+import { buildSnapshot } from '../context/snapshotManager'
+import { scheduleAppOnConnect, clearAppScheduleOnDisconnect } from '../context/scheduler'
+
+function buildSnapshotSafe(appId: string, creds: Record<string, string>): void {
+  buildSnapshot(appId, creds)
+    .then(() => scheduleAppOnConnect(appId))
+    .catch(err => console.error(`[apps] snapshot failed for ${appId}`, err))
+}
 
 const REGISTRY: Record<string, AppModule> = {
   [slackApp.manifest.id]: slackApp,
@@ -97,6 +105,8 @@ export async function connectApp(
   }
   notifyWrite()
   await runAppOnConnect(appId, creds)
+  // Fire-and-forget snapshot — a failure must never break the connect flow.
+  buildSnapshotSafe(appId, creds)
   return { success: true, metadata: test.identity }
 }
 
@@ -139,6 +149,7 @@ export async function initiateOAuthApp(
 }
 
 export async function disconnectApp(appId: string): Promise<void> {
+  clearAppScheduleOnDisconnect(appId)
   const db = getDb()
   db.delete(schema.appConnections).where(eq(schema.appConnections.appId, appId)).run()
   notifyWrite()

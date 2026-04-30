@@ -1,6 +1,71 @@
-import { randomUUID } from 'crypto'
+import { randomUUID } from 'node:crypto'
 import type { Tool, ToolContext, ToolResult } from './index'
 import type { AskUserKind, AskUserExtras, AskUserFormField } from '../../../src/types'
+
+const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000 // 24 hours
+
+/** Load picker choices from the snapshot cache for the given source. */
+async function loadPickerChoices(
+  source: 'channel' | 'repo' | 'meeting' | 'calendar',
+): Promise<{ choices: Array<{ id: string; label: string; [key: string]: unknown }>; staleAt?: number }> {
+  try {
+    const { getSnapshot } = await import('../context/snapshotManager')
+    const now = Date.now()
+
+    if (source === 'channel') {
+      const snap = getSnapshot('slack', 'channels')
+      if (!snap) return { choices: [] }
+      const staleAt = now - snap.fetchedAt > STALE_THRESHOLD_MS ? snap.fetchedAt : undefined
+      const choices = (snap.data as Array<{ id: string; name: string; [key: string]: unknown }>).map(c => ({
+        ...c,
+        id: c.id,
+        label: c.name ?? c.id,
+      }))
+      return { choices, staleAt }
+    }
+
+    if (source === 'repo') {
+      const snap = getSnapshot('github', 'repos')
+      if (!snap) return { choices: [] }
+      const staleAt = now - snap.fetchedAt > STALE_THRESHOLD_MS ? snap.fetchedAt : undefined
+      const choices = (snap.data as Array<{ full_name: string; description?: string; [key: string]: unknown }>).map(r => ({
+        ...r,
+        id: r.full_name,
+        label: r.full_name,
+      }))
+      return { choices, staleAt }
+    }
+
+    if (source === 'calendar') {
+      const snap = getSnapshot('google', 'calendars')
+      if (!snap) return { choices: [] }
+      const staleAt = now - snap.fetchedAt > STALE_THRESHOLD_MS ? snap.fetchedAt : undefined
+      const choices = (snap.data as Array<{ id: string; summary?: string; primary?: boolean; [key: string]: unknown }>).map(c => ({
+        ...c,
+        id: c.id,
+        label: c.summary ?? c.id,
+      }))
+      return { choices, staleAt }
+    }
+
+    if (source === 'meeting') {
+      // No dedicated meetings scope yet — fall back to calendar list with a note.
+      const snap = getSnapshot('google', 'calendars')
+      if (!snap) return { choices: [] }
+      const staleAt = now - snap.fetchedAt > STALE_THRESHOLD_MS ? snap.fetchedAt : undefined
+      const choices = (snap.data as Array<{ id: string; summary?: string; primary?: boolean; [key: string]: unknown }>).map(c => ({
+        ...c,
+        _note: 'meeting scope not available; showing calendars',
+        id: c.id,
+        label: c.summary ?? c.id,
+      }))
+      return { choices, staleAt }
+    }
+  } catch {
+    // Snapshot unavailable (e.g. during tests without DB) — return empty.
+  }
+  return { choices: [] }
+}
 
 interface AskUserInput {
   question: string
@@ -73,6 +138,14 @@ export const askUserTool: Tool = {
       ...(i.allowFreeform !== undefined ? { allowFreeform: i.allowFreeform } : {}),
       ...(i.fields ? { fields: i.fields } : {}),
     }
+
+    // For picker kind, populate choices from the snapshot cache.
+    if (kind === 'picker' && i.source) {
+      const { choices, staleAt } = await loadPickerChoices(i.source)
+      if (choices.length > 0) extras.pickerChoices = choices
+      if (staleAt !== undefined) extras.staleAt = staleAt
+    }
+
     const answer = await ctx.onAskUser(i.question, randomUUID(), i.choices, extras)
     return { output: answer }
   },

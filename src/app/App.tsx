@@ -76,6 +76,7 @@ export default function App() {
     if (window.wos?.onShortcut) {
       const cleanup = window.wos.onShortcut((name) => {
         if (name === 'new-conversation') handleNewChat()
+        else if (name === 'open-automations') setCurrentView('automations')
       })
       return cleanup
     }

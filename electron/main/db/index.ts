@@ -1,66 +1,34 @@
-import { drizzle } from 'drizzle-orm/sql-js'
+import { drizzle } from 'drizzle-orm/better-sqlite3'
+import Database from 'better-sqlite3'
 import { app } from 'electron'
-import path from 'path'
-import fs from 'fs'
+import path from 'node:path'
+import fs from 'node:fs'
 import * as schema from './schema'
 import { runMigrations } from './migrations'
 
 type WosDb = ReturnType<typeof drizzle<typeof schema>>
 
 let _db: WosDb | null = null
-let _sqlDb: import('sql.js').Database | null = null
+let _sqlDb: Database.Database | null = null
 let _dbPath = ''
-let _dirty = false
-let _fts5Available = false
-
-function saveToDisk() {
-  if (!_sqlDb || !_dirty) return
-  try {
-    const data = _sqlDb.export()
-    fs.writeFileSync(_dbPath, Buffer.from(data))
-    _dirty = false
-  } catch (e) {
-    console.error('[db] save error', e)
-  }
-}
-
-function markDirty() {
-  _dirty = true
-}
 
 export async function initDatabase(): Promise<WosDb> {
   _dbPath = path.join(app.getPath('userData'), 'wos.db')
 
-  // sql.js loads its WASM binary from its own package — works in Node.js/Electron main process
-  const initSqlJs = (await import('sql.js')).default
-  const SQL = await initSqlJs()
+  // Ensure userData directory exists (better-sqlite3 won't create it).
+  fs.mkdirSync(path.dirname(_dbPath), { recursive: true })
 
-  if (fs.existsSync(_dbPath)) {
-    const buf = fs.readFileSync(_dbPath)
-    _sqlDb = new SQL.Database(buf)
-  } else {
-    _sqlDb = new SQL.Database()
-    _dirty = true
-  }
+  _sqlDb = new Database(_dbPath)
+  // WAL gives us safe concurrent reads + crash-safe writes without the
+  // per-second "export the whole DB and rename" loop the sql.js implementation
+  // needed. NORMAL synchronous mode is the WAL-recommended default.
+  _sqlDb.pragma('journal_mode = WAL')
+  _sqlDb.pragma('synchronous = NORMAL')
+  _sqlDb.pragma('foreign_keys = ON')
 
   _db = drizzle(_sqlDb, { schema })
 
-  // The default sql.js WASM build is compiled WITHOUT the FTS5 extension, so
-  // CREATE VIRTUAL TABLE ... USING fts5(...) blows up DB init. Detect support
-  // first; if missing, we skip FTS objects and `searchMeetings` falls back to
-  // a LIKE query.
-  try {
-    _sqlDb.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS __wos_fts5_probe USING fts5(t)`)
-    _sqlDb.exec(`DROP TABLE __wos_fts5_probe`)
-    _fts5Available = true
-  } catch {
-    _fts5Available = false
-    console.warn('[db] FTS5 extension not available in sql.js — falling back to LIKE search for meetings.')
-  }
-
   _sqlDb.exec(`
-    PRAGMA foreign_keys = ON;
-
     CREATE TABLE IF NOT EXISTS workspaces (
       id TEXT PRIMARY KEY,
       path TEXT NOT NULL UNIQUE,
@@ -212,65 +180,9 @@ export async function initDatabase(): Promise<WosDb> {
       FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
     );
 
-    -- ── Automations (OpenClaw-inspired) ───────────────────────────────────
-    CREATE TABLE IF NOT EXISTS scheduled_jobs (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      cron_expr TEXT,
-      run_at INTEGER,
-      tz TEXT NOT NULL DEFAULT 'local',
-      target TEXT NOT NULL,
-      prompt TEXT NOT NULL,
-      enabled INTEGER NOT NULL DEFAULT 1,
-      delete_after_run INTEGER NOT NULL DEFAULT 0,
-      last_run_at INTEGER,
-      next_run_at INTEGER,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS scheduled_runs (
-      id TEXT PRIMARY KEY,
-      job_id TEXT NOT NULL,
-      started_at INTEGER NOT NULL,
-      ended_at INTEGER,
-      status TEXT NOT NULL,
-      error TEXT,
-      conversation_id TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS hooks (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      event TEXT NOT NULL,
-      type TEXT NOT NULL,
-      config TEXT NOT NULL,
-      enabled INTEGER NOT NULL DEFAULT 1,
-      last_fired_at INTEGER,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS hook_runs (
-      id TEXT PRIMARY KEY,
-      hook_id TEXT NOT NULL,
-      fired_at INTEGER NOT NULL,
-      status TEXT NOT NULL,
-      error TEXT,
-      context_json TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS standing_orders (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      body TEXT NOT NULL,
-      scope TEXT NOT NULL DEFAULT 'global',
-      triggers_json TEXT,
-      approvals_json TEXT,
-      enabled INTEGER NOT NULL DEFAULT 1,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
+    -- ── Automations (OpenClaw-inspired) — REMOVED, rebuild in progress ────
+    -- Old tables (scheduled_jobs, scheduled_runs, hooks, hook_runs,
+    -- standing_orders) were dropped here. New schema lands in Phase 2.
 
     CREATE TABLE IF NOT EXISTS tasks (
       id TEXT PRIMARY KEY,
@@ -308,44 +220,160 @@ export async function initDatabase(): Promise<WosDb> {
       ended_at INTEGER
     );
 
+    -- ── Automations v2 (OpenClaw-parity, redesigned) ─────────────────────
+    CREATE TABLE IF NOT EXISTS automations (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL,           -- 'cron' | 'heartbeat' | 'hook' | 'standing_order' | 'task_flow' | 'webhook'
+      name TEXT NOT NULL,
+      description TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      prompt TEXT NOT NULL DEFAULT '',
+      tools_allow TEXT NOT NULL DEFAULT '[]',   -- JSON array of tool names
+      config TEXT NOT NULL DEFAULT '{}',         -- JSON: kind-specific params
+      result_delivery TEXT NOT NULL DEFAULT 'silent',  -- 'silent' | 'notify' | 'chat' | 'external'
+      result_target TEXT,                        -- conversation id / external tool spec
+      owner TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      last_run_at INTEGER,
+      next_run_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_automations_kind ON automations(kind);
+    CREATE INDEX IF NOT EXISTS idx_automations_enabled ON automations(enabled);
+
+    CREATE TABLE IF NOT EXISTS automation_runs (
+      id TEXT PRIMARY KEY,
+      automation_id TEXT NOT NULL,
+      started_at INTEGER NOT NULL,
+      ended_at INTEGER,
+      status TEXT NOT NULL,                      -- 'running' | 'success' | 'error' | 'cancelled' | 'dryrun'
+      trigger TEXT,                              -- JSON: what fired this run
+      tool_calls TEXT,                           -- JSON array of {tool, args, result}
+      output TEXT,
+      error TEXT,
+      scratch_dir TEXT,
+      FOREIGN KEY (automation_id) REFERENCES automations(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_automation_runs_aid ON automation_runs(automation_id);
+    CREATE INDEX IF NOT EXISTS idx_automation_runs_started ON automation_runs(started_at);
+
+    CREATE TABLE IF NOT EXISTS automation_webhooks (
+      automation_id TEXT PRIMARY KEY,
+      slug TEXT NOT NULL UNIQUE,
+      secret_hmac TEXT NOT NULL,
+      public_url TEXT,
+      last_seen_at INTEGER,
+      FOREIGN KEY (automation_id) REFERENCES automations(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS automation_heartbeats (
+      automation_id TEXT PRIMARY KEY,
+      interval_sec INTEGER NOT NULL,
+      jitter_sec INTEGER NOT NULL DEFAULT 0,
+      last_tick_at INTEGER,
+      FOREIGN KEY (automation_id) REFERENCES automations(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS automation_task_flows (
+      automation_id TEXT PRIMARY KEY,
+      current_step INTEGER NOT NULL DEFAULT 0,
+      paused INTEGER NOT NULL DEFAULT 0,
+      revision INTEGER NOT NULL DEFAULT 0,
+      state TEXT NOT NULL DEFAULT '{}',           -- JSON state bag
+      FOREIGN KEY (automation_id) REFERENCES automations(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS automation_task_flow_steps (
+      id TEXT PRIMARY KEY,
+      automation_id TEXT NOT NULL,
+      idx INTEGER NOT NULL,
+      label TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',    -- 'pending' | 'running' | 'awaiting_human' | 'done' | 'error' | 'skipped'
+      requires_human INTEGER NOT NULL DEFAULT 0,
+      input TEXT,
+      output TEXT,
+      error TEXT,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (automation_id) REFERENCES automations(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_aflow_steps_aid ON automation_task_flow_steps(automation_id);
+
+    CREATE TABLE IF NOT EXISTS automation_tasks_ledger (
+      id TEXT PRIMARY KEY,
+      automation_id TEXT,
+      run_id TEXT,
+      kind TEXT NOT NULL,
+      payload TEXT,
+      status TEXT NOT NULL DEFAULT 'open',       -- 'open' | 'done' | 'cancelled'
+      created_at INTEGER NOT NULL,
+      completed_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_aledger_status ON automation_tasks_ledger(status);
+
+    CREATE TABLE IF NOT EXISTS automation_consent_grants (
+      id TEXT PRIMARY KEY,
+      automation_id TEXT NOT NULL,
+      tool TEXT NOT NULL,
+      scope TEXT NOT NULL DEFAULT 'always',      -- 'always' | 'once' | 'session'
+      granted_at INTEGER NOT NULL,
+      expires_at INTEGER,
+      FOREIGN KEY (automation_id) REFERENCES automations(id) ON DELETE CASCADE
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_aconsent_uniq ON automation_consent_grants(automation_id, tool, scope);
+
+    CREATE TABLE IF NOT EXISTS app_context_snapshots (
+      app_id TEXT NOT NULL,
+      scope TEXT NOT NULL,
+      data_json TEXT NOT NULL DEFAULT '[]',
+      fetched_at INTEGER NOT NULL,
+      etag TEXT,
+      PRIMARY KEY (app_id, scope)
+    );
+
   `)
-  if (_fts5Available) {
-    _sqlDb.exec(`
-      CREATE VIRTUAL TABLE IF NOT EXISTS meetings_fts USING fts5(
-        title,
-        transcript,
-        summary,
-        content='meetings',
-        content_rowid='rowid'
-      );
+  // FTS5 ships with the better-sqlite3 amalgamation, so we always create the
+  // virtual table + sync triggers — no probe + LIKE fallback needed.
+  _sqlDb.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS meetings_fts USING fts5(
+      title,
+      transcript,
+      summary,
+      content='meetings',
+      content_rowid='rowid'
+    );
 
-      CREATE TRIGGER IF NOT EXISTS meetings_ai AFTER INSERT ON meetings BEGIN
-        INSERT INTO meetings_fts(rowid, title, transcript, summary)
-        VALUES (new.rowid, new.title, coalesce(new.transcript, ''), coalesce(new.summary, ''));
-      END;
+    CREATE TRIGGER IF NOT EXISTS meetings_ai AFTER INSERT ON meetings BEGIN
+      INSERT INTO meetings_fts(rowid, title, transcript, summary)
+      VALUES (new.rowid, new.title, coalesce(new.transcript, ''), coalesce(new.summary, ''));
+    END;
 
-      CREATE TRIGGER IF NOT EXISTS meetings_ad AFTER DELETE ON meetings BEGIN
-        INSERT INTO meetings_fts(meetings_fts, rowid, title, transcript, summary)
-        VALUES('delete', old.rowid, old.title, coalesce(old.transcript, ''), coalesce(old.summary, ''));
-      END;
+    CREATE TRIGGER IF NOT EXISTS meetings_ad AFTER DELETE ON meetings BEGIN
+      INSERT INTO meetings_fts(meetings_fts, rowid, title, transcript, summary)
+      VALUES('delete', old.rowid, old.title, coalesce(old.transcript, ''), coalesce(old.summary, ''));
+    END;
 
-      CREATE TRIGGER IF NOT EXISTS meetings_au AFTER UPDATE ON meetings BEGIN
-        INSERT INTO meetings_fts(meetings_fts, rowid, title, transcript, summary)
-        VALUES('delete', old.rowid, old.title, coalesce(old.transcript, ''), coalesce(old.summary, ''));
-        INSERT INTO meetings_fts(rowid, title, transcript, summary)
-        VALUES (new.rowid, new.title, coalesce(new.transcript, ''), coalesce(new.summary, ''));
-      END;
-    `)
-  }
+    CREATE TRIGGER IF NOT EXISTS meetings_au AFTER UPDATE ON meetings BEGIN
+      INSERT INTO meetings_fts(meetings_fts, rowid, title, transcript, summary)
+      VALUES('delete', old.rowid, old.title, coalesce(old.transcript, ''), coalesce(old.summary, ''));
+      INSERT INTO meetings_fts(rowid, title, transcript, summary)
+      VALUES (new.rowid, new.title, coalesce(new.transcript, ''), coalesce(new.summary, ''));
+    END;
+  `)
   // Migrate: add branching columns to existing messages tables (safe, ignored on fresh DBs)
-  try { _sqlDb.run('ALTER TABLE messages ADD COLUMN branch_group_id TEXT') } catch { /* already exists */ }
-  try { _sqlDb.run('ALTER TABLE messages ADD COLUMN branch_index INTEGER DEFAULT 0') } catch { /* already exists */ }
-  try { _sqlDb.run("ALTER TABLE meetings ADD COLUMN processing_status TEXT DEFAULT 'done'") } catch { /* already exists */ }
-  try { _sqlDb.run('ALTER TABLE meetings ADD COLUMN processing_message TEXT') } catch { /* already exists */ }
-  try { _sqlDb.run('ALTER TABLE meetings ADD COLUMN processing_progress INTEGER DEFAULT 100') } catch { /* already exists */ }
-  try { _sqlDb.run('ALTER TABLE meetings ADD COLUMN last_error TEXT') } catch { /* already exists */ }
+  const tryExec = (sql: string) => { try { _sqlDb!.exec(sql) } catch { /* already exists / not present */ } }
+  tryExec('ALTER TABLE messages ADD COLUMN branch_group_id TEXT')
+  tryExec('ALTER TABLE messages ADD COLUMN branch_index INTEGER DEFAULT 0')
+  tryExec("ALTER TABLE meetings ADD COLUMN processing_status TEXT DEFAULT 'done'")
+  tryExec('ALTER TABLE meetings ADD COLUMN processing_message TEXT')
+  tryExec('ALTER TABLE meetings ADD COLUMN processing_progress INTEGER DEFAULT 100')
+  tryExec('ALTER TABLE meetings ADD COLUMN last_error TEXT')
+  // Drop legacy automation tables (rebuilt in Phase 2 of automations redesign).
+  tryExec('DROP TABLE IF EXISTS scheduled_runs')
+  tryExec('DROP TABLE IF EXISTS scheduled_jobs')
+  tryExec('DROP TABLE IF EXISTS hook_runs')
+  tryExec('DROP TABLE IF EXISTS hooks')
+  tryExec('DROP TABLE IF EXISTS standing_orders')
   runMigrations(_sqlDb)
-  markDirty()
 
   // Seed default settings on first run
   const now = Date.now()
@@ -356,33 +384,29 @@ export async function initDatabase(): Promise<WosDb> {
     { key: 'theme', value: '"dark"' },
     { key: 'activeWorkspaceId', value: 'null' },
   ]
+  const insertSetting = _sqlDb.prepare(
+    'INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES (?, ?, ?)'
+  )
   for (const { key, value } of defaults) {
-    _sqlDb.run(
-      'INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES (?, ?, ?)',
-      [key, value, now]
-    )
+    insertSetting.run(key, value, now)
   }
-  _sqlDb.run(
+  const insertAgent = _sqlDb.prepare(
     `INSERT OR IGNORE INTO agent_settings
       (agent_key, inherit_from, model, mode, system_prompt, config_json, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ['wos', null, null, null, null, JSON.stringify({}), now, now]
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   )
-  _sqlDb.run(
-    `INSERT OR IGNORE INTO agent_settings
-      (agent_key, inherit_from, model, mode, system_prompt, config_json, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ['meeting', 'wos', null, null, null, JSON.stringify({
-      liveSource: 'captions',
-      autoSummarize: true,
-      defaultSlackChannel: '',
-    }), now, now]
-  )
-  markDirty()
+  insertAgent.run('wos', null, null, null, null, JSON.stringify({}), now, now)
+  insertAgent.run('meeting', 'wos', null, null, null, JSON.stringify({
+    liveSource: 'captions',
+    autoSummarize: true,
+    defaultSlackChannel: '',
+  }), now, now)
 
-  // Persist every 3 seconds and on quit
-  setInterval(saveToDisk, 3000)
-  app.on('before-quit', saveToDisk)
+  // Cleanly close the native handle when the app exits so WAL is checkpointed.
+  app.on('before-quit', () => {
+    try { _sqlDb?.close() } catch { /* already closed */ }
+    _sqlDb = null
+  })
 
   return _db
 }
@@ -392,30 +416,37 @@ export function getDb(): WosDb {
   return _db
 }
 
-export function notifyWrite() {
-  markDirty()
+// Kept for source-level backwards compatibility with the sql.js implementation.
+// better-sqlite3 persists synchronously, so write notifications are no-ops now.
+export function notifyWrite(): void {
+  /* no-op */
 }
 
+// FTS5 ships with the better-sqlite3 amalgamation; always available now.
 export function isFts5Available(): boolean {
-  return _fts5Available
+  return true
 }
 
-export function runRaw(sql: string, params: (string | number | Uint8Array | null)[] = []) {
-  if (!_sqlDb) throw new Error('Database not initialized — call initDatabase() first')
-  _sqlDb.run(sql, params)
-  markDirty()
+type Bindable = string | number | bigint | Buffer | Uint8Array | null
+type SqliteParam = string | number | bigint | Buffer | null
+
+function toSqliteParams(params: Bindable[]): SqliteParam[] {
+  return params.map(p =>
+    p instanceof Uint8Array && !Buffer.isBuffer(p) ? Buffer.from(p) : p
+  ) as SqliteParam[]
 }
 
-export function queryRaw<T extends Record<string, unknown> = Record<string, unknown>>(sql: string, params: (string | number | Uint8Array | null)[] = []): T[] {
+export function runRaw(sql: string, params: Bindable[] = []) {
   if (!_sqlDb) throw new Error('Database not initialized — call initDatabase() first')
-  const stmt = _sqlDb.prepare(sql, params)
-  const rows: T[] = []
-  try {
-    while (stmt.step()) rows.push(stmt.getAsObject() as T)
-  } finally {
-    stmt.free()
-  }
-  return rows
+  _sqlDb.prepare(sql).run(...toSqliteParams(params))
+}
+
+export function queryRaw<T extends Record<string, unknown> = Record<string, unknown>>(
+  sql: string,
+  params: Bindable[] = []
+): T[] {
+  if (!_sqlDb) throw new Error('Database not initialized — call initDatabase() first')
+  return _sqlDb.prepare(sql).all(...toSqliteParams(params)) as T[]
 }
 
 export { schema }

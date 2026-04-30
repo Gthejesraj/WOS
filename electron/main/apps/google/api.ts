@@ -230,3 +230,10 @@ export async function createDriveFolder(creds: GoogleCreds, name: string, parent
   if (parentId) metadata.parents = [parentId]
   return googlePost<{ id: string; name: string }>(`${DRIVE}/files`, metadata, creds)
 }
+
+/* ── Calendar List ── */
+export async function listCalendarList(creds: GoogleCreds) {
+  return googleGet<{ items?: Array<{ id: string; summary: string; primary?: boolean }> }>(
+    '/calendar/v3/users/me/calendarList', creds,
+  )
+}

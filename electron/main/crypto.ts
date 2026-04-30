@@ -1,6 +1,6 @@
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto'
+import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto'
 import { app } from 'electron'
-import os from 'os'
+import os from 'node:os'
 
 function getMachineId(): string {
   // Use hostname + username as machine-specific salt

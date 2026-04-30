@@ -1,5 +1,5 @@
 import type { AppModule } from '../types'
-import { authTest } from './api'
+import { authTest, slackCall } from './api'
 import { buildSlackTools } from './tools'
 
 export const slackApp: AppModule = {
@@ -71,5 +71,27 @@ export const slackApp: AppModule = {
   },
   buildTools(creds) {
     return buildSlackTools(creds as { botToken?: string; userToken?: string; signingSecret?: string })
+  },
+  async snapshot(creds) {
+    const token = (creds.botToken || creds.userToken) as string
+    const [chansRes, usersRes] = await Promise.allSettled([
+      slackCall<{ channels: Array<{ id: string; name: string; is_member: boolean; num_members: number }> }>(
+        'conversations.list', token, { limit: 200, exclude_archived: true },
+      ),
+      slackCall<{ members: Array<{ id: string; name: string; real_name: string; is_bot: boolean; deleted: boolean }> }>(
+        'users.list', token, { limit: 200 },
+      ),
+    ])
+    const channels = chansRes.status === 'fulfilled'
+      ? chansRes.value.channels
+          .sort((a, b) => b.num_members - a.num_members)
+          .map(c => ({ id: c.id, name: c.name, is_member: c.is_member, num_members: c.num_members }))
+      : []
+    const users = usersRes.status === 'fulfilled'
+      ? usersRes.value.members
+          .filter(m => !m.is_bot && !m.deleted)
+          .map(m => ({ id: m.id, name: m.name, real_name: m.real_name }))
+      : []
+    return { channels, users }
   },
 }

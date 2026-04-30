@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto'
+import { randomUUID } from 'node:crypto'
 import { queryLoop } from '../agent/query'
 import { PermissionStore } from '../agent/permissions'
 import { getDb, schema } from '../db'
@@ -6,6 +6,54 @@ import { eq } from 'drizzle-orm'
 import type { Tool, ToolContext, ToolResult } from './index'
 import type { ConversationMessage } from '../providers/types'
 import { resolveAgent } from '../agent/settings'
+
+/** Stable integer 0-6 derived from agentId for UI color coding. */
+function stableColorSeed(id: string): number {
+  let h = 0
+  for (let i = 0; i < id.length; i++) {
+    h = (Math.imul(31, h) + id.charCodeAt(i)) >>> 0
+  }
+  return h % 7
+}
+
+/**
+ * Derive a short, human-readable subagent name from its description so the UI
+ * doesn't fall back to the literal word "task". Picks the first 2-3
+ * significant words, kebab-cased.
+ */
+function deriveSubagentName(description: string): string {
+  if (!description) return 'task'
+  const stop = new Set([
+    'the', 'a', 'an', 'and', 'or', 'of', 'to', 'for', 'in', 'on', 'with', 'by',
+    'from', 'into', 'about', 'as', 'is', 'are', 'be', 'this', 'that', 'these',
+    'those', 'it', 'its', 'use', 'using', 'do',
+  ])
+  const words = description
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter(w => !stop.has(w))
+    .slice(0, 3)
+  if (words.length === 0) return 'task'
+  return words.join('-').slice(0, 32)
+}
+
+/** Per-agentId AbortControllers so /subagents kill can cancel in-flight runs. */
+const _inFlightControllers = new Map<string, AbortController>()
+
+/** Cancel a running subagent by agentId. Returns true if found and cancelled. */
+export function cancelSubagent(agentId: string): boolean {
+  const ctrl = _inFlightControllers.get(agentId)
+  if (!ctrl) return false
+  ctrl.abort()
+  return true
+}
+
+/** List all currently-running subagent IDs. */
+export function listRunningSubagentIds(): string[] {
+  return [..._inFlightControllers.keys()]
+}
 
 interface SubAgentInput {
   description: string
@@ -35,6 +83,8 @@ export const subAgentTool: Tool = {
     const { description, prompt, fork = true } = input as SubAgentInput
     const preset = (input as SubAgentInput).presetKey ?? (input as SubAgentInput).preset
     const agentId = randomUUID()
+    const agentName = preset ?? deriveSubagentName(description)
+    const colorSeed = stableColorSeed(agentId)
     const startedAt = new Date()
 
     const db = getDb()
@@ -92,13 +142,13 @@ export const subAgentTool: Tool = {
     const gate = await runBeforeSubagent(preset ?? 'wos', input, { workspacePath: ctx.workspacePath ?? null })
     if (gate.block) {
       const reason = gate.reason ?? 'blocked by hook'
-      await ctx.yieldEvent({ type: 'subagent_start', agentId, prompt: description })
-      await ctx.yieldEvent({ type: 'subagent_end', agentId, result: `Blocked: ${reason}` })
+      await ctx.yieldEvent({ type: 'subagent_start', agentId, agentName, colorSeed, prompt: description })
+      await ctx.yieldEvent({ type: 'subagent_end', agentId, agentName, colorSeed, result: `Blocked: ${reason}` })
       finishLedger('cancelled', `blocked: ${reason}`)
       return { output: `Subagent blocked: ${reason}`, error: reason }
     }
 
-    await ctx.yieldEvent({ type: 'subagent_start', agentId, prompt: description })
+    await ctx.yieldEvent({ type: 'subagent_start', agentId, agentName, colorSeed, prompt: description })
 
     let result = ''
     const permStore = new PermissionStore()
@@ -111,6 +161,14 @@ export const subAgentTool: Tool = {
             : (m.content as ConversationMessage['content']),
         }))
       : []
+
+    // Track this run's AbortController so /subagents kill can cancel it.
+    const runAbortController = new AbortController()
+    // Chain to the parent signal so cancelling the parent also cancels this run.
+    const parentSignal = ctx.signal
+    const onParentAbort = () => runAbortController.abort()
+    if (parentSignal) parentSignal.addEventListener('abort', onParentAbort, { once: true })
+    _inFlightControllers.set(agentId, runAbortController)
 
     try {
       // Prefer the parent's model; fall back to DB default only if parent didn't pass one.
@@ -148,7 +206,7 @@ export const subAgentTool: Tool = {
         reasoningEffort: ctx.parentReasoningEffort,
         systemPromptOverride,
         apiKeyOverride,
-        signal: ctx.signal,
+        signal: runAbortController.signal,
         permissionStore: permStore,
         onPermissionRequest: ctx.onPermissionRequest,
         onAskUser: ctx.onAskUser,
@@ -156,19 +214,22 @@ export const subAgentTool: Tool = {
         agentKey: preset ?? 'wos',
         // Forward side-channel events (stdout/stderr deltas from Bash, etc.)
         // up to the parent runner so the UI can render live output.
-        onEvent: (e) => ctx.yieldEvent({ type: 'subagent_event', agentId, event: e }),
+        onEvent: (e) => ctx.yieldEvent({ type: 'subagent_event', agentId, agentName, colorSeed, event: e }),
       })) {
-        await ctx.yieldEvent({ type: 'subagent_event', agentId, event })
+        await ctx.yieldEvent({ type: 'subagent_event', agentId, agentName, colorSeed, event })
         if (event.type === 'text_delta') result += event.content
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      await ctx.yieldEvent({ type: 'subagent_end', agentId, result: `Error: ${msg}` })
+      await ctx.yieldEvent({ type: 'subagent_end', agentId, agentName, colorSeed, result: `Error: ${msg}` })
       finishLedger('error', msg)
       return { output: `Subagent error: ${msg}`, error: msg }
+    } finally {
+      _inFlightControllers.delete(agentId)
+      if (parentSignal) parentSignal.removeEventListener('abort', onParentAbort)
     }
 
-    await ctx.yieldEvent({ type: 'subagent_end', agentId, result })
+    await ctx.yieldEvent({ type: 'subagent_end', agentId, agentName, colorSeed, result })
     finishLedger('success', result.slice(0, 4000) || null)
     return { output: result || '(subagent completed with no output)' }
   },

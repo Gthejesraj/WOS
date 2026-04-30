@@ -7,6 +7,7 @@ export function buildGitHubTools(creds: { token: string }): Tool[] {
     {
       name: 'GitHubListRepos',
       description: 'List GitHub repositories for the authenticated user.',
+      readOnly: true,
       inputSchema: {
         type: 'object',
         properties: {
@@ -25,6 +26,7 @@ export function buildGitHubTools(creds: { token: string }): Tool[] {
     {
       name: 'GitHubGetRepo',
       description: 'Get details about a specific GitHub repository.',
+      readOnly: true,
       inputSchema: {
         type: 'object',
         required: ['owner', 'repo'],
@@ -60,6 +62,7 @@ export function buildGitHubTools(creds: { token: string }): Tool[] {
     {
       name: 'GitHubListBranches',
       description: 'List branches in a GitHub repository.',
+      readOnly: true,
       inputSchema: {
         type: 'object',
         required: ['owner', 'repo'],
@@ -96,6 +99,7 @@ export function buildGitHubTools(creds: { token: string }): Tool[] {
     {
       name: 'GitHubListIssues',
       description: 'List issues in a GitHub repository.',
+      readOnly: true,
       inputSchema: {
         type: 'object',
         required: ['owner', 'repo'],
@@ -118,6 +122,7 @@ export function buildGitHubTools(creds: { token: string }): Tool[] {
     {
       name: 'GitHubGetIssue',
       description: 'Get a specific GitHub issue with its comments.',
+      readOnly: true,
       inputSchema: {
         type: 'object',
         required: ['owner', 'repo', 'issue_number'],
@@ -198,6 +203,7 @@ export function buildGitHubTools(creds: { token: string }): Tool[] {
     {
       name: 'GitHubListPRs',
       description: 'List pull requests in a GitHub repository.',
+      readOnly: true,
       inputSchema: {
         type: 'object',
         required: ['owner', 'repo'],
@@ -218,6 +224,7 @@ export function buildGitHubTools(creds: { token: string }): Tool[] {
     {
       name: 'GitHubGetPR',
       description: 'Get a specific GitHub pull request with review status.',
+      readOnly: true,
       inputSchema: {
         type: 'object',
         required: ['owner', 'repo', 'pr_number'],
@@ -258,6 +265,7 @@ export function buildGitHubTools(creds: { token: string }): Tool[] {
     {
       name: 'GitHubGetFileContent',
       description: 'Read the content of a file from a GitHub repository.',
+      readOnly: true,
       inputSchema: {
         type: 'object',
         required: ['owner', 'repo', 'path'],
@@ -277,6 +285,7 @@ export function buildGitHubTools(creds: { token: string }): Tool[] {
     {
       name: 'GitHubSearchCode',
       description: 'Search code across GitHub repositories using the code search API.',
+      readOnly: true,
       inputSchema: {
         type: 'object',
         required: ['query'],
@@ -294,6 +303,7 @@ export function buildGitHubTools(creds: { token: string }): Tool[] {
     {
       name: 'GitHubListNotifications',
       description: 'List GitHub notifications for the authenticated user.',
+      readOnly: true,
       inputSchema: {
         type: 'object',
         properties: {

@@ -1,0 +1,13 @@
+diff --git a/node_modules/@electron-forge/plugin-vite/dist/config/vite.preload.config.js b/node_modules/@electron-forge/plugin-vite/dist/config/vite.preload.config.js
+index 09fd751..618acca 100644
+--- a/node_modules/@electron-forge/plugin-vite/dist/config/vite.preload.config.js
++++ b/node_modules/@electron-forge/plugin-vite/dist/config/vite.preload.config.js
+@@ -14,8 +14,6 @@ function getConfig(forgeEnv, userConfig = {}) {
+                 input: forgeConfigSelf.entry,
+                 output: {
+                     format: 'cjs',
+-                    // It should not be split chunks.
+-                    inlineDynamicImports: true,
+                     entryFileNames: '[name].js',
+                     chunkFileNames: '[name].js',
+                     assetFileNames: '[name].[ext]',

@@ -1,4 +1,4 @@
-import * as http from 'http'
+import * as http from 'node:http'
 import { shell } from 'electron'
 
 const SCOPES = [

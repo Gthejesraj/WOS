@@ -36,6 +36,7 @@ export function buildGoogleTools(creds: GoogleCreds): Tool[] {
     {
       name: 'GmailListEmails',
       description: 'List emails from Gmail inbox. Optionally filter by label or search query.',
+      readOnly: true,
       inputSchema: {
         type: 'object',
         properties: {
@@ -65,6 +66,7 @@ export function buildGoogleTools(creds: GoogleCreds): Tool[] {
     {
       name: 'GmailGetEmail',
       description: 'Read the full content of a Gmail email by message ID.',
+      readOnly: true,
       inputSchema: {
         type: 'object',
         required: ['message_id'],
@@ -114,6 +116,7 @@ export function buildGoogleTools(creds: GoogleCreds): Tool[] {
     {
       name: 'GmailSearchEmails',
       description: 'Search Gmail using Gmail query syntax.',
+      readOnly: true,
       inputSchema: {
         type: 'object',
         required: ['query'],
@@ -157,6 +160,7 @@ export function buildGoogleTools(creds: GoogleCreds): Tool[] {
     {
       name: 'GoogleCalendarListEvents',
       description: 'List upcoming Google Calendar events.',
+      readOnly: true,
       inputSchema: {
         type: 'object',
         properties: {
@@ -174,6 +178,7 @@ export function buildGoogleTools(creds: GoogleCreds): Tool[] {
     {
       name: 'GoogleCalendarGetEvent',
       description: 'Get details of a specific Google Calendar event.',
+      readOnly: true,
       inputSchema: {
         type: 'object',
         required: ['event_id'],
@@ -255,6 +260,7 @@ export function buildGoogleTools(creds: GoogleCreds): Tool[] {
     {
       name: 'GoogleDriveListFiles',
       description: 'List files in Google Drive.',
+      readOnly: true,
       inputSchema: {
         type: 'object',
         properties: {
@@ -271,6 +277,7 @@ export function buildGoogleTools(creds: GoogleCreds): Tool[] {
     {
       name: 'GoogleDriveGetFile',
       description: 'Get a Google Drive file\'s metadata and content (for text files).',
+      readOnly: true,
       inputSchema: {
         type: 'object',
         required: ['file_id'],

@@ -7,21 +7,20 @@
  * schema changes ad-hoc and easy to forget.
  *
  * This module introduces a tiny migration runner: each migration is a function
- * that mutates the raw sql.js database, gated on a monotonically increasing
- * `version` number tracked in the `schema_version` table. New migrations are
- * appended to the `MIGRATIONS` array and run in order; idempotency is
- * guaranteed by the version gate (each migration runs once per install).
- *
- * Existing installs are safe because the first runner pass simply records the
- * current version as the highest one defined here — there are no migrations
- * to backfill, so it's a no-op.
+ * that mutates the raw better-sqlite3 database, gated on a monotonically
+ * increasing `version` number tracked in the `schema_version` table. New
+ * migrations are appended to the `MIGRATIONS` array and run in order;
+ * idempotency is guaranteed by the version gate (each migration runs once per
+ * install).
  */
-import type { Database as SqlJsDatabase } from 'sql.js'
+import type Database from 'better-sqlite3'
+
+type SqliteDb = Database.Database
 
 export interface Migration {
   version: number
   description: string
-  up(db: SqlJsDatabase): void
+  up(db: SqliteDb): void
 }
 
 /**
@@ -41,7 +40,7 @@ export const MIGRATIONS: Migration[] = [
   },
 ]
 
-function ensureSchemaVersionTable(db: SqlJsDatabase): void {
+function ensureSchemaVersionTable(db: SqliteDb): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS schema_version (
       version INTEGER PRIMARY KEY,
@@ -51,33 +50,26 @@ function ensureSchemaVersionTable(db: SqlJsDatabase): void {
   `)
 }
 
-function getCurrentVersion(db: SqlJsDatabase): number {
+function getCurrentVersion(db: SqliteDb): number {
   ensureSchemaVersionTable(db)
-  const stmt = db.prepare('SELECT MAX(version) as v FROM schema_version')
-  try {
-    if (!stmt.step()) return 0
-    const row = stmt.getAsObject() as { v: number | null }
-    return row.v ?? 0
-  } finally {
-    stmt.free()
-  }
+  const row = db.prepare('SELECT MAX(version) as v FROM schema_version').get() as { v: number | null } | undefined
+  return row?.v ?? 0
 }
 
 /**
- * Run any pending migrations against the given sql.js database. Returns the
- * version the database is at when the call returns. Caller is responsible
- * for persisting the database to disk afterwards.
+ * Run any pending migrations against the given better-sqlite3 database.
+ * Returns the version the database is at when the call returns.
  */
-export function runMigrations(db: SqlJsDatabase): number {
+export function runMigrations(db: SqliteDb): number {
   ensureSchemaVersionTable(db)
   const current = getCurrentVersion(db)
   const pending = MIGRATIONS.filter(m => m.version > current).sort((a, b) => a.version - b.version)
+  const insert = db.prepare(
+    'INSERT INTO schema_version (version, applied_at, description) VALUES (?, ?, ?)',
+  )
   for (const m of pending) {
     m.up(db)
-    db.run(
-      'INSERT INTO schema_version (version, applied_at, description) VALUES (?, ?, ?)',
-      [m.version, Date.now(), m.description],
-    )
+    insert.run(m.version, Date.now(), m.description)
   }
   return getCurrentVersion(db)
 }

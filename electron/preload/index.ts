@@ -49,10 +49,13 @@ contextBridge.exposeInMainWorld('wos', {
 
   // Keyboard shortcuts
   onShortcut: (callback: (name: string) => void) => {
-    const handler = () => callback('new-conversation')
-    ipcRenderer.on('shortcut:new-conversation', handler)
+    const newConv = () => callback('new-conversation')
+    const openAuto = () => callback('open-automations')
+    ipcRenderer.on('shortcut:new-conversation', newConv)
+    ipcRenderer.on('shortcut:open-automations', openAuto)
     return () => {
-      ipcRenderer.removeListener('shortcut:new-conversation', handler)
+      ipcRenderer.removeListener('shortcut:new-conversation', newConv)
+      ipcRenderer.removeListener('shortcut:open-automations', openAuto)
     }
   },
 
@@ -63,6 +66,10 @@ contextBridge.exposeInMainWorld('wos', {
   saveWorkspaceFile: (params: { workspaceId: string; relPath: string; content: string }):
     Promise<{ ok: boolean; absPath?: string; error?: string }> =>
     safeInvoke('workspace:save-file', { ok: false, error: 'workspace:save-file not ready' }, params),
+
+  readWorkspaceFile: (params: { workspaceId: string; relPath: string }):
+    Promise<{ ok: boolean; content?: string; absPath?: string; error?: string }> =>
+    safeInvoke('workspace:read-file', { ok: false, error: 'workspace:read-file not ready' }, params),
 
   globWorkspace: (params: { workspaceId: string; query: string }):
     Promise<{ files: string[]; error?: string }> =>
@@ -149,6 +156,12 @@ contextBridge.exposeInMainWorld('wos', {
       ipcRenderer.invoke('mcp:set-enabled', { id, enabled }),
     testConnection: (id: string) => ipcRenderer.invoke('mcp:test-connection', id),
     listTools: (id: string) => ipcRenderer.invoke('mcp:list-tools', id),
+  },
+
+  // ----- Plugins -----
+  plugins: {
+    list: () => ipcRenderer.invoke('plugins:list'),
+    reload: () => ipcRenderer.invoke('plugins:reload'),
   },
 
   // ----- Skills -----
@@ -274,51 +287,36 @@ contextBridge.exposeInMainWorld('wos', {
     },
   },
 
-  // ----- Automations (Scheduled / Hooks / Standing Orders / Tasks / Sub-agents) -----
+  // ----- Automations -----
   automations: {
-    // Scheduled jobs
-    listScheduled: (): Promise<unknown[]> => safeInvoke('automations:scheduled:list', []),
-    upsertScheduled: (job: Record<string, unknown>): Promise<{ ok: boolean; id?: string; error?: string }> =>
-      safeInvoke('automations:scheduled:upsert', { ok: false, error: 'IPC not registered' }, job),
-    deleteScheduled: (id: string): Promise<{ ok: boolean }> =>
-      safeInvoke('automations:scheduled:delete', { ok: false }, { id }),
-    runScheduledNow: (id: string): Promise<{ ok: boolean; error?: string }> =>
-      safeInvoke('automations:scheduled:run-now', { ok: false }, { id }),
-    listScheduledRuns: (jobId?: string): Promise<unknown[]> =>
-      safeInvoke('automations:scheduled:runs', [], { jobId }),
-
-    // Hooks
-    listHooks: (): Promise<unknown[]> => safeInvoke('automations:hooks:list', []),
-    upsertHook: (hook: Record<string, unknown>): Promise<{ ok: boolean; id?: string; error?: string }> =>
-      safeInvoke('automations:hooks:upsert', { ok: false, error: 'IPC not registered' }, hook),
-    deleteHook: (id: string): Promise<{ ok: boolean }> =>
-      safeInvoke('automations:hooks:delete', { ok: false }, { id }),
-    listHookRuns: (hookId?: string): Promise<unknown[]> =>
-      safeInvoke('automations:hooks:runs', [], { hookId }),
-
-    // Standing orders
-    listStandingOrders: (): Promise<unknown[]> => safeInvoke('automations:standing:list', []),
-    upsertStandingOrder: (order: Record<string, unknown>): Promise<{ ok: boolean; id?: string; error?: string }> =>
-      safeInvoke('automations:standing:upsert', { ok: false, error: 'IPC not registered' }, order),
-    deleteStandingOrder: (id: string): Promise<{ ok: boolean }> =>
-      safeInvoke('automations:standing:delete', { ok: false }, { id }),
-
-    // Tasks ledger
-    listTasks: (filter?: { status?: string; type?: string }): Promise<unknown[]> =>
-      safeInvoke('automations:tasks:list', [], filter ?? {}),
-    getTaskSteps: (taskId: string): Promise<unknown[]> =>
-      safeInvoke('automations:tasks:steps', [], { taskId }),
-
-    // Natural-language authoring
-    authorAutomation: (kind: 'scheduled' | 'hook' | 'standing-order', prompt: string):
-      Promise<{ ok: boolean; draft?: Record<string, unknown>; error?: string }> =>
-      safeInvoke('automations:author', { ok: false, error: 'IPC not registered' }, { kind, prompt }),
-
-    draftTurn: (
-      kind: 'scheduled' | 'hook' | 'standing-order',
-      messages: { role: 'user' | 'assistant'; content: string }[],
-    ): Promise<{ ok: boolean; reply?: string; draft?: Record<string, unknown> | null; error?: string }> =>
-      safeInvoke('automations:draft:turn', { ok: false, error: 'IPC not registered' }, { kind, messages }),
+    list: (filter?: { kind?: string; enabled?: boolean }) =>
+      safeInvoke('automations:list', [] as unknown[], filter),
+    get: (id: string) => safeInvoke('automations:get', null as unknown, { id }),
+    upsert: (input: unknown) => ipcRenderer.invoke('automations:upsert', input),
+    toggle: (id: string, enabled: boolean) =>
+      ipcRenderer.invoke('automations:toggle', { id, enabled }),
+    delete: (id: string) => ipcRenderer.invoke('automations:delete', { id }),
+    runNow: (id: string, dryRun?: boolean) =>
+      ipcRenderer.invoke('automations:runNow', { id, dryRun }),
+    runs: (id?: string, limit?: number) =>
+      safeInvoke('automations:runs', [] as unknown[], { id, limit }),
+    webhookInfo: (id: string) => safeInvoke('automations:webhookInfo', null as unknown, { id }),
+    reloadAll: () => ipcRenderer.invoke('automations:reloadAll'),
+    onError: (callback: (e: { id: string; runId: string; error: string }) => void) => {
+      const handler = (_: Electron.IpcRendererEvent, data: { id: string; runId: string; error: string }) => callback(data)
+      ipcRenderer.on('automation:error', handler)
+      return () => ipcRenderer.removeListener('automation:error', handler)
+    },
+    onResult: (callback: (e: { id: string; runId: string | null; name: string; output: string }) => void) => {
+      const handler = (_: Electron.IpcRendererEvent, data: { id: string; runId: string | null; name: string; output: string }) => callback(data)
+      ipcRenderer.on('automation:result', handler)
+      return () => ipcRenderer.removeListener('automation:result', handler)
+    },
+    onOpen: (callback: (e: { automationId: string; runId?: string }) => void) => {
+      const handler = (_: Electron.IpcRendererEvent, data: { automationId: string; runId?: string }) => callback(data)
+      ipcRenderer.on('shortcut:open-automations', handler)
+      return () => ipcRenderer.removeListener('shortcut:open-automations', handler)
+    },
   },
 
   // ----- Dictation (Apple Speech) -----

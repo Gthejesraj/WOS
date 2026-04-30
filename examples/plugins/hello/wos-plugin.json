@@ -1,0 +1,10 @@
+{
+  "id": "hello",
+  "name": "Hello Plugin",
+  "version": "1.0.0",
+  "entry": "index.js",
+  "description": "Sample WOS plugin that registers a single greet tool.",
+  "author": "WOS",
+  "kinds": ["tool"],
+  "permissions": []
+}

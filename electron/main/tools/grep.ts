@@ -1,8 +1,8 @@
-import { exec } from 'child_process'
-import { promisify } from 'util'
+import { exec } from 'node:child_process'
+import { promisify } from 'node:util'
 import { validatePath } from './index'
 import type { Tool, ToolContext, ToolResult } from './index'
-import path from 'path'
+import path from 'node:path'
 
 const execAsync = promisify(exec)
 

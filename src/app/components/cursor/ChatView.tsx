@@ -281,10 +281,16 @@ function ReasoningBlock({ content, collapsed: initCollapsed, done, autoCollapse,
 
 function ToolUseBlock({
   toolName, toolId: _toolId, input, partialArgs, status, result, error, stdout, stderr, interrupted,
-}: Extract<MessageBlock, { type: 'tool_use' }>) {
+  autoCollapse,
+}: Extract<MessageBlock, { type: 'tool_use' }> & { autoCollapse?: boolean }) {
   const isPreparing = status === 'preparing'
   const isRunning = status === 'running'
-  const [expanded, setExpanded] = useState(isPreparing || isRunning)
+  const isComplete = status === 'done' || status === 'error' || !!interrupted
+  // Mirror ReasoningBlock: keep open while in-flight, auto-collapse when done
+  // unless this is the most recent block. User toggle always wins.
+  const [userToggled, setUserToggled] = useState<boolean | null>(null)
+  const baseCollapsed = isComplete ? !!autoCollapse : !(isPreparing || isRunning)
+  const expanded = userToggled !== null ? !userToggled : !baseCollapsed
   const statusIcon = interrupted
     ? <AlertCircle size={11} className="text-zinc-400" />
     : status === 'preparing'
@@ -320,7 +326,7 @@ function ToolUseBlock({
   return (
     <div className="my-2 rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--card)' }}>
       <button
-        onClick={() => setExpanded(o => !o)}
+        onClick={() => setUserToggled(prev => prev === null ? !expanded : !prev)}
         className="flex items-center gap-2 px-3 py-1.5 w-full text-left wos-hover-sm transition-colors"
       >
         {statusIcon}
@@ -1325,7 +1331,7 @@ const BlockRenderer = memo(function BlockRenderer({
       />
     case 'tool_use': {
       if (block.toolName === 'TodoWrite') return <TodoBlock {...block} />
-      return <ToolUseBlock {...block} />
+      return <ToolUseBlock {...block} autoCollapse={!isLast} />
     }
     case 'permission_request': return <PermissionBlock {...block} />
     case 'ask_user':
@@ -2362,7 +2368,7 @@ function Composer() {
 
 /* ─── Main ChatView ─── */
 export function ChatView() {
-  const { currentMessages, isStreaming, activeBranches, switchBranch, editMessage, focusedAgentId, setFocusedAgentId, sendMessage } = useAgentStore()
+  const { currentMessages, isStreaming, activeBranches, switchBranch, editMessage, focusedAgentId, setFocusedAgentId } = useAgentStore()
   const scrollRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
@@ -2391,50 +2397,49 @@ export function ChatView() {
     return counts
   }, [currentMessages])
 
-  // Focus metadata: find agentName for the focused id so we can show it in the banner
-  const focusMeta = React.useMemo(() => {
+  // Find the live focused subagent block so the side panel can render it.
+  const focusedBlock = React.useMemo(() => {
     if (!focusedAgentId) return null
-    for (const m of currentMessages) {
+    for (let i = currentMessages.length - 1; i >= 0; i--) {
+      const m = currentMessages[i]
       if (m.role !== 'assistant') continue
       for (const b of m.blocks) {
         if (b.type === 'subagent' && b.agentId === focusedAgentId) {
-          return { agentName: b.agentName ?? 'task', colorSeed: b.colorSeed, shortId: focusedAgentId.slice(0, 6) }
+          return b as Extract<MessageBlock, { type: 'subagent' }>
         }
       }
     }
-    return { agentName: 'agent', colorSeed: 0, shortId: focusedAgentId.slice(0, 6) }
+    return null
   }, [focusedAgentId, currentMessages])
 
-  // Group into user/assistant pairs, filtering to active branch per group
+  // Focus metadata: find agentName for the focused id so we can show it in the panel
+  const focusMeta = React.useMemo(() => {
+    if (!focusedAgentId) return null
+    if (focusedBlock) {
+      return {
+        agentName: focusedBlock.agentName ?? 'task',
+        colorSeed: focusedBlock.colorSeed,
+        shortId: focusedAgentId.slice(0, 6),
+      }
+    }
+    return { agentName: 'agent', colorSeed: 0, shortId: focusedAgentId.slice(0, 6) }
+  }, [focusedAgentId, focusedBlock])
+
+  // Group into user/assistant pairs, filtering to active branch per group.
+  // Note: when a subagent is focused we keep the main chat fully visible —
+  // focus opens a side panel instead of filtering the conversation.
   const turns = React.useMemo(() => {
     const activeMessages = currentMessages.filter(m => {
       if (!m.branchGroupId) return true
       return (m.branchIndex ?? 0) === (activeBranches[m.branchGroupId] ?? 0)
     })
 
-    // If focused, keep only turns that have subagent blocks matching focusedAgentId
-    const filteredMessages = focusedAgentId
-      ? activeMessages.filter(m => {
-          if (m.role === 'user') {
-            // Keep user messages that are followed by an assistant with the focused subagent
-            const idx = activeMessages.indexOf(m)
-            const next = activeMessages[idx + 1]
-            if (!next || next.role !== 'assistant') return false
-            return next.blocks.some(b => b.type === 'subagent' && b.agentId === focusedAgentId)
-          }
-          if (m.role === 'assistant') {
-            return m.blocks.some(b => b.type === 'subagent' && b.agentId === focusedAgentId)
-          }
-          return false
-        })
-      : activeMessages
-
     const pairs: Array<{ user: DisplayMessage; assistant: DisplayMessage | null }> = []
     let i = 0
-    while (i < filteredMessages.length) {
-      const msg = filteredMessages[i]
+    while (i < activeMessages.length) {
+      const msg = activeMessages[i]
       if (msg.role === 'user') {
-        const next = filteredMessages[i + 1]
+        const next = activeMessages[i + 1]
         pairs.push({
           user: msg,
           assistant: next?.role === 'assistant' ? next : null,
@@ -2445,33 +2450,13 @@ export function ChatView() {
       }
     }
     return pairs
-  }, [currentMessages, activeBranches, focusedAgentId])
+  }, [currentMessages, activeBranches])
 
   const focusColor = focusMeta ? getAgentColor(focusMeta.colorSeed) : null
 
   return (
-    <div className="flex flex-col h-full relative" style={{ background: 'var(--background)' }}>
-      {/* Focus banner */}
-      {focusMeta && focusColor && (
-        <div
-          className="flex items-center gap-2 px-4 py-2 text-xs shrink-0"
-          style={{ background: focusColor.bg, borderBottom: `1px solid ${focusColor.border}` }}
-        >
-          <span style={{ color: focusColor.text }}>🔍</span>
-          <span style={{ color: focusColor.text }} className="font-medium">
-            Focused on {focusMeta.agentName}#{focusMeta.shortId}
-          </span>
-          <span className="flex-1" />
-          <button
-            onClick={() => { setFocusedAgentId(null); sendMessage('/subagents unfocus') }}
-            className="text-xs px-2 py-0.5 rounded transition-colors wos-hover"
-            style={{ color: focusColor.text, border: `1px solid ${focusColor.border}` }}
-          >
-            Unfocus
-          </button>
-        </div>
-      )}
-
+    <div className="flex h-full" style={{ background: 'var(--background)' }}>
+      <div className="flex flex-col flex-1 min-w-0 h-full relative">
       {/* Messages */}
       <div
         ref={scrollRef}
@@ -2482,7 +2467,7 @@ export function ChatView() {
         {turns.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <p style={{ color: 'var(--muted-foreground)', fontSize: '12px' }}>
-              {focusedAgentId ? 'No messages from this subagent yet.' : 'Start a conversation…'}
+              Start a conversation…
             </p>
           </div>
         ) : (
@@ -2545,6 +2530,116 @@ export function ChatView() {
       )}
 
       <Composer />
+      </div>
+
+      {/* Right side panel — focused subagent tracker */}
+      {focusMeta && focusColor && (
+        <SubagentFocusPanel
+          block={focusedBlock}
+          agentName={focusMeta.agentName}
+          shortId={focusMeta.shortId}
+          color={focusColor}
+          onClose={() => setFocusedAgentId(null)}
+        />
+      )}
     </div>
+  )
+}
+
+function SubagentFocusPanel({
+  block, agentName, shortId, color, onClose,
+}: {
+  block: Extract<MessageBlock, { type: 'subagent' }> | null
+  agentName: string
+  shortId: string
+  color: ReturnType<typeof getAgentColor>
+  onClose: () => void
+}) {
+  const merged = useMemo(() => block ? mergeEvents(block.events) : [], [block])
+  const tailRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    tailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [merged.length])
+
+  const isRunning = !!block && block.result === undefined && !block.interrupted
+  let statusLabel = 'idle'
+  let statusColor: string = color.text
+  if (block) {
+    if (block.interrupted || block.result === '[interrupted]') { statusLabel = 'cancelled'; statusColor = '#94a3b8' }
+    else if (block.result !== undefined) { statusLabel = 'done'; statusColor = '#4ade80' }
+    else { statusLabel = 'running'; statusColor = color.text }
+  }
+
+  return (
+    <aside
+      className="flex flex-col h-full shrink-0"
+      style={{
+        width: 380,
+        borderLeft: '1px solid var(--border)',
+        background: 'var(--background)',
+      }}
+    >
+      <div
+        className="flex items-center gap-2 px-3 py-2 shrink-0"
+        style={{ background: color.bg, borderBottom: `1px solid ${color.border}` }}
+      >
+        <span style={{ color: color.text }}>🔍</span>
+        <span className="text-xs font-medium font-mono" style={{ color: color.text }}>
+          {agentName}#{shortId}
+        </span>
+        <span
+          className="text-[10px] shrink-0 font-medium px-1.5 py-0.5 rounded-full"
+          style={{ color: statusColor, background: 'rgba(0,0,0,0.2)' }}
+        >
+          {statusLabel}
+        </span>
+        <span className="flex-1" />
+        <button
+          onClick={onClose}
+          className="text-[11px] px-2 py-0.5 rounded transition-colors wos-hover"
+          style={{ color: color.text, border: `1px solid ${color.border}` }}
+          title="Close focus panel"
+        >
+          Unfocus
+        </button>
+      </div>
+
+      <div
+        className="flex-1 min-h-0 overflow-y-auto px-3 py-2"
+        style={{ scrollbarWidth: 'thin', scrollbarColor: 'var(--border-strong) transparent' }}
+      >
+        {!block ? (
+          <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+            Waiting for subagent events…
+          </p>
+        ) : (
+          <>
+            <p className="text-[10px] mb-2" style={{ color: 'var(--muted-foreground)' }}>
+              {block.prompt}
+            </p>
+            {merged.length === 0 ? (
+              <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                {isRunning ? 'Starting…' : 'No events emitted.'}
+              </p>
+            ) : (
+              <div className="space-y-1">
+                {merged.map((g, i) => (
+                  <MergedEventLine key={i} group={g} color={color} />
+                ))}
+              </div>
+            )}
+            {block.result && block.result !== '[interrupted]' && (
+              <div
+                className="mt-3 pt-2 text-xs"
+                style={{ borderTop: `1px solid ${color.border}`, color: 'var(--secondary-foreground)' }}
+              >
+                ✓ {block.result}
+              </div>
+            )}
+            <div ref={tailRef} className="h-1" />
+          </>
+        )}
+      </div>
+    </aside>
   )
 }

@@ -3,7 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import type { ViewType } from '../types'
 
 export type AppsTab = 'marketplace' | 'apps' | 'mcp' | 'skills' | 'rules'
-export type AutomationsTab = 'scheduled' | 'hooks' | 'standing' | 'tasks'
+export type AutomationsTab = 'active' | 'rules' | 'background'
 export type MeetingsTab = 'calendar' | 'analyze'
 export type CalendarView = 'week' | 'month' | 'today'
 
@@ -60,7 +60,7 @@ export const useUIStore = create<UIState>()(
       isSidebarCollapsed: false,
       sidebarWidth: SIDEBAR_DEFAULT,
       appsTab: 'marketplace',
-      automationsTab: 'scheduled',
+      automationsTab: 'active',
       meetingsTab: 'calendar',
       calendarView: 'week',
       composerDrafts: {},

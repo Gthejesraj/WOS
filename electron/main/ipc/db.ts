@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import { getDb, schema, notifyWrite, runRaw } from '../db'
 import { eq, desc, asc, gte, and } from 'drizzle-orm'
-import { randomUUID } from 'crypto'
+import { randomUUID } from 'node:crypto'
 
 export function registerDbHandlers() {
   ipcMain.handle('db:conversations:list', () => {

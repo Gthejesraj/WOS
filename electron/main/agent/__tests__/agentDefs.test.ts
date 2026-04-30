@@ -22,12 +22,12 @@ describe('agentDefs', () => {
       'fileRead', 'fileWrite', 'bash', 'Task', 'webFetch', 'webSearch',
       'meeting_list', 'meeting_search', 'meeting_summarize',
       'google_calendar_list', 'slack_send', 'github_create_issue', 'mcp_random',
-      'askUser', 'read_skill', 'read_rule', 'glob', 'grep',
+      'askUser', 'AskUser', 'read_skill', 'read_rule', 'glob', 'grep',
     ].map(fakeTool)
     const got = def.toolFilter(all).map(t => t.name).sort()
     expect(got).toContain('meeting_list')
     expect(got).toContain('webFetch')
-    expect(got).toContain('askUser')
+    expect(got).toContain('AskUser')
     expect(got).toContain('google_calendar_list')
     expect(got).toContain('slack_send')
     expect(got).not.toContain('bash')

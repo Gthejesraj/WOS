@@ -1,48 +1,75 @@
-/**
- * Automations IPC handlers — thin wrapper around `automations/service`.
- * The same service is used by the automation agent's tools so the
- * UI-driven CRUD and the LLM-driven CRUD stay perfectly aligned.
- */
 import { ipcMain } from 'electron'
-import * as svc from '../automations/service'
-import { authorAutomation } from '../automations/nlAuthor'
-import { draftTurn, type DraftKind, type DraftMessage } from '../automations/draftAgent'
+import { registry, type AutomationKind, type ResultDelivery } from '../automations/registry'
+import { audit } from '../automations/audit'
+import { runAutomation } from '../automations/runner'
+import { automationsRuntime } from '../automations'
+import { ensureWebhook } from '../automations/webhooks'
+import { refreshTrayMenu } from '../tray'
 
-export function registerAutomationsHandlers() {
-  // ----- Scheduled jobs -----
-  ipcMain.handle('automations:scheduled:list', () => svc.listScheduled())
-  ipcMain.handle('automations:scheduled:upsert', async (_e, job: svc.ScheduledJobInput) => svc.upsertScheduled(job))
-  ipcMain.handle('automations:scheduled:delete', async (_e, { id }: { id: string }) => svc.deleteScheduled(id))
-  ipcMain.handle('automations:scheduled:run-now', async (_e, { id }: { id: string }) => svc.runScheduledNow(id))
-  ipcMain.handle('automations:scheduled:runs', (_e, { jobId }: { jobId?: string }) => svc.listScheduledRuns(jobId))
-
-  // ----- Hooks -----
-  ipcMain.handle('automations:hooks:list', () => svc.listHooks())
-  ipcMain.handle('automations:hooks:upsert', async (_e, hook: svc.HookInput) => svc.upsertHook(hook))
-  ipcMain.handle('automations:hooks:delete', async (_e, { id }: { id: string }) => svc.deleteHook(id))
-  ipcMain.handle('automations:hooks:runs', (_e, { hookId }: { hookId?: string }) => svc.listHookRuns(hookId))
-
-  // ----- Standing Orders -----
-  ipcMain.handle('automations:standing:list', () => svc.listStandingOrders())
-  ipcMain.handle('automations:standing:upsert', async (_e, order: svc.StandingOrderInput) => svc.upsertStandingOrder(order))
-  ipcMain.handle('automations:standing:delete', async (_e, { id }: { id: string }) => svc.deleteStandingOrder(id))
-
-  // ----- Tasks ledger -----
-  ipcMain.handle('automations:tasks:list', (_e, filter: { status?: string; type?: string }) => svc.listTasks(filter ?? {}))
-  ipcMain.handle('automations:tasks:steps', (_e, { taskId }: { taskId: string }) => svc.getTaskSteps(taskId))
-
-  // ----- Natural-language authoring (heuristic draft for the UI) -----
-  ipcMain.handle('automations:author', async (_e, { kind, prompt }: { kind: string; prompt: string }) => {
-    try {
-      const draft = await authorAutomation(kind, prompt)
-      return { ok: true, draft }
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
-    }
+export function registerAutomationsHandlers(): void {
+  ipcMain.handle('automations:list', (_evt, args?: { kind?: AutomationKind; enabled?: boolean }) => {
+    return registry.list(args)
   })
 
-  // ----- LLM-driven conversational drafting (one turn at a time) -----
-  ipcMain.handle('automations:draft:turn', async (_e, payload: { kind: DraftKind; messages: DraftMessage[] }) => {
-    return draftTurn(payload?.kind, payload?.messages ?? [])
+  ipcMain.handle('automations:get', (_evt, args: { id: string }) => {
+    return registry.get(args.id)
+  })
+
+  ipcMain.handle(
+    'automations:upsert',
+    (_evt, input: {
+      id?: string
+      kind: AutomationKind
+      name: string
+      description?: string | null
+      enabled?: boolean
+      prompt?: string
+      toolsAllow?: string[]
+      config?: Record<string, unknown>
+      resultDelivery?: ResultDelivery
+      resultTarget?: string | null
+    }) => {
+      const row = registry.upsert(input)
+      automationsRuntime.reload(row.id)
+      refreshTrayMenu()
+      return row
+    },
+  )
+
+  ipcMain.handle('automations:toggle', (_evt, args: { id: string; enabled: boolean }) => {
+    const row = registry.toggle(args.id, args.enabled)
+    if (row) automationsRuntime.reload(args.id)
+    refreshTrayMenu()
+    return row
+  })
+
+  ipcMain.handle('automations:delete', (_evt, args: { id: string }) => {
+    registry.delete(args.id)
+    automationsRuntime.reload(args.id)
+    refreshTrayMenu()
+    return { ok: true }
+  })
+
+  ipcMain.handle('automations:runNow', async (_evt, args: { id: string; dryRun?: boolean }) => {
+    const a = registry.get(args.id)
+    if (!a) return { ok: false, error: `Automation ${args.id} not found.` }
+    const r = await runAutomation(a, { dryRun: !!args.dryRun, trigger: { kind: 'manual' } })
+    return { ok: !r.error, runId: r.runId, output: r.output, error: r.error ?? null }
+  })
+
+  ipcMain.handle('automations:runs', (_evt, args?: { id?: string; limit?: number }) => {
+    return audit.list(args?.id, args?.limit ?? 100)
+  })
+
+  ipcMain.handle('automations:webhookInfo', (_evt, args: { id: string }) => {
+    const a = registry.get(args.id)
+    if (!a || a.kind !== 'webhook') return null
+    return ensureWebhook(a)
+  })
+
+  ipcMain.handle('automations:reloadAll', () => {
+    automationsRuntime.reloadAll()
+    refreshTrayMenu()
+    return { ok: true }
   })
 }

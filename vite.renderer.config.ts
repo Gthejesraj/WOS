@@ -1,12 +1,27 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import path from 'path'
+import path from 'node:path'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: { '@': path.resolve(__dirname, 'src') },
+  },
+  // Pre-bundle the heavy renderer deps so cold boots don't trigger Vite's
+  // "Re-optimizing dependencies because lockfile has changed" pass on every
+  // launch.
+  optimizeDeps: {
+    include: [
+      'react',
+      'react-dom',
+      'react-dom/client',
+      'zustand',
+      'sonner',
+      'lucide-react',
+      'clsx',
+      'tailwind-merge',
+    ],
   },
   server: {
     // The renderer only owns `src/**`. Ignoring main/preload + Swift build

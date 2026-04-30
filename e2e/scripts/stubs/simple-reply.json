@@ -1,0 +1,8 @@
+{
+  "turns": [
+    [
+      { "type": "text_delta", "content": "Hello from WOS stub!" },
+      { "type": "message_stop", "stopReason": "end_turn", "usage": { "inputTokens": 1, "outputTokens": 5 } }
+    ]
+  ]
+}

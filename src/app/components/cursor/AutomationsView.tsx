@@ -1,819 +1,621 @@
-import { useEffect, useState } from 'react'
-import { Clock, Webhook, Shield, ListChecks, Pause, Play, Trash2, Pencil, Zap } from 'lucide-react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  Activity, AlertCircle, Calendar, CheckCircle2, ChevronRight, Clock,
+  ExternalLink, FileText, Globe, Heart, Loader2, Pause, Play, Plus,
+  RefreshCw, Settings as SettingsIcon, Trash2, Webhook, Workflow, XCircle, Zap,
+} from 'lucide-react'
+import { toast } from 'sonner'
 import { cn } from '../../../lib/utils'
-import { useUIStore, type AutomationsTab } from '../../../store/uiStore'
-import { DraftWizard } from './DraftWizard'
 
-type Tab = AutomationsTab
+type AutomationKind =
+  | 'cron'
+  | 'heartbeat'
+  | 'hook'
+  | 'standing_order'
+  | 'task_flow'
+  | 'webhook'
 
-interface ScheduledJob {
+type ResultDelivery = 'silent' | 'notify' | 'chat' | 'external'
+
+interface Automation {
   id: string
+  kind: AutomationKind
   name: string
-  cronExpr?: string | null
-  runAt?: number | null
-  target: string
+  description: string | null
+  enabled: boolean
   prompt: string
-  enabled: boolean | number
-  nextRunAt?: number | null
-  lastRunAt?: number | null
+  toolsAllow: string[]
+  config: Record<string, unknown>
+  resultDelivery: ResultDelivery
+  resultTarget: string | null
+  createdAt: string | Date
+  updatedAt: string | Date
+  lastRunAt: string | Date | null
+  nextRunAt: string | Date | null
 }
 
-interface Hook {
+interface AuditRun {
   id: string
-  name: string
-  event: string
-  type: string
-  enabled: boolean | number
-  lastFiredAt?: number | null
+  automationId: string
+  startedAt: string | Date
+  endedAt: string | Date | null
+  status: 'running' | 'success' | 'error' | 'cancelled' | 'dryrun'
+  output: string | null
+  error: string | null
+  trigger: unknown
+  toolCalls: unknown
 }
 
-interface StandingOrder {
-  id: string
-  name: string
-  body: string
-  scope: string
-  enabled: boolean | number
+type Section = 'active' | 'rules' | 'background'
+
+const ACTIVE_KINDS: AutomationKind[] = ['cron', 'hook', 'webhook']
+const RULE_KINDS: AutomationKind[] = ['standing_order']
+const BG_KINDS: AutomationKind[] = ['heartbeat', 'task_flow']
+
+const KIND_META: Record<AutomationKind, { label: string; icon: React.FC<{ className?: string }>; color: string }> = {
+  cron: { label: 'Schedule', icon: Calendar, color: 'text-blue-400' },
+  heartbeat: { label: 'Heartbeat', icon: Heart, color: 'text-rose-400' },
+  hook: { label: 'Event hook', icon: Zap, color: 'text-amber-400' },
+  webhook: { label: 'Webhook', icon: Webhook, color: 'text-emerald-400' },
+  standing_order: { label: 'Standing rule', icon: FileText, color: 'text-purple-400' },
+  task_flow: { label: 'Task flow', icon: Workflow, color: 'text-cyan-400' },
 }
 
-interface Task {
-  id: string
-  type: string
-  status: string
-  title: string
-  createdAt: number
-  updatedAt?: number
-  conversationId?: string | null
-  parentId?: string | null
-}
-
-interface TaskStep {
-  id: string
-  taskId: string
-  idx: number
-  status: string
-  label: string
-  output?: string | null
-  error?: string | null
-  ts: number
-}
-
-const wos = () => (window as any).wos
-
-export function AutomationsView() {
-  const tab = useUIStore(s => s.automationsTab)
-  const setTab = useUIStore(s => s.setAutomationsTab)
-
-  return (
-    <div className="flex-1 flex flex-col overflow-hidden" style={{ background: 'var(--background)' }}>
-      <div className="max-w-4xl mx-auto w-full px-6 pt-6 pb-0">
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold" style={{ color: 'var(--foreground)' }}>Automations</h2>
-          <p className="text-sm mt-1" style={{ color: 'var(--muted-foreground)' }}>
-            Schedule jobs, react to events, set standing orders, and review every detached run.
-          </p>
-        </div>
-
-        <div className="flex gap-1 border-b" style={{ borderColor: 'var(--border)' }}>
-          <TabButton active={tab === 'scheduled'} onClick={() => setTab('scheduled')} icon={<Clock size={13} />}>Scheduled</TabButton>
-          <TabButton active={tab === 'hooks'} onClick={() => setTab('hooks')} icon={<Webhook size={13} />}>Hooks</TabButton>
-          <TabButton active={tab === 'standing'} onClick={() => setTab('standing')} icon={<Shield size={13} />}>Standing Orders</TabButton>
-          <TabButton active={tab === 'tasks'} onClick={() => setTab('tasks')} icon={<ListChecks size={13} />}>Tasks</TabButton>
-        </div>
-      </div>
-
-      <div className="flex-1 max-w-4xl mx-auto w-full px-6 py-6 overflow-auto flex flex-col gap-4">
-        {tab === 'scheduled' && <ScheduledTab />}
-        {tab === 'hooks' && <HooksTab />}
-        {tab === 'standing' && <StandingTab />}
-        {tab === 'tasks' && <TasksTab />}
-      </div>
-    </div>
-  )
-}
-
-function ScheduledTab() {
-  const [jobs, setJobs] = useState<ScheduledJob[]>([])
-  const [busyId, setBusyId] = useState<string | null>(null)
-  const [editing, setEditing] = useState<ScheduledJob | null>(null)
-
-  const reload = async () => {
-    const list = await wos().automations.listScheduled()
-    setJobs(list as ScheduledJob[])
-  }
-  useEffect(() => { void reload() }, [])
-
-  const onDraft = async (draft: Record<string, unknown>) => {
-    const r = await wos().automations.upsertScheduled({
-      name: draft.name,
-      cronExpr: draft.cronExpr ?? null,
-      runAt: draft.runAt ?? null,
-      tz: draft.tz ?? 'local',
-      target: draft.target ?? 'new',
-      prompt: draft.prompt ?? '',
-      enabled: draft.enabled ?? true,
-      deleteAfterRun: draft.deleteAfterRun ?? false,
-    })
-    if (!r?.ok) alert(r?.error ?? 'Could not save scheduled job')
-    void reload()
-  }
-
-  const togglePaused = async (j: ScheduledJob) => {
-    await wos().automations.upsertScheduled({
-      id: j.id,
-      name: j.name,
-      cronExpr: j.cronExpr ?? null,
-      runAt: j.runAt ?? null,
-      tz: 'local',
-      target: j.target,
-      prompt: j.prompt,
-      enabled: !j.enabled,
-    })
-    void reload()
-  }
-
-  const runNow = async (j: ScheduledJob) => {
-    setBusyId(j.id)
-    try {
-      await wos().automations.runScheduledNow(j.id)
-    } finally {
-      setBusyId(null)
-      void reload()
+declare global {
+  interface WosAPI {
+    automations: {
+      list: (filter?: { kind?: string; enabled?: boolean }) => Promise<Automation[]>
+      get: (id: string) => Promise<Automation | null>
+      upsert: (input: unknown) => Promise<Automation>
+      toggle: (id: string, enabled: boolean) => Promise<Automation | null>
+      delete: (id: string) => Promise<{ ok: boolean }>
+      runNow: (id: string, dryRun?: boolean) => Promise<{ ok: boolean; runId?: string; output?: string; error?: string | null }>
+      runs: (id?: string, limit?: number) => Promise<AuditRun[]>
+      webhookInfo: (id: string) => Promise<{ slug: string; secret: string; localUrl: string; publicUrl: string | null } | null>
+      reloadAll: () => Promise<{ ok: boolean }>
+      onError: (cb: (e: { id: string; runId: string; error: string }) => void) => () => void
+      onResult: (cb: (e: { id: string; runId: string | null; name: string; output: string }) => void) => () => void
+      onOpen: (cb: (e: { automationId: string; runId?: string }) => void) => () => void
     }
   }
-
-  return (
-    <>
-      <DraftWizard kind="scheduled" onSave={onDraft} />
-      {editing && (
-        <EditScheduledModal
-          job={editing}
-          onClose={() => setEditing(null)}
-          onSaved={() => { setEditing(null); void reload() }}
-        />
-      )}
-      {jobs.length === 0 ? (
-        <EmptyState
-          icon={<Clock size={24} />}
-          title="No scheduled jobs yet"
-          description="Describe a recurring task above (e.g. “Every weekday at 9am, summarise yesterday's Jira activity”) to schedule it."
-        />
-      ) : (
-        <div className="flex flex-col gap-2">
-          {jobs.map(j => (
-            <Row
-              key={j.id}
-              title={j.name}
-              subtitle={j.cronExpr ?? (j.runAt ? new Date(j.runAt).toLocaleString() : '—')}
-              status={j.enabled ? 'enabled' : 'paused'}
-              actions={
-                <>
-                  <IconButton aria-label="Run now" onClick={() => void runNow(j)} disabled={busyId === j.id}>
-                    <Zap size={13} />
-                  </IconButton>
-                  <IconButton aria-label={j.enabled ? 'Pause' : 'Resume'} onClick={() => void togglePaused(j)}>
-                    {j.enabled ? <Pause size={13} /> : <Play size={13} />}
-                  </IconButton>
-                  <IconButton aria-label="Edit" onClick={() => setEditing(j)}><Pencil size={13} /></IconButton>
-                  <IconButton aria-label="Delete" onClick={async () => {
-                    await wos().automations.deleteScheduled(j.id)
-                    void reload()
-                  }}>
-                    <Trash2 size={13} />
-                  </IconButton>
-                </>
-              }
-            />
-          ))}
-        </div>
-      )}
-    </>
-  )
 }
 
-function HooksTab() {
-  const [hooks, setHooks] = useState<Hook[]>([])
-  const [editing, setEditing] = useState<Hook | null>(null)
-
-  const reload = async () => {
-    const list = await wos().automations.listHooks()
-    setHooks(list as Hook[])
+function formatRelative(date: string | Date | null | undefined): string {
+  if (!date) return '—'
+  const t = new Date(date).getTime()
+  const diff = Date.now() - t
+  if (diff < 0) {
+    const fwd = -diff
+    if (fwd < 60_000) return `in ${Math.round(fwd / 1000)}s`
+    if (fwd < 3_600_000) return `in ${Math.round(fwd / 60_000)}m`
+    if (fwd < 86_400_000) return `in ${Math.round(fwd / 3_600_000)}h`
+    return new Date(t).toLocaleString()
   }
-  useEffect(() => { void reload() }, [])
-
-  const onDraft = async (draft: Record<string, unknown>) => {
-    const r = await wos().automations.upsertHook({
-      name: draft.name,
-      event: draft.event,
-      type: draft.type ?? 'prompt',
-      config: draft.config ?? {},
-      enabled: draft.enabled ?? true,
-    })
-    if (!r?.ok) alert(r?.error ?? 'Could not save hook')
-    void reload()
-  }
-
-  return (
-    <>
-      <DraftWizard kind="hook" onSave={onDraft} />
-      {editing && (
-        <EditHookModal
-          hook={editing}
-          onClose={() => setEditing(null)}
-          onSaved={() => { setEditing(null); void reload() }}
-        />
-      )}
-      {hooks.length === 0 ? (
-        <EmptyState
-          icon={<Webhook size={24} />}
-          title="No hooks configured"
-          description="Hooks react to in-process events such as message:received or app:connected. Describe one above to draft it."
-        />
-      ) : (
-        <div className="flex flex-col gap-2">
-          {hooks.map(h => (
-            <Row
-              key={h.id}
-              title={h.name}
-              subtitle={`${h.event} → ${h.type}`}
-              status={h.enabled ? 'enabled' : 'paused'}
-              actions={
-                <>
-                  <IconButton aria-label="Edit" onClick={() => setEditing(h)}><Pencil size={13} /></IconButton>
-                  <IconButton aria-label="Delete" onClick={async () => {
-                    await wos().automations.deleteHook(h.id)
-                    void reload()
-                  }}>
-                    <Trash2 size={13} />
-                  </IconButton>
-                </>
-              }
-            />
-          ))}
-        </div>
-      )}
-    </>
-  )
+  if (diff < 60_000) return `${Math.round(diff / 1000)}s ago`
+  if (diff < 3_600_000) return `${Math.round(diff / 60_000)}m ago`
+  if (diff < 86_400_000) return `${Math.round(diff / 3_600_000)}h ago`
+  return new Date(t).toLocaleDateString()
 }
 
-function StandingTab() {
-  const [orders, setOrders] = useState<StandingOrder[]>([])
-  const [editing, setEditing] = useState<StandingOrder | null>(null)
-
-  const reload = async () => {
-    const list = await wos().automations.listStandingOrders()
-    setOrders(list as StandingOrder[])
+function describeConfig(a: Automation): string {
+  const c = a.config || {}
+  switch (a.kind) {
+    case 'cron': return String(c.expr ?? '? schedule') + (c.tz ? ` · ${c.tz}` : '')
+    case 'heartbeat': return `every ${c.intervalSec ?? '?'}s`
+    case 'hook': return `on ${c.event ?? '?'}`
+    case 'webhook': return c.slug ? `/hook/${c.slug}` : '(slug pending)'
+    case 'standing_order': return typeof c.rule === 'string' ? (c.rule as string).slice(0, 80) : ''
+    case 'task_flow': return `${Array.isArray(c.steps) ? (c.steps as unknown[]).length : 0} steps`
+    default: return ''
   }
-  useEffect(() => { void reload() }, [])
-
-  const onDraft = async (draft: Record<string, unknown>) => {
-    const r = await wos().automations.upsertStandingOrder({
-      name: draft.name,
-      body: draft.body,
-      scope: draft.scope ?? 'global',
-      enabled: draft.enabled ?? true,
-    })
-    if (!r?.ok) alert(r?.error ?? 'Could not save standing order')
-    void reload()
-  }
-
-  return (
-    <>
-      <DraftWizard kind="standing-order" onSave={onDraft} />
-      {editing && (
-        <EditStandingModal
-          order={editing}
-          onClose={() => setEditing(null)}
-          onSaved={() => { setEditing(null); void reload() }}
-        />
-      )}
-      {orders.length === 0 ? (
-        <EmptyState
-          icon={<Shield size={24} />}
-          title="No standing orders"
-          description="Standing orders are injected into every agent run. Describe one above (e.g. “Always confirm before sending email outside working hours”)."
-        />
-      ) : (
-        <div className="flex flex-col gap-2">
-          {orders.map(o => (
-            <Row
-              key={o.id}
-              title={o.name}
-              subtitle={o.body.length > 90 ? `${o.body.slice(0, 90)}…` : o.body}
-              status={o.enabled ? 'enabled' : 'paused'}
-              actions={
-                <>
-                  <IconButton aria-label="Edit" onClick={() => setEditing(o)}><Pencil size={13} /></IconButton>
-                  <IconButton aria-label="Delete" onClick={async () => {
-                    await wos().automations.deleteStandingOrder(o.id)
-                    void reload()
-                  }}>
-                    <Trash2 size={13} />
-                  </IconButton>
-                </>
-              }
-            />
-          ))}
-        </div>
-      )}
-    </>
-  )
 }
 
-function TasksTab() {
-  const [tasks, setTasks] = useState<Task[]>([])
-  const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [typeFilter, setTypeFilter] = useState<string>('all')
-  const [selected, setSelected] = useState<Task | null>(null)
+export const AutomationsView: React.FC = () => {
+  const [section, setSection] = useState<Section>('active')
+  const [items, setItems] = useState<Automation[]>([])
+  const [selected, setSelected] = useState<Automation | null>(null)
+  const [runs, setRuns] = useState<AuditRun[]>([])
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState<string | null>(null)
 
-  const reload = async () => {
-    const list = await wos().automations.listTasks()
-    setTasks(list as Task[])
-  }
-
-  useEffect(() => {
-    void reload()
-    const t = setInterval(() => { void reload() }, 4000)
-    return () => clearInterval(t)
+  const refresh = useCallback(async () => {
+    setLoading(true)
+    try {
+      const all = await window.wos.automations.list()
+      setItems(all)
+    } catch (err) {
+      toast.error(`Failed to load automations: ${(err as Error).message}`)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
-  if (selected) {
-    return <TaskDetailPanel task={selected} onBack={() => setSelected(null)} />
-  }
-
-  const filtered = tasks.filter(t =>
-    (statusFilter === 'all' || t.status === statusFilter) &&
-    (typeFilter === 'all' || t.type === typeFilter),
-  )
-
-  if (tasks.length === 0) {
-    return (
-      <EmptyState
-        icon={<ListChecks size={24} />}
-        title="No tasks yet"
-        description="Every detached run — scheduled jobs, sub-agents, multi-step flows — will appear here with its full timeline."
-      />
-    )
-  }
-
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-2 text-xs">
-        <FilterChip label="All" active={statusFilter === 'all'} onClick={() => setStatusFilter('all')} />
-        <FilterChip label="Running" active={statusFilter === 'running'} onClick={() => setStatusFilter('running')} />
-        <FilterChip label="Success" active={statusFilter === 'success'} onClick={() => setStatusFilter('success')} />
-        <FilterChip label="Error" active={statusFilter === 'error'} onClick={() => setStatusFilter('error')} />
-        <div className="w-px h-4" style={{ background: 'var(--border)' }} />
-        <FilterChip label="All types" active={typeFilter === 'all'} onClick={() => setTypeFilter('all')} />
-        <FilterChip label="Scheduled" active={typeFilter === 'scheduled'} onClick={() => setTypeFilter('scheduled')} />
-        <FilterChip label="Sub-agent" active={typeFilter === 'subagent'} onClick={() => setTypeFilter('subagent')} />
-        <FilterChip label="Hook" active={typeFilter === 'hook'} onClick={() => setTypeFilter('hook')} />
-        <FilterChip label="Flow" active={typeFilter === 'flow'} onClick={() => setTypeFilter('flow')} />
-      </div>
-      <div className="flex flex-col gap-2">
-        {filtered.map(t => (
-          <button key={t.id} onClick={() => setSelected(t)} className="text-left">
-            <Row
-              title={t.title}
-              subtitle={`${t.type} · ${new Date(t.createdAt).toLocaleString()}`}
-              status={t.status}
-            />
-          </button>
-        ))}
-        {filtered.length === 0 && (
-          <div className="text-xs text-center py-6" style={{ color: 'var(--muted-foreground)' }}>
-            No tasks match the current filters.
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function FilterChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="px-2.5 py-1 rounded-full transition-colors"
-      style={{
-        background: active ? 'var(--surface-raised)' : 'var(--muted)',
-        color: active ? 'var(--foreground)' : 'var(--muted-foreground)',
-        border: '1px solid ' + (active ? 'var(--border-strong)' : 'var(--border)'),
-      }}
-    >
-      {label}
-    </button>
-  )
-}
-
-function TaskDetailPanel({ task, onBack }: { task: Task; onBack: () => void }) {
-  const [steps, setSteps] = useState<TaskStep[]>([])
-  const [loading, setLoading] = useState(true)
+  useEffect(() => { refresh() }, [refresh])
 
   useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      try {
-        const s = await wos().automations.getTaskSteps(task.id)
-        if (!cancelled) setSteps(s as TaskStep[])
-      } finally {
-        if (!cancelled) setLoading(false)
+    const offError = window.wos.automations.onError(e => {
+      toast.error(`Automation error: ${e.error}`, { description: `runId: ${e.runId}` })
+      refresh()
+    })
+    const offResult = window.wos.automations.onResult(() => { refresh() })
+    const offOpen = window.wos.automations.onOpen(e => {
+      // Auto-select the automation referenced by tray/notification click
+      window.wos.automations.get(e.automationId).then(a => { if (a) setSelected(a) }).catch(() => {})
+    })
+    return () => { offError(); offResult(); offOpen() }
+  }, [refresh])
+
+  // Refresh runs whenever selection changes
+  useEffect(() => {
+    if (!selected) { setRuns([]); return }
+    window.wos.automations.runs(selected.id, 50)
+      .then(setRuns)
+      .catch(() => setRuns([]))
+  }, [selected])
+
+  const filtered = useMemo(() => {
+    const kinds = section === 'active' ? ACTIVE_KINDS : section === 'rules' ? RULE_KINDS : BG_KINDS
+    return items.filter(i => kinds.includes(i.kind))
+  }, [items, section])
+
+  const counts = useMemo(() => ({
+    active: items.filter(i => ACTIVE_KINDS.includes(i.kind)).length,
+    rules: items.filter(i => RULE_KINDS.includes(i.kind)).length,
+    background: items.filter(i => BG_KINDS.includes(i.kind)).length,
+  }), [items])
+
+  const handleToggle = async (a: Automation) => {
+    setBusy(a.id)
+    try {
+      await window.wos.automations.toggle(a.id, !a.enabled)
+      await refresh()
+      if (selected?.id === a.id) setSelected({ ...a, enabled: !a.enabled })
+    } catch (err) {
+      toast.error(`Toggle failed: ${(err as Error).message}`)
+    } finally { setBusy(null) }
+  }
+
+  const handleDelete = async (a: Automation) => {
+    if (!confirm(`Delete automation "${a.name}"? This cannot be undone.`)) return
+    setBusy(a.id)
+    try {
+      await window.wos.automations.delete(a.id)
+      if (selected?.id === a.id) setSelected(null)
+      await refresh()
+      toast.success(`Deleted "${a.name}"`)
+    } catch (err) {
+      toast.error(`Delete failed: ${(err as Error).message}`)
+    } finally { setBusy(null) }
+  }
+
+  const handleRunNow = async (a: Automation, dryRun = false) => {
+    setBusy(a.id)
+    toast.loading(dryRun ? 'Dry run…' : 'Running automation…', { id: 'run-' + a.id })
+    try {
+      const r = await window.wos.automations.runNow(a.id, dryRun)
+      if (r.ok) {
+        toast.success(dryRun ? 'Dry run complete' : 'Run complete', {
+          id: 'run-' + a.id,
+          description: r.output ? r.output.slice(0, 120) : undefined,
+        })
+      } else {
+        toast.error('Run failed', { id: 'run-' + a.id, description: r.error ?? '' })
       }
-    })()
-    return () => { cancelled = true }
-  }, [task.id])
+      // refresh runs if drawer open
+      if (selected?.id === a.id) {
+        const list = await window.wos.automations.runs(a.id, 50)
+        setRuns(list)
+      }
+      await refresh()
+    } catch (err) {
+      toast.error('Run failed', { id: 'run-' + a.id, description: (err as Error).message })
+    } finally { setBusy(null) }
+  }
+
+  const handleNew = () => {
+    toast.info('Open the chat and ask WOS to create an automation', {
+      description: "e.g. 'Create an automation that summarizes my Slack DMs every morning at 9am'",
+    })
+  }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <button
-          onClick={onBack}
-          className="text-xs px-2 py-1 rounded transition-colors"
-          style={{ color: 'var(--muted-foreground)', border: '1px solid var(--border)' }}
-        >
-          ← Back
-        </button>
-        <div className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>{task.title}</div>
-        <StatusBadge status={task.status} />
-      </div>
-      <div className="rounded-xl p-3" style={{ border: '1px solid var(--border)', background: 'var(--card)' }}>
-        <div className="text-xs grid grid-cols-2 gap-2" style={{ color: 'var(--muted-foreground)' }}>
-          <div><span style={{ color: 'var(--foreground)' }}>Type:</span> {task.type}</div>
-          <div><span style={{ color: 'var(--foreground)' }}>ID:</span> <span className="font-mono">{task.id.slice(0, 12)}</span></div>
-          <div><span style={{ color: 'var(--foreground)' }}>Created:</span> {new Date(task.createdAt).toLocaleString()}</div>
-          {task.updatedAt && <div><span style={{ color: 'var(--foreground)' }}>Updated:</span> {new Date(task.updatedAt).toLocaleString()}</div>}
-          {task.conversationId && <div className="col-span-2"><span style={{ color: 'var(--foreground)' }}>Conversation:</span> <span className="font-mono">{task.conversationId.slice(0, 12)}</span></div>}
+    <div className="flex h-full w-full bg-zinc-950 text-zinc-100">
+      {/* Left: list */}
+      <div className="flex w-[420px] flex-col border-r border-zinc-800/80">
+        <header className="flex items-center justify-between border-b border-zinc-800/80 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <Activity className="h-4 w-4 text-zinc-400" />
+            <h1 className="text-sm font-semibold tracking-tight">Automations</h1>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={refresh}
+              className="rounded p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+              title="Refresh"
+            >
+              <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+            </button>
+            <button
+              onClick={handleNew}
+              className="flex items-center gap-1 rounded bg-zinc-800 px-2 py-1 text-xs font-medium text-zinc-100 hover:bg-zinc-700"
+            >
+              <Plus className="h-3.5 w-3.5" /> New
+            </button>
+          </div>
+        </header>
+
+        {/* Section tabs */}
+        <nav className="flex gap-1 border-b border-zinc-800/80 px-2 py-2">
+          {([
+            { id: 'active' as const, label: 'Active', count: counts.active },
+            { id: 'rules' as const, label: 'Rules', count: counts.rules },
+            { id: 'background' as const, label: 'Background', count: counts.background },
+          ]).map(t => (
+            <button
+              key={t.id}
+              onClick={() => setSection(t.id)}
+              className={cn(
+                'flex-1 rounded px-2 py-1.5 text-xs font-medium transition',
+                section === t.id
+                  ? 'bg-zinc-800 text-zinc-100'
+                  : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200',
+              )}
+            >
+              {t.label} <span className="ml-1 text-[10px] text-zinc-500">{t.count}</span>
+            </button>
+          ))}
+        </nav>
+
+        {/* List */}
+        <div className="flex-1 overflow-y-auto">
+          {loading && items.length === 0 ? (
+            <div className="flex items-center justify-center py-16 text-zinc-500">
+              <Loader2 className="h-4 w-4 animate-spin" />
+            </div>
+          ) : filtered.length === 0 ? (
+            <EmptyState section={section} onNew={handleNew} />
+          ) : (
+            <ul>
+              {filtered.map(a => (
+                <AutomationRow
+                  key={a.id}
+                  a={a}
+                  busy={busy === a.id}
+                  selected={selected?.id === a.id}
+                  onClick={() => setSelected(a)}
+                  onToggle={() => handleToggle(a)}
+                  onRun={() => handleRunNow(a)}
+                />
+              ))}
+            </ul>
+          )}
         </div>
       </div>
-      <div>
-        <div className="text-xs mb-2" style={{ color: 'var(--muted-foreground)' }}>Timeline</div>
-        {loading ? (
-          <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Loading…</div>
-        ) : steps.length === 0 ? (
-          <div className="text-xs italic py-3" style={{ color: 'var(--muted-foreground)' }}>
-            No steps recorded for this task.
-          </div>
+
+      {/* Right: detail drawer */}
+      <div className="flex-1 overflow-y-auto">
+        {selected ? (
+          <DetailPane
+            a={selected}
+            runs={runs}
+            busy={busy === selected.id}
+            onClose={() => setSelected(null)}
+            onToggle={() => handleToggle(selected)}
+            onDelete={() => handleDelete(selected)}
+            onRun={() => handleRunNow(selected)}
+            onDryRun={() => handleRunNow(selected, true)}
+          />
         ) : (
-          <div className="flex flex-col gap-2">
-            {steps.map(s => (
-              <div key={s.id} className="rounded-lg p-3" style={{ border: '1px solid var(--border)', background: 'var(--card)' }}>
-                <div className="flex items-center gap-2">
-                  <div className="text-xs font-mono" style={{ color: 'var(--muted-foreground)' }}>#{s.idx}</div>
-                  <div className="text-sm flex-1 truncate" style={{ color: 'var(--foreground)' }}>{s.label}</div>
-                  <StatusBadge status={s.status} />
-                </div>
-                {s.output && (
-                  <pre className="text-xs mt-2 whitespace-pre-wrap" style={{ color: 'var(--muted-foreground)' }}>{s.output}</pre>
-                )}
-                {s.error && (
-                  <pre className="text-xs mt-2 whitespace-pre-wrap" style={{ color: 'var(--destructive)' }}>{s.error}</pre>
-                )}
-                <div className="text-[10px] mt-1" style={{ color: 'var(--muted-foreground)' }}>{new Date(s.ts).toLocaleString()}</div>
-              </div>
-            ))}
-          </div>
+          <DetailEmptyState />
         )}
       </div>
     </div>
   )
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { bg: string; fg: string; label: string }> = {
-    enabled: { bg: 'var(--secondary)', fg: 'var(--foreground)', label: 'Enabled' },
-    paused: { bg: 'var(--muted)', fg: 'var(--muted-foreground)', label: 'Paused' },
-    running: { bg: 'var(--surface-raised)', fg: 'var(--foreground)', label: 'Running' },
-    queued: { bg: 'var(--muted)', fg: 'var(--muted-foreground)', label: 'Queued' },
-    success: { bg: 'var(--secondary)', fg: 'var(--foreground)', label: 'Success' },
-    error: { bg: 'var(--destructive)', fg: 'var(--destructive-foreground)', label: 'Error' },
-    cancelled: { bg: 'var(--muted)', fg: 'var(--muted-foreground)', label: 'Cancelled' },
-  }
-  const v = map[status] ?? { bg: 'var(--muted)', fg: 'var(--muted-foreground)', label: status }
+const AutomationRow: React.FC<{
+  a: Automation
+  busy: boolean
+  selected: boolean
+  onClick: () => void
+  onToggle: () => void
+  onRun: () => void
+}> = ({ a, busy, selected, onClick, onToggle, onRun }) => {
+  const meta = KIND_META[a.kind]
+  const Icon = meta.icon
   return (
-    <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: v.bg, color: v.fg }}>
-      {v.label}
-    </span>
-  )
-}
-
-function TabButton({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn('px-4 py-2 text-sm transition-colors -mb-px border-b-2 flex items-center gap-2')}
-      style={{
-        color: active ? 'var(--foreground)' : 'var(--muted-foreground)',
-        borderBottomColor: active ? 'var(--amber)' : 'transparent',
-      }}
-    >
-      {icon}
-      {children}
-    </button>
-  )
-}
-
-function Row({ title, subtitle, status, actions }: {
-  title: string
-  subtitle?: string
-  status?: string
-  actions?: React.ReactNode
-}) {
-  return (
-    <div
-      className="rounded-xl p-3 flex items-center gap-3 group"
-      style={{ border: '1px solid var(--border)', background: 'var(--card)' }}
-    >
-      <div className="flex-1 min-w-0">
-        <div className="text-sm truncate" style={{ color: 'var(--foreground)' }}>{title}</div>
-        {subtitle && (
-          <div className="text-xs truncate mt-0.5" style={{ color: 'var(--muted-foreground)' }}>{subtitle}</div>
+    <li>
+      <button
+        onClick={onClick}
+        className={cn(
+          'group flex w-full items-start gap-3 border-b border-zinc-900/80 px-4 py-3 text-left transition',
+          selected ? 'bg-zinc-900' : 'hover:bg-zinc-900/60',
         )}
+      >
+        <div className={cn('mt-0.5 rounded-md bg-zinc-900 p-1.5', selected && 'bg-zinc-800')}>
+          <Icon className={cn('h-4 w-4', meta.color)} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-sm font-medium text-zinc-100">{a.name}</span>
+            {!a.enabled && (
+              <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400">paused</span>
+            )}
+          </div>
+          <div className="mt-0.5 truncate text-xs text-zinc-500">
+            <span className="text-zinc-400">{meta.label}</span>
+            <span className="mx-1 text-zinc-700">·</span>
+            <span className="font-mono text-[11px]">{describeConfig(a)}</span>
+          </div>
+          <div className="mt-1 flex items-center gap-3 text-[11px] text-zinc-600">
+            <span className="inline-flex items-center gap-1">
+              <Clock className="h-3 w-3" /> last {formatRelative(a.lastRunAt)}
+            </span>
+            {a.nextRunAt && (
+              <span className="inline-flex items-center gap-1">
+                <ChevronRight className="h-3 w-3" /> next {formatRelative(a.nextRunAt)}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-col items-end gap-1 opacity-0 transition group-hover:opacity-100">
+          <button
+            onClick={e => { e.stopPropagation(); onToggle() }}
+            disabled={busy}
+            className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+            title={a.enabled ? 'Pause' : 'Enable'}
+          >
+            {a.enabled ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+          </button>
+          {a.kind !== 'standing_order' && (
+            <button
+              onClick={e => { e.stopPropagation(); onRun() }}
+              disabled={busy}
+              className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+              title="Run now"
+            >
+              <Zap className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      </button>
+    </li>
+  )
+}
+
+const DetailPane: React.FC<{
+  a: Automation
+  runs: AuditRun[]
+  busy: boolean
+  onClose: () => void
+  onToggle: () => void
+  onDelete: () => void
+  onRun: () => void
+  onDryRun: () => void
+}> = ({ a, runs, busy, onClose, onToggle, onDelete, onRun, onDryRun }) => {
+  const meta = KIND_META[a.kind]
+  const Icon = meta.icon
+  const [webhookInfo, setWebhookInfo] = useState<{ slug: string; localUrl: string; publicUrl: string | null } | null>(null)
+
+  useEffect(() => {
+    if (a.kind === 'webhook') {
+      window.wos.automations.webhookInfo(a.id).then(info => {
+        if (info) setWebhookInfo({ slug: info.slug, localUrl: info.localUrl, publicUrl: info.publicUrl })
+      }).catch(() => undefined)
+    }
+  }, [a.id, a.kind])
+
+  return (
+    <div className="flex h-full flex-col">
+      <header className="flex items-start justify-between gap-3 border-b border-zinc-800/80 px-6 py-4">
+        <div className="flex items-start gap-3">
+          <div className="rounded-md bg-zinc-900 p-2">
+            <Icon className={cn('h-5 w-5', meta.color)} />
+          </div>
+          <div>
+            <h2 className="text-base font-semibold text-zinc-100">{a.name}</h2>
+            <div className="mt-0.5 text-xs text-zinc-500">
+              {meta.label} · <span className="font-mono">{describeConfig(a)}</span>
+              {!a.enabled && <span className="ml-2 rounded bg-amber-900/30 px-1.5 py-0.5 text-[10px] text-amber-400">paused</span>}
+            </div>
+          </div>
+        </div>
+        <button onClick={onClose} className="rounded p-1.5 text-zinc-400 hover:bg-zinc-800">
+          <XCircle className="h-4 w-4" />
+        </button>
+      </header>
+
+      {/* Action bar */}
+      <div className="flex items-center gap-2 border-b border-zinc-800/80 px-6 py-2.5">
+        <button
+          onClick={onToggle}
+          disabled={busy}
+          className="flex items-center gap-1.5 rounded bg-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-100 hover:bg-zinc-700"
+        >
+          {a.enabled ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+          {a.enabled ? 'Pause' : 'Enable'}
+        </button>
+        {a.kind !== 'standing_order' && (
+          <>
+            <button
+              onClick={onRun}
+              disabled={busy}
+              className="flex items-center gap-1.5 rounded bg-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-100 hover:bg-zinc-700"
+            >
+              <Zap className="h-3.5 w-3.5" /> Run now
+            </button>
+            <button
+              onClick={onDryRun}
+              disabled={busy}
+              className="flex items-center gap-1.5 rounded bg-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-300 hover:bg-zinc-700"
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" /> Dry run
+            </button>
+          </>
+        )}
+        <div className="flex-1" />
+        <button
+          onClick={onDelete}
+          disabled={busy}
+          className="flex items-center gap-1.5 rounded px-2.5 py-1 text-xs text-rose-400 hover:bg-rose-900/30"
+        >
+          <Trash2 className="h-3.5 w-3.5" /> Delete
+        </button>
       </div>
-      {status && <StatusBadge status={status} />}
-      {actions && (
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          {actions}
+
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto px-6 py-5">
+        {a.description && (
+          <Section title="Description">
+            <p className="text-sm text-zinc-300">{a.description}</p>
+          </Section>
+        )}
+
+        {webhookInfo && (
+          <Section title="Webhook URLs">
+            <div className="space-y-2 rounded-md bg-zinc-900/60 p-3 text-xs">
+              <Field label="Local" value={webhookInfo.localUrl} />
+              <Field label="Public" value={webhookInfo.publicUrl ?? '(tunnel offline)'} />
+              <Field label="Slug" value={webhookInfo.slug} />
+            </div>
+          </Section>
+        )}
+
+        <Section title="Prompt">
+          <pre className="whitespace-pre-wrap rounded-md bg-zinc-900/60 p-3 font-mono text-[11px] leading-relaxed text-zinc-300">
+            {a.prompt || '(empty)'}
+          </pre>
+        </Section>
+
+        <Section title="Config">
+          <pre className="whitespace-pre-wrap rounded-md bg-zinc-900/60 p-3 font-mono text-[11px] leading-relaxed text-zinc-300">
+            {JSON.stringify(a.config, null, 2)}
+          </pre>
+        </Section>
+
+        <Section title="Tools allowed">
+          <div className="flex flex-wrap gap-1">
+            {a.toolsAllow.length === 0 ? (
+              <span className="text-xs text-zinc-500">No tools (prompt-only)</span>
+            ) : (
+              a.toolsAllow.map(t => (
+                <span key={t} className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[11px] text-zinc-300">
+                  {t}
+                </span>
+              ))
+            )}
+          </div>
+        </Section>
+
+        <Section title="Result delivery">
+          <div className="text-xs text-zinc-300">
+            <span className="font-mono">{a.resultDelivery}</span>
+            {a.resultTarget && <span className="ml-2 text-zinc-500">→ {a.resultTarget}</span>}
+          </div>
+        </Section>
+
+        <Section title={`Recent runs (${runs.length})`}>
+          {runs.length === 0 ? (
+            <div className="text-xs text-zinc-500">No runs yet.</div>
+          ) : (
+            <ul className="divide-y divide-zinc-900 rounded-md bg-zinc-900/40">
+              {runs.map(r => <RunRow key={r.id} r={r} />)}
+            </ul>
+          )}
+        </Section>
+      </div>
+    </div>
+  )
+}
+
+const Section: React.FC<React.PropsWithChildren<{ title: string }>> = ({ title, children }) => (
+  <section className="mb-5">
+    <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">{title}</h3>
+    {children}
+  </section>
+)
+
+const Field: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+  <div className="flex items-baseline gap-2">
+    <span className="w-12 shrink-0 text-zinc-500">{label}</span>
+    <span className="break-all font-mono text-zinc-200">{value}</span>
+  </div>
+)
+
+const RunRow: React.FC<{ r: AuditRun }> = ({ r }) => {
+  const [open, setOpen] = useState(false)
+  const statusColor =
+    r.status === 'success' ? 'text-emerald-400'
+    : r.status === 'error' ? 'text-rose-400'
+    : r.status === 'running' ? 'text-blue-400'
+    : r.status === 'dryrun' ? 'text-cyan-400'
+    : 'text-zinc-500'
+  const StatusIcon =
+    r.status === 'success' ? CheckCircle2
+    : r.status === 'error' ? AlertCircle
+    : r.status === 'running' ? Loader2
+    : r.status === 'dryrun' ? CheckCircle2
+    : XCircle
+
+  return (
+    <li>
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-3 px-3 py-2 text-left text-xs hover:bg-zinc-900/80"
+      >
+        <StatusIcon className={cn('h-3.5 w-3.5 shrink-0', statusColor, r.status === 'running' && 'animate-spin')} />
+        <span className={cn('font-mono', statusColor)}>{r.status}</span>
+        <span className="text-zinc-500">{formatRelative(r.startedAt)}</span>
+        <span className="ml-auto text-zinc-600">{new Date(r.startedAt).toLocaleString()}</span>
+      </button>
+      {open && (
+        <div className="space-y-2 border-t border-zinc-900 bg-zinc-950 px-3 py-2 text-[11px]">
+          {r.error && <pre className="whitespace-pre-wrap rounded bg-rose-950/40 p-2 text-rose-300">{r.error}</pre>}
+          {r.output && <pre className="whitespace-pre-wrap rounded bg-zinc-900/60 p-2 text-zinc-300">{r.output}</pre>}
         </div>
       )}
-    </div>
+    </li>
   )
 }
 
-function IconButton({ children, onClick, disabled, ...rest }: { children: React.ReactNode; onClick?: () => void; disabled?: boolean } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+const EmptyState: React.FC<{ section: Section; onNew: () => void }> = ({ section, onNew }) => {
+  const copy = section === 'active'
+    ? { title: 'No active automations', sub: 'Schedules, hooks, and webhooks live here.' }
+    : section === 'rules'
+    ? { title: 'No standing rules', sub: 'Standing orders are persistent rules injected into your main agent.' }
+    : { title: 'No background activity', sub: 'Heartbeats and task flows live here.' }
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      {...rest}
-      className="p-1.5 rounded-md transition-colors disabled:opacity-50"
-      style={{ color: 'var(--muted-foreground)' }}
-      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface-raised)' }}
-      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
-    >
-      {children}
-    </button>
-  )
-}
-
-function EmptyState({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center text-center py-12 gap-2">
-      <div style={{ color: 'var(--muted-foreground)' }}>{icon}</div>
-      <div className="text-sm" style={{ color: 'var(--foreground)' }}>{title}</div>
-      <div className="text-xs max-w-md" style={{ color: 'var(--muted-foreground)' }}>{description}</div>
-    </div>
-  )
-}
-
-// ── Edit modals ────────────────────────────────────────────────────
-
-function ModalShell({ title, onClose, children, footer }: { title: string; onClose: () => void; children: React.ReactNode; footer: React.ReactNode }) {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.45)' }}
-      onClick={onClose}
-    >
-      <div
-        className="rounded-xl w-full max-w-lg flex flex-col"
-        style={{ background: 'var(--card)', border: '1px solid var(--border)', maxHeight: '90vh' }}
-        onClick={e => e.stopPropagation()}
+    <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+      <SettingsIcon className="mb-3 h-6 w-6 text-zinc-700" />
+      <h3 className="text-sm font-medium text-zinc-300">{copy.title}</h3>
+      <p className="mt-1 max-w-xs text-xs text-zinc-500">{copy.sub}</p>
+      <button
+        onClick={onNew}
+        className="mt-4 flex items-center gap-1.5 rounded bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-100 hover:bg-zinc-700"
       >
-        <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
-          <div className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>{title}</div>
-        </div>
-        <div className="px-4 py-3 flex-1 overflow-y-auto flex flex-col gap-3">{children}</div>
-        <div className="px-4 py-3 border-t flex items-center justify-end gap-2" style={{ borderColor: 'var(--border)' }}>
-          {footer}
-        </div>
-      </div>
+        <Plus className="h-3.5 w-3.5" /> Create automation
+      </button>
     </div>
   )
 }
 
-function FormField({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{label}</span>
-      {children}
-    </label>
-  )
-}
-
-function inputStyle(): React.CSSProperties {
-  return {
-    background: 'var(--input)',
-    color: 'var(--foreground)',
-    border: '1px solid var(--border)',
-    borderRadius: 'var(--radius-sm, 6px)',
-    padding: '6px 10px',
-    fontSize: '13px',
-    outline: 'none',
-  }
-}
-
-function btnPrimary(): React.CSSProperties {
-  return {
-    background: 'var(--foreground)',
-    color: 'var(--background)',
-    border: '1px solid var(--border-strong)',
-    borderRadius: 'var(--radius-sm, 6px)',
-    padding: '6px 12px',
-    fontSize: '13px',
-  }
-}
-
-function btnSecondary(): React.CSSProperties {
-  return {
-    background: 'transparent',
-    color: 'var(--muted-foreground)',
-    border: '1px solid var(--border)',
-    borderRadius: 'var(--radius-sm, 6px)',
-    padding: '6px 12px',
-    fontSize: '13px',
-  }
-}
-
-function EditScheduledModal({ job, onClose, onSaved }: { job: ScheduledJob; onClose: () => void; onSaved: () => void }) {
-  const [name, setName] = useState(job.name)
-  const [cronExpr, setCronExpr] = useState(job.cronExpr ?? '')
-  const [runAt, setRunAt] = useState(job.runAt ? new Date(job.runAt).toISOString().slice(0, 16) : '')
-  const [target, setTarget] = useState(job.target)
-  const [prompt, setPrompt] = useState(job.prompt)
-  const [enabled, setEnabled] = useState<boolean>(!!job.enabled)
-  const [saving, setSaving] = useState(false)
-
-  const submit = async () => {
-    setSaving(true)
-    try {
-      const r = await wos().automations.upsertScheduled({
-        id: job.id,
-        name,
-        cronExpr: cronExpr.trim() ? cronExpr.trim() : null,
-        runAt: runAt ? new Date(runAt).getTime() : null,
-        tz: 'local',
-        target,
-        prompt,
-        enabled,
-      })
-      if (!r?.ok) {
-        alert(r?.error ?? 'Could not save')
-        return
-      }
-      onSaved()
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <ModalShell
-      title="Edit scheduled job"
-      onClose={onClose}
-      footer={
-        <>
-          <button onClick={onClose} style={btnSecondary()}>Cancel</button>
-          <button onClick={() => void submit()} disabled={saving || !name || !target || !prompt} style={btnPrimary()}>
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-        </>
-      }
+const DetailEmptyState: React.FC = () => (
+  <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+    <Globe className="mb-3 h-8 w-8 text-zinc-800" />
+    <h3 className="text-sm font-medium text-zinc-400">Select an automation</h3>
+    <p className="mt-1 max-w-md text-xs text-zinc-600">
+      Pick one on the left to see its prompt, configuration, runs, and controls.
+      To create a new automation, open chat and tell WOS what you want — the
+      Automation Author subagent will guide you through it.
+    </p>
+    <a
+      href="#"
+      onClick={e => { e.preventDefault() }}
+      className="mt-4 inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300"
     >
-      <FormField label="Name">
-        <input style={inputStyle()} value={name} onChange={e => setName(e.target.value)} />
-      </FormField>
-      <FormField label="Cron expression (5-field)">
-        <input style={inputStyle()} value={cronExpr} placeholder="e.g. 0 9 * * 1-5" onChange={e => setCronExpr(e.target.value)} />
-      </FormField>
-      <FormField label="One-shot run at (leave empty for cron)">
-        <input style={inputStyle()} type="datetime-local" value={runAt} onChange={e => setRunAt(e.target.value)} />
-      </FormField>
-      <FormField label="Target conversation">
-        <input style={inputStyle()} value={target} placeholder='"new" or conversation id' onChange={e => setTarget(e.target.value)} />
-      </FormField>
-      <FormField label="Prompt">
-        <textarea style={{ ...inputStyle(), minHeight: 80, fontFamily: 'inherit' }} value={prompt} onChange={e => setPrompt(e.target.value)} />
-      </FormField>
-      <label className="flex items-center gap-2 text-xs" style={{ color: 'var(--foreground)' }}>
-        <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} />
-        Enabled
-      </label>
-    </ModalShell>
-  )
-}
+      <ExternalLink className="h-3 w-3" /> Tip: try saying "remind me every weekday at 9am to review PRs"
+    </a>
+  </div>
+)
 
-const HOOK_EVENTS = [
-  'message:received',
-  'conversation:new',
-  'conversation:reset',
-  'app:connected',
-  'app:disconnected',
-  'agent:bootstrap',
-  'agent:error',
-  'session:compact:before',
-  'session:compact:after',
-]
-
-function EditHookModal({ hook, onClose, onSaved }: { hook: Hook; onClose: () => void; onSaved: () => void }) {
-  const [name, setName] = useState(hook.name)
-  const [event, setEvent] = useState(hook.event)
-  const [type, setType] = useState<string>(hook.type)
-  const [configText, setConfigText] = useState(() => {
-    try { return JSON.stringify((hook as unknown as { config?: unknown }).config ?? {}, null, 2) } catch { return '{}' }
-  })
-  const [enabled, setEnabled] = useState<boolean>(!!hook.enabled)
-  const [saving, setSaving] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-
-  const submit = async () => {
-    setErr(null)
-    let config: Record<string, unknown>
-    try { config = JSON.parse(configText || '{}') as Record<string, unknown> } catch { setErr('Config must be valid JSON'); return }
-    setSaving(true)
-    try {
-      const r = await wos().automations.upsertHook({ id: hook.id, name, event, type, config, enabled })
-      if (!r?.ok) { setErr(r?.error ?? 'Could not save'); return }
-      onSaved()
-    } finally { setSaving(false) }
-  }
-
-  return (
-    <ModalShell
-      title="Edit hook"
-      onClose={onClose}
-      footer={
-        <>
-          <button onClick={onClose} style={btnSecondary()}>Cancel</button>
-          <button onClick={() => void submit()} disabled={saving || !name} style={btnPrimary()}>{saving ? 'Saving…' : 'Save'}</button>
-        </>
-      }
-    >
-      <FormField label="Name">
-        <input style={inputStyle()} value={name} onChange={e => setName(e.target.value)} />
-      </FormField>
-      <FormField label="Event">
-        <select style={inputStyle()} value={event} onChange={e => setEvent(e.target.value)}>
-          {HOOK_EVENTS.map(ev => <option key={ev} value={ev}>{ev}</option>)}
-        </select>
-      </FormField>
-      <FormField label="Type">
-        <select style={inputStyle()} value={type} onChange={e => setType(e.target.value)}>
-          <option value="prompt">prompt</option>
-          <option value="skill">skill</option>
-          <option value="tool">tool</option>
-        </select>
-      </FormField>
-      <FormField label="Config (JSON)">
-        <textarea style={{ ...inputStyle(), minHeight: 100, fontFamily: 'ui-monospace, monospace' }} value={configText} onChange={e => setConfigText(e.target.value)} />
-      </FormField>
-      <label className="flex items-center gap-2 text-xs" style={{ color: 'var(--foreground)' }}>
-        <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} />
-        Enabled
-      </label>
-      {err && <div className="text-xs" style={{ color: 'var(--destructive)' }}>{err}</div>}
-    </ModalShell>
-  )
-}
-
-function EditStandingModal({ order, onClose, onSaved }: { order: StandingOrder; onClose: () => void; onSaved: () => void }) {
-  const [name, setName] = useState(order.name)
-  const [body, setBody] = useState(order.body)
-  const [scope, setScope] = useState(order.scope || 'global')
-  const [enabled, setEnabled] = useState<boolean>(!!order.enabled)
-  const [saving, setSaving] = useState(false)
-
-  const submit = async () => {
-    setSaving(true)
-    try {
-      const r = await wos().automations.upsertStandingOrder({ id: order.id, name, body, scope, enabled })
-      if (!r?.ok) { alert(r?.error ?? 'Could not save'); return }
-      onSaved()
-    } finally { setSaving(false) }
-  }
-
-  return (
-    <ModalShell
-      title="Edit standing order"
-      onClose={onClose}
-      footer={
-        <>
-          <button onClick={onClose} style={btnSecondary()}>Cancel</button>
-          <button onClick={() => void submit()} disabled={saving || !name || !body} style={btnPrimary()}>{saving ? 'Saving…' : 'Save'}</button>
-        </>
-      }
-    >
-      <FormField label="Name">
-        <input style={inputStyle()} value={name} onChange={e => setName(e.target.value)} />
-      </FormField>
-      <FormField label="Scope">
-        <input style={inputStyle()} value={scope} placeholder='"global" or conversation/workspace id' onChange={e => setScope(e.target.value)} />
-      </FormField>
-      <FormField label="Body (markdown)">
-        <textarea style={{ ...inputStyle(), minHeight: 140, fontFamily: 'inherit' }} value={body} onChange={e => setBody(e.target.value)} />
-      </FormField>
-      <label className="flex items-center gap-2 text-xs" style={{ color: 'var(--foreground)' }}>
-        <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} />
-        Enabled
-      </label>
-    </ModalShell>
-  )
-}
+export default AutomationsView

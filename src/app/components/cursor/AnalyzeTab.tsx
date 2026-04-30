@@ -475,7 +475,7 @@ function UploadCard({
   onDragActive: (v: boolean) => void
   onDrop: (e: DragEvent<HTMLDivElement>) => void
   onBrowse: () => void
-  fileInputRef: React.RefObject<HTMLInputElement>
+  fileInputRef: React.RefObject<HTMLInputElement | null>
   onNativeFile: (file: File) => void
 }) {
   return (

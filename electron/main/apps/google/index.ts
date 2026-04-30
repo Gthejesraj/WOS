@@ -1,5 +1,5 @@
 import type { AppModule } from '../types'
-import { getUserInfo } from './api'
+import { getUserInfo, listCalendarList } from './api'
 import type { GoogleCreds } from './api'
 import { runOAuthFlow } from './oauth'
 import { buildGoogleTools } from './tools'
@@ -75,5 +75,14 @@ export const googleApp: AppModule = {
 
   buildTools(creds) {
     return buildGoogleTools(creds as unknown as GoogleCreds)
+  },
+  async snapshot(creds) {
+    try {
+      const data = await listCalendarList(creds as unknown as GoogleCreds)
+      const calendars = (data.items ?? []).map(c => ({ id: c.id, summary: c.summary, primary: c.primary ?? false }))
+      return { calendars }
+    } catch {
+      return { calendars: [] }
+    }
   },
 }

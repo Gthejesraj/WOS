@@ -6,7 +6,11 @@ const config: ForgeConfig = {
     name: 'WOS',
     appBundleId: 'com.wos.app',
     icon: 'resources/icon',
-    asar: true,
+    asar: {
+      // better-sqlite3 ships a native `.node` binding that must live on disk
+      // (Electron can't dlopen from inside an asar archive).
+      unpack: '**/{better_sqlite3.node,build/Release/*.node}',
+    },
     extraResource: ['resources/wos-transcribe'],
     extendInfo: {
       // The Apple Speech helper requires macOS 26+, but the rest of the app

@@ -4,7 +4,7 @@
 import os from 'node:os'
 import path from 'node:path'
 
-const userData = path.join(os.tmpdir(), 'wos-vitest-userdata')
+const userData = path.join(os.tmpdir(), `wos-vitest-userdata-${process.pid}`)
 
 export const app = {
   isPackaged: false,

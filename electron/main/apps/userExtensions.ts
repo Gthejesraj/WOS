@@ -1,9 +1,12 @@
-import fs from 'fs'
-import path from 'path'
+import fs from 'node:fs'
+import path from 'node:path'
+import { createRequire } from 'node:module'
 import matter from 'gray-matter'
 import { wosSubpath, ensureDir } from '../paths'
 import { registerHooks, type HookHandlers } from '../hooks/manager'
 import type { AppSkill } from './types'
+
+const userExtRequire = createRequire(typeof __filename !== 'undefined' ? __filename : import.meta.url)
 
 /**
  * User-editable extensions for apps live under `~/.wos/apps/<appId>/`:
@@ -50,8 +53,7 @@ function loadHooksForApp(appId: string): void {
     if (!entry.isFile() || !entry.name.endsWith('.js')) continue
     const full = path.join(dir, entry.name)
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const mod = require(full) as { default?: HookHandlers; hooks?: HookHandlers }
+      const mod = userExtRequire(full) as { default?: HookHandlers; hooks?: HookHandlers }
       const handlers: HookHandlers | undefined = mod.hooks ?? mod.default
       if (!handlers || typeof handlers !== 'object') {
         console.warn(`[userExtensions] hook file has no exports: ${full}`)

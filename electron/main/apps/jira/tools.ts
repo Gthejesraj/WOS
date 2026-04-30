@@ -9,6 +9,7 @@ export function buildJiraTools(creds: JiraCreds): Tool[] {
     {
       name: 'JiraListProjects',
       description: 'List all accessible Jira projects.',
+      readOnly: true,
       inputSchema: { type: 'object', properties: {} },
       async execute() {
         const data = await api.listProjects(baseUrl, email, token)
@@ -18,6 +19,7 @@ export function buildJiraTools(creds: JiraCreds): Tool[] {
     {
       name: 'JiraSearchIssues',
       description: 'Search Jira issues using JQL (Jira Query Language). Returns at most max_results issues plus an optional next_page_token. To page through more results, call again with the returned next_page_token. (Atlassian CHANGE-2046, April 2026: pagination is token-based; offsets are no longer supported and the `total` field is no longer returned by Jira.)',
+      readOnly: true,
       inputSchema: {
         type: 'object',
         required: ['jql'],
@@ -39,6 +41,7 @@ export function buildJiraTools(creds: JiraCreds): Tool[] {
     {
       name: 'JiraGetIssue',
       description: 'Get details of a specific Jira issue including comments.',
+      readOnly: true,
       inputSchema: {
         type: 'object',
         required: ['issue_key'],
@@ -166,6 +169,7 @@ export function buildJiraTools(creds: JiraCreds): Tool[] {
     {
       name: 'JiraGetBoards',
       description: 'List Jira boards (Scrum/Kanban).',
+      readOnly: true,
       inputSchema: { type: 'object', properties: {} },
       async execute() {
         const data = await api.getBoards(baseUrl, email, token)
@@ -175,6 +179,7 @@ export function buildJiraTools(creds: JiraCreds): Tool[] {
     {
       name: 'JiraListSprints',
       description: 'List sprints for a Jira board.',
+      readOnly: true,
       inputSchema: {
         type: 'object',
         required: ['board_id'],

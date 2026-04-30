@@ -5,10 +5,10 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { getDb, schema, notifyWrite } from '../db'
 import { eq } from 'drizzle-orm'
 import { encryptApiKey, decryptApiKey } from '../crypto'
-import { randomUUID } from 'crypto'
+import { randomUUID } from 'node:crypto'
 import type { Tool } from '../tools'
 import { mcpConfigPath } from '../paths'
-import fs from 'fs'
+import fs from 'node:fs'
 
 export interface McpServerRecord {
   id: string

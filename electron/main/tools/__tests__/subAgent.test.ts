@@ -60,10 +60,19 @@ describe('Task subagent preset wiring', () => {
     expect(args.systemPromptOverride).toMatch(/WOS Meeting Agent/i)
   })
 
-  it('forwards parent AbortSignal to the child queryLoop', async () => {
+  it('chains parent AbortSignal to the child queryLoop (parent abort cancels child during run)', async () => {
     queryLoopSpy.mockClear()
-    const { subAgentTool } = await import('../subAgent')
     const ac = new AbortController()
+    let observedSignal: AbortSignal | undefined
+    let observedAfterParentAbort: boolean | undefined
+    queryLoopSpy.mockImplementationOnce(async function* (params: unknown) {
+      const p = params as { signal?: AbortSignal }
+      observedSignal = p.signal
+      ac.abort()
+      observedAfterParentAbort = p.signal?.aborted
+      yield { type: 'text_delta', content: 'ok' } as const
+    })
+    const { subAgentTool } = await import('../subAgent')
     const ctx = {
       parentModel: 'gpt-4o',
       parentMode: 'default' as const,
@@ -80,8 +89,11 @@ describe('Task subagent preset wiring', () => {
       { description: 'd', prompt: 'p', preset: 'meeting' },
       ctx as never,
     )
-    const args = queryLoopSpy.mock.calls[0][0] as { signal?: AbortSignal }
-    expect(args.signal).toBe(ac.signal)
+    // Per-run AbortController is used so /subagents kill can cancel one run
+    // independently. It must still chain to the parent signal.
+    expect(observedSignal).toBeInstanceOf(AbortSignal)
+    expect(observedSignal).not.toBe(ac.signal)
+    expect(observedAfterParentAbort).toBe(true)
   })
 
   it('returns an error result when a BeforeSubagent hook blocks', async () => {

@@ -1,8 +1,53 @@
 import { getProvider } from '../providers'
 import { executeTools } from '../tools'
-import type { ConversationMessage } from '../providers/types'
+import type { ConversationMessage, StreamEvent } from '../providers/types'
 import { canUseTool, PermissionStore } from './permissions'
 import type { AgentMode } from './permissions'
+import { listConnections, listAvailableApps, getApp } from '../apps/manager'
+import { getAllSnapshots } from '../context/snapshotManager'
+import fs from 'node:fs'
+
+// ─── E2E Agent Stub ──────────────────────────────────────────────────────────
+// When WOS_E2E_AGENT_SCRIPT is set, scripted turns are replayed instead of
+// calling the real LLM. Script JSON format:
+//   { "turns": [ [StreamEvent, ...], [StreamEvent, ...], ... ] }
+// Turns are consumed globally in order across all queryLoop instances.
+// Reset by setting __wos_stub_reset = true on globalThis (the harness does
+// this between tests by re-launching the Electron process, so no manual
+// reset is needed in production).
+
+let _stubTurns: StreamEvent[][] | null = null
+let _stubTurnIndex = 0
+
+function loadStubScript(): void {
+  const scriptPath = process.env.WOS_E2E_AGENT_SCRIPT
+  if (!scriptPath) return
+  if (_stubTurns !== null) return
+  try {
+    const raw = fs.readFileSync(scriptPath, 'utf8')
+    const parsed = JSON.parse(raw) as { turns?: unknown }
+    _stubTurns = (parsed.turns ?? []) as StreamEvent[][]
+    _stubTurnIndex = 0
+    console.log(`[stub] loaded ${_stubTurns.length} scripted turns from ${scriptPath}`)
+  } catch (err) {
+    console.error('[stub] failed to load agent script:', err)
+    _stubTurns = []
+  }
+}
+
+async function* stubStream(): AsyncGenerator<StreamEvent> {
+  if (_stubTurns === null) loadStubScript()
+  const turns = _stubTurns!
+  const idx = _stubTurnIndex++
+  const events: StreamEvent[] = turns[idx] ?? [
+    { type: 'text_delta', content: `[E2E stub: no scripted turn at index ${idx}]` } as StreamEvent,
+    { type: 'message_stop', stopReason: 'end_turn', usage: { inputTokens: 0, outputTokens: 0 } } as StreamEvent,
+  ]
+  for (const event of events) {
+    yield event
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 export type AgentEvent =
   | { type: 'text_delta'; content: string }
@@ -13,9 +58,10 @@ export type AgentEvent =
   | { type: 'tool_stderr_delta'; toolId: string; delta: string }
   | { type: 'tool_use_start'; toolName: string; toolId: string; input: unknown }
   | { type: 'tool_result'; toolId: string; result: unknown; error?: string }
-  | { type: 'subagent_start'; agentId: string; prompt: string }
-  | { type: 'subagent_event'; agentId: string; event: AgentEvent }
-  | { type: 'subagent_end'; agentId: string; result: string }
+  | { type: 'subagent_start'; agentId: string; agentName: string; colorSeed: number; prompt: string }
+  | { type: 'subagent_event'; agentId: string; agentName: string; colorSeed: number; event: AgentEvent }
+  | { type: 'subagent_end'; agentId: string; agentName: string; colorSeed: number; result: string }
+  | { type: 'subagent_focus'; agentId: string | null }
   | { type: 'permission_request'; toolName: string; toolId: string; args: unknown }
   | { type: 'permission_decided'; toolId: string; decision: 'allowed' | 'denied' }
   | { type: 'ask_user'; question: string; questionId: string; choices?: string[]; extras?: import('../../../src/types').AskUserExtras }
@@ -56,9 +102,54 @@ export interface QueryOptions {
   conversationId?: string
 }
 
+/**
+ * Build a compact "Connected Apps" section for injection into system prompts.
+ * Lists only metadata (app name, tool count, snapshot scopes) — no actual data values.
+ * Deterministic ordering (sorted by appId) to avoid prompt-cache busting.
+ */
+function buildConnectedAppsSection(): string {
+  try {
+    const connections = listConnections().filter(c => c.enabled)
+    if (connections.length === 0) return ''
+
+    const manifests = listAvailableApps()
+    const nameMap: Record<string, string> = {}
+    for (const m of manifests) nameMap[m.id] = m.name
+
+    const snapshots = getAllSnapshots()
+    const scopesByApp: Record<string, string[]> = {}
+    for (const s of snapshots) {
+      scopesByApp[s.appId] = [...(scopesByApp[s.appId] ?? []), s.scope]
+    }
+
+    const sorted = [...connections].sort((a, b) => a.appId.localeCompare(b.appId))
+    const lines = sorted.map(c => {
+      const name = nameMap[c.appId] ?? c.appId
+      let toolCount = 0
+      try {
+        toolCount = getApp(c.appId)?.buildTools(c.creds).length ?? 0
+      } catch { /* non-fatal */ }
+      const scopes = (scopesByApp[c.appId] ?? []).sort().join(', ')
+      return `- ${name} (${c.appId}) — tools: ${toolCount}, scopes: {${scopes}}`
+    })
+
+    return `## Connected Apps\n${lines.join('\n')}`
+  } catch {
+    return ''
+  }
+}
+
 const SYSTEM_PROMPT = `You are WOS, an AI agent assistant. You have access to tools to help accomplish tasks.
 When using tools, be precise and thorough. Always explain what you are doing.
-If you need clarification, use the AskUser tool.`
+If you need clarification, use the AskUser tool.
+
+## Automations
+When the user wants to create or modify an automation, dispatch the \`automation_author\` subagent (via Task tool with preset='automation_author'). The author will gather details conversationally using the connected app context. You do NOT need to gather details upfront — just hand off to the author.
+
+For quick edits to existing automations (toggle, rename), call \`automation_update\` directly with the changed fields. No proposal needed for cosmetic changes.
+
+Never claim an automation is created until \`automation_save\` returns \`ok: true\` with an automation row.`
+
 
 function buildPlanModePrompt(base: string): string {
   return base + `
@@ -110,12 +201,19 @@ export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEve
     if (process.env.WOS_DEBUG === '1') console.warn('[query] rules/skills load failed', err)
   }
 
+  // Build the connected-apps awareness section once per turn (deterministic, sorted).
+  const connectedAppsSection = buildConnectedAppsSection()
+
   // Priority stack: override > (base + mode + workspace + rules + skills + custom) > append
   let systemPrompt: string
   if (systemPromptOverride) {
-    systemPrompt = systemPromptOverride
+    // Prepend connected-apps section so subagents with custom prompts still get app awareness.
+    systemPrompt = connectedAppsSection
+      ? `${connectedAppsSection}\n\n${systemPromptOverride}`
+      : systemPromptOverride
   } else {
     systemPrompt = SYSTEM_PROMPT
+    if (connectedAppsSection) systemPrompt = `${connectedAppsSection}\n\n${systemPrompt}`
     if (mode === 'plan') systemPrompt = buildPlanModePrompt(systemPrompt)
     if (mode === 'yolo') systemPrompt = buildYoloModePrompt(systemPrompt)
     if (workspacePath) systemPrompt += `\n\n## Workspace\nCurrent workspace: ${workspacePath}`
@@ -149,15 +247,18 @@ export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEve
       inputSchema: t.inputSchema,
     }))
 
-    const stream = provider.stream({
-      model,
-      messages: history,
-      tools: toolDefs,
-      systemPrompt,
-      reasoningEffort,
-      apiKeyOverride,
-      signal,
-    })
+    // E2E: use scripted stub instead of a real LLM call when configured.
+    const stream = process.env.WOS_E2E_AGENT_SCRIPT
+      ? stubStream()
+      : provider.stream({
+          model,
+          messages: history,
+          tools: toolDefs,
+          systemPrompt,
+          reasoningEffort,
+          apiKeyOverride,
+          signal,
+        })
 
     if (!turnStarted) {
       turnStarted = true
@@ -272,6 +373,7 @@ export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEve
         // Rebuild system prompt for the approved execution mode (strip plan-mode instructions)
         if (!systemPromptOverride) {
           systemPrompt = SYSTEM_PROMPT
+          if (connectedAppsSection) systemPrompt = `${connectedAppsSection}\n\n${systemPrompt}`
           if (effectiveMode === 'yolo') systemPrompt = buildYoloModePrompt(systemPrompt)
           if (workspacePath) systemPrompt += `\n\n## Workspace\nCurrent workspace: ${workspacePath}`
           if (rulesSection) systemPrompt += `\n\n${rulesSection}`
@@ -349,36 +451,23 @@ export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEve
       return
     }
 
-    // Check permissions for each tool call
-    const toolResults: Array<{
-      id: string
-      name: string
-      output: unknown
-      error?: string
-    }> = []
-
+    // Phase 1: resolve permissions sequentially (they may prompt the user).
+    type PermDecision = { call: { id: string; name: string; input: unknown }; granted: boolean; error?: string }
+    const permDecisions: PermDecision[] = []
     for (const call of pendingToolCalls) {
       if (signal?.aborted) return
 
       const permission = await canUseTool(call.name, effectiveMode, permissionStore, call.input)
 
       if (permission.decision === 'deny') {
-        const msg = permission.reason ?? 'Blocked by policy'
-        toolResults.push({ id: call.id, name: call.name, output: null, error: msg })
-        yield { type: 'tool_result', toolId: call.id, result: null, error: msg }
+        permDecisions.push({ call, granted: false, error: permission.reason ?? 'Blocked by policy' })
         continue
       }
 
       if (permission.decision === 'request') {
         const decision = await onPermissionRequest(call.name, call.id, call.input)
         if (decision === 'deny') {
-          toolResults.push({ id: call.id, name: call.name, output: null, error: 'Permission denied by user' })
-          yield {
-            type: 'tool_result',
-            toolId: call.id,
-            result: null,
-            error: 'Permission denied by user',
-          }
+          permDecisions.push({ call, granted: false, error: 'Permission denied by user' })
           continue
         }
         if (decision === 'allow-session') {
@@ -386,45 +475,59 @@ export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEve
         }
       }
 
-      // Execute tool
-      try {
-        const result = await executeTools(
-          call.name,
-          call.input,
-          {
-            workspacePath,
-            signal: signal ?? new AbortController().signal,
-            yieldEvent: (e: AgentEvent) => {
-              // Side-channel: forward directly to runner-level emit.
-              if (onEvent) onEvent(e)
-            },
-            onPermissionRequest,
-            onAskUser,
-            toolId: call.id,
-            parentMessages: history,
-            parentModel: model,
-            parentMode: mode,
-            parentReasoningEffort: reasoningEffort,
-            parentApiKeyOverride: apiKeyOverride,
-            conversationId,
-          }
-        )
+      permDecisions.push({ call, granted: true })
+    }
 
-        toolResults.push({ id: call.id, name: call.name, output: result.output })
-        yield {
-          type: 'tool_result',
-          toolId: call.id,
-          result: result.output,
+    // Phase 2: execute all permitted tools concurrently.
+    // Subagent events flow through ctx.yieldEvent → onEvent immediately as they
+    // arrive, giving true interleaving. tool_result yields happen after all settle.
+    const toolResultMap = new Map<string, { output: unknown; error?: string }>()
+
+    await Promise.all(
+      permDecisions.map(async ({ call, granted, error }) => {
+        if (!granted) {
+          toolResultMap.set(call.id, { output: null, error })
+          return
         }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        toolResults.push({ id: call.id, name: call.name, output: null, error: msg })
-        yield {
-          type: 'tool_result',
-          toolId: call.id,
-          result: null,
-          error: msg,
+        try {
+          const result = await executeTools(
+            call.name,
+            call.input,
+            {
+              workspacePath,
+              signal: signal ?? new AbortController().signal,
+              yieldEvent: (e: AgentEvent) => {
+                // Side-channel: forward directly to runner-level emit.
+                if (onEvent) onEvent(e)
+              },
+              onPermissionRequest,
+              onAskUser,
+              toolId: call.id,
+              parentMessages: history,
+              parentModel: model,
+              parentMode: mode,
+              parentReasoningEffort: reasoningEffort,
+              parentApiKeyOverride: apiKeyOverride,
+              conversationId,
+            }
+          )
+          toolResultMap.set(call.id, { output: result.output })
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          toolResultMap.set(call.id, { output: null, error: msg })
         }
+      })
+    )
+
+    // Phase 3: yield tool_results in the original call order, build history.
+    const toolResults: Array<{ id: string; name: string; output: unknown; error?: string }> = []
+    for (const { call } of permDecisions) {
+      const r = toolResultMap.get(call.id) ?? { output: null, error: 'internal: result missing' }
+      toolResults.push({ id: call.id, name: call.name, output: r.output, error: r.error })
+      if (r.error) {
+        yield { type: 'tool_result', toolId: call.id, result: null, error: r.error }
+      } else {
+        yield { type: 'tool_result', toolId: call.id, result: r.output }
       }
     }
 

@@ -1,5 +1,5 @@
-import { BrowserWindow, shell } from 'electron'
-import path from 'path'
+import { BrowserWindow, app, shell } from 'electron'
+import path from 'node:path'
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string
 declare const MAIN_WINDOW_VITE_NAME: string
@@ -28,6 +28,17 @@ export function createWindow(): BrowserWindow {
   // Show when ready (prevents flash)
   win.once('ready-to-show', () => {
     win.show()
+  })
+
+  // Hide on close instead of quitting — automations keep running in background.
+  // Only actually close when app is explicitly quitting.
+  win.on('close', (event) => {
+    const quitting = (app as unknown as { isQuitting?: boolean }).isQuitting === true
+    if (!quitting) {
+      event.preventDefault()
+      win.hide()
+      if (process.platform === 'darwin') app.dock?.hide()
+    }
   })
 
   // Open external links in browser, not Electron

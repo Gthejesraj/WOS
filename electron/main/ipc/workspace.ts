@@ -1,8 +1,8 @@
 import { ipcMain, dialog } from 'electron'
-import path from 'path'
+import path from 'node:path'
 import { getDb, schema, notifyWrite } from '../db'
 import { eq, desc } from 'drizzle-orm'
-import { randomUUID } from 'crypto'
+import { randomUUID } from 'node:crypto'
 
 export function registerWorkspaceHandlers() {
   ipcMain.handle('workspace:open', async () => {
@@ -54,6 +54,35 @@ export function registerWorkspaceHandlers() {
     db.delete(schema.workspaces).where(eq(schema.workspaces.id, id)).run()
     return { success: true }
   })
+
+  ipcMain.handle(
+    'workspace:read-file',
+    async (_event, { workspaceId, relPath }: { workspaceId: string; relPath: string }) => {
+      try {
+        const fs = await import('fs/promises')
+        const db = getDb()
+        const ws = db.select().from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId)).get()
+        if (!ws) return { ok: false as const, error: 'Workspace not found' }
+
+        const safeRel = relPath.replace(/^[/\\]+/, '').replace(/\.\.[/\\]/g, '')
+        const absPath = path.join(ws.path, safeRel)
+        const absResolved = path.resolve(absPath)
+        const wsResolved = path.resolve(ws.path)
+        if (!absResolved.startsWith(wsResolved + path.sep) && absResolved !== wsResolved) {
+          return { ok: false as const, error: 'Refusing to read outside workspace' }
+        }
+        // Cap at ~2 MB so a giant binary doesn't OOM the renderer.
+        const stat = await fs.stat(absPath)
+        if (stat.size > 2 * 1024 * 1024) {
+          return { ok: false as const, error: `File too large (${stat.size} bytes); max 2 MB` }
+        }
+        const content = await fs.readFile(absPath, 'utf8')
+        return { ok: true as const, content, absPath }
+      } catch (err) {
+        return { ok: false as const, error: err instanceof Error ? err.message : String(err) }
+      }
+    }
+  )
 
   ipcMain.handle(
     'workspace:save-file',

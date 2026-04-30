@@ -1,0 +1,41 @@
+{
+  "turns": [
+    [
+      {
+        "type": "tool_use_start",
+        "id": "e2e-tool-1",
+        "name": "automation_propose",
+        "input": {
+          "kind": "cron",
+          "name": "Stub Automation",
+          "description": "Created by E2E stub",
+          "prompt": "Run daily tasks at 9am",
+          "toolsAllow": [],
+          "config": { "schedule": "0 9 * * *" }
+        }
+      },
+      { "type": "message_stop", "stopReason": "tool_use", "usage": { "inputTokens": 5, "outputTokens": 10 } }
+    ],
+    [
+      {
+        "type": "tool_use_start",
+        "id": "e2e-tool-2",
+        "name": "automation_save",
+        "input": {
+          "kind": "cron",
+          "name": "Stub Automation",
+          "description": "Created by E2E stub",
+          "prompt": "Run daily tasks at 9am",
+          "toolsAllow": [],
+          "config": { "schedule": "0 9 * * *" },
+          "enabled": true
+        }
+      },
+      { "type": "message_stop", "stopReason": "tool_use", "usage": { "inputTokens": 5, "outputTokens": 10 } }
+    ],
+    [
+      { "type": "text_delta", "content": "Automation saved successfully!" },
+      { "type": "message_stop", "stopReason": "end_turn", "usage": { "inputTokens": 5, "outputTokens": 10 } }
+    ]
+  ]
+}

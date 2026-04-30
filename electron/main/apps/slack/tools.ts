@@ -48,6 +48,7 @@ export function buildSlackTools(creds: SlackCreds): Tool[] {
     {
       name: 'SlackListChannels',
       description: 'List Slack channels (public + private + DMs) the bot can see.',
+      readOnly: true,
       inputSchema: {
         type: 'object',
         properties: {
@@ -70,6 +71,7 @@ export function buildSlackTools(creds: SlackCreds): Tool[] {
     {
       name: 'SlackSearchMessages',
       description: 'Search Slack messages (requires user token). Slack search query syntax supported.',
+      readOnly: true,
       inputSchema: {
         type: 'object',
         properties: {
@@ -91,6 +93,7 @@ export function buildSlackTools(creds: SlackCreds): Tool[] {
     {
       name: 'SlackGetChannelHistory',
       description: 'Fetch recent messages from a channel.',
+      readOnly: true,
       inputSchema: {
         type: 'object',
         properties: {
@@ -112,6 +115,7 @@ export function buildSlackTools(creds: SlackCreds): Tool[] {
     {
       name: 'SlackGetUserInfo',
       description: 'Look up a Slack user by ID.',
+      readOnly: true,
       inputSchema: {
         type: 'object',
         properties: { user: { type: 'string' } },

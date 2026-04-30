@@ -9,7 +9,7 @@ import {
 } from '../rules/manager'
 import { getDb, schema, notifyWrite } from '../db'
 import { eq } from 'drizzle-orm'
-import fs from 'fs'
+import fs from 'node:fs'
 import matter from 'gray-matter'
 
 export function registerRulesHandlers() {
