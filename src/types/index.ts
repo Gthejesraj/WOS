@@ -30,6 +30,17 @@ export interface AskUserExtras {
   allowFreeform?: boolean
   /** For form: schema. */
   fields?: AskUserFormField[]
+  /**
+   * For picker: pre-populated choices from the snapshot cache.
+   * Each item has at minimum `id` and `label`; additional fields vary by source.
+   * The renderer can display a real picker UI from these items.
+   */
+  pickerChoices?: Array<{ id: string; label: string; [key: string]: unknown }>
+  /**
+   * Unix ms timestamp of the snapshot's fetchedAt when it was stale (> 24h old).
+   * If present, the UI can show a "refresh" affordance.
+   */
+  staleAt?: number
 }
 
 export type AgentEvent =
@@ -41,9 +52,10 @@ export type AgentEvent =
   | { type: 'tool_stderr_delta'; toolId: string; delta: string }
   | { type: 'tool_use_start'; toolName: string; toolId: string; input: unknown }
   | { type: 'tool_result'; toolId: string; result: unknown; error?: string }
-  | { type: 'subagent_start'; agentId: string; prompt: string }
-  | { type: 'subagent_event'; agentId: string; event: AgentEvent }
-  | { type: 'subagent_end'; agentId: string; result: string }
+  | { type: 'subagent_start'; agentId: string; prompt: string; agentName?: string; colorSeed?: number }
+  | { type: 'subagent_event'; agentId: string; event: AgentEvent; agentName?: string; colorSeed?: number }
+  | { type: 'subagent_end'; agentId: string; result: string; agentName?: string; colorSeed?: number }
+  | { type: 'subagent_focus'; agentId: string | null }
   | { type: 'permission_request'; toolName: string; toolId: string; args: unknown }
   | { type: 'permission_decided'; toolId: string; decision: 'allowed' | 'denied' }
   | { type: 'ask_user'; question: string; questionId: string; choices?: string[]; extras?: AskUserExtras }
@@ -60,7 +72,7 @@ export type MessageBlock =
   | { type: 'reasoning'; content: string; collapsed?: boolean; done?: boolean; interrupted?: boolean }
   | { type: 'tool_use'; toolName: string; toolId: string; input: unknown; partialArgs?: string; status: 'preparing' | 'running' | 'done' | 'error'; result?: unknown; error?: string; stdout?: string; stderr?: string; interrupted?: boolean }
   | { type: 'tool_result'; toolId: string; result: unknown; error?: string }
-  | { type: 'subagent'; agentId: string; prompt: string; events: AgentEvent[]; result?: string; collapsed?: boolean; interrupted?: boolean }
+  | { type: 'subagent'; agentId: string; prompt: string; events: AgentEvent[]; result?: string; collapsed?: boolean; interrupted?: boolean; agentName?: string; colorSeed?: number; startedAt?: number }
   | { type: 'permission_request'; toolName: string; toolId: string; args: unknown; decision?: 'allowed' | 'denied'; interrupted?: boolean }
   | { type: 'ask_user'; question: string; questionId: string; choices?: string[]; answer?: string; interrupted?: boolean; extras?: AskUserExtras }
   | { type: 'diff'; filePath: string; diff: string; collapsed?: boolean }

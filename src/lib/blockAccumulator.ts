@@ -150,6 +150,9 @@ export function applyEvent(blocks: MessageBlock[], event: AgentEvent): MessageBl
           prompt: event.prompt,
           events: [],
           collapsed: false,
+          agentName: event.agentName,
+          colorSeed: event.colorSeed,
+          startedAt: Date.now(),
         },
       ]
 

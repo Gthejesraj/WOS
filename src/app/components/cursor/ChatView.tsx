@@ -4,7 +4,7 @@ import {
   RefreshCw, ArrowDown, AlertCircle, Shield, Zap, BookOpen,
   File, Loader2, X, FileEdit, Pencil, Brain, HelpCircle, Search, Globe,
 } from 'lucide-react'
-import type { MessageBlock, DisplayMessage, FileAttachment } from '../../../types'
+import type { MessageBlock, DisplayMessage, FileAttachment, AgentEvent } from '../../../types'
 import { useAgentStore } from '../../../store/agentStore'
 import { useWorkspaceStore } from '../../../store/workspaceStore'
 import { useUIStore } from '../../../store/uiStore'
@@ -898,66 +898,273 @@ function AskUserBlock({
   )
 }
 
-function SubagentBlock({ agentId, prompt, events, result, collapsed: initCollapsed }: Extract<MessageBlock, { type: 'subagent' }>) {
-  const [collapsed, setCollapsed] = useState(initCollapsed ?? false)
-  const eventCount = events.length
-  const shortId = agentId.slice(0, 8)
+/* ─── Subagent inline rendering ─── */
+
+/** 7-color palette indexed by colorSeed (0-6). Works in dark & light themes. */
+const AGENT_PALETTE = [
+  { bg: 'rgba(59,130,246,0.12)',  border: 'rgba(59,130,246,0.35)',  text: '#60a5fa' },  // blue
+  { bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.35)',  text: '#34d399' },  // emerald
+  { bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.35)',  text: '#fbbf24' },  // amber
+  { bg: 'rgba(244,63,94,0.12)',  border: 'rgba(244,63,94,0.35)',   text: '#fb7185' },  // rose
+  { bg: 'rgba(139,92,246,0.12)', border: 'rgba(139,92,246,0.35)',  text: '#a78bfa' },  // violet
+  { bg: 'rgba(6,182,212,0.12)',  border: 'rgba(6,182,212,0.35)',   text: '#22d3ee' },  // cyan
+  { bg: 'rgba(217,70,239,0.12)', border: 'rgba(217,70,239,0.35)',  text: '#e879f9' },  // fuchsia
+] as const
+
+export function getAgentColor(colorSeed?: number) {
+  return AGENT_PALETTE[(colorSeed ?? 0) % AGENT_PALETTE.length]
+}
+
+/** Elapsed-time hook: updates every second while running. */
+function useElapsed(startedAt?: number, isRunning?: boolean) {
+  const [elapsed, setElapsed] = useState(0)
+  useEffect(() => {
+    if (!startedAt || !isRunning) { setElapsed(0); return }
+    const tick = () => setElapsed(Math.floor((Date.now() - startedAt) / 1000))
+    tick()
+    const t = setInterval(tick, 1000)
+    return () => clearInterval(t)
+  }, [startedAt, isRunning])
+  return elapsed
+}
+
+function formatElapsed(secs: number) {
+  if (secs < 60) return `${secs}s`
+  return `${Math.floor(secs / 60)}m${secs % 60}s`
+}
+
+/** Renders a single subagent event line (preserves all existing event kinds). */
+function SubagentEventLine({ event, color }: { event: AgentEvent; color: { text: string } }) {
+  if (event.type === 'text_delta') {
+    return <p className="text-xs whitespace-pre-wrap" style={{ color: 'var(--muted-foreground)' }}>{event.content}</p>
+  }
+  if (event.type === 'reasoning_delta') {
+    return <p className="text-[10px] italic whitespace-pre-wrap" style={{ color: 'var(--muted-foreground)', opacity: 0.65 }}>{event.content}</p>
+  }
+  if (event.type === 'tool_use_start') {
+    return (
+      <p className="text-[10px] flex items-center gap-1" style={{ color: color.text }}>
+        <Loader2 size={9} className="animate-spin" />
+        Tool: {event.toolName}
+      </p>
+    )
+  }
+  if (event.type === 'tool_stdout_delta') {
+    return (
+      <pre className="text-[10px] px-2 py-0.5 rounded overflow-x-auto whitespace-pre-wrap"
+        style={{ background: 'var(--background)', color: 'var(--secondary-foreground)' }}>
+        {event.delta}
+      </pre>
+    )
+  }
+  if (event.type === 'tool_stderr_delta') {
+    return (
+      <pre className="text-[10px] px-2 py-0.5 rounded overflow-x-auto whitespace-pre-wrap"
+        style={{ background: 'var(--background)', color: '#f87171' }}>
+        {event.delta}
+      </pre>
+    )
+  }
+  if (event.type === 'tool_result') {
+    return (
+      <p className="text-[10px]" style={{ color: event.error ? '#f87171' : 'var(--border-strong)' }}>
+        {event.error ? `Tool failed: ${event.error}` : '✓ Tool completed'}
+      </p>
+    )
+  }
+  if (event.type === 'error') {
+    return <p className="text-[10px] text-red-400">{event.message}</p>
+  }
+  if (event.type === 'turn_complete') {
+    return <p className="text-[10px]" style={{ color: 'var(--border-strong)' }}>Turn complete</p>
+  }
+  return null
+}
+
+/** Collapses consecutive events of the same kind into merged groups for display. */
+function mergeEvents(events: AgentEvent[]) {
+  type MergedEvent =
+    | { kind: 'text'; text: string }
+    | { kind: 'reasoning'; text: string }
+    | { kind: 'stdout'; text: string }
+    | { kind: 'stderr'; text: string }
+    | { kind: 'other'; event: AgentEvent }
+
+  const groups: MergedEvent[] = []
+  for (const e of events) {
+    const last = groups[groups.length - 1]
+    if (e.type === 'text_delta') {
+      if (last?.kind === 'text') { last.text += e.content; continue }
+      groups.push({ kind: 'text', text: e.content })
+    } else if (e.type === 'reasoning_delta') {
+      if (last?.kind === 'reasoning') { last.text += e.content; continue }
+      groups.push({ kind: 'reasoning', text: e.content })
+    } else if (e.type === 'tool_stdout_delta') {
+      if (last?.kind === 'stdout') { last.text += e.delta; continue }
+      groups.push({ kind: 'stdout', text: e.delta })
+    } else if (e.type === 'tool_stderr_delta') {
+      if (last?.kind === 'stderr') { last.text += e.delta; continue }
+      groups.push({ kind: 'stderr', text: e.delta })
+    } else {
+      groups.push({ kind: 'other', event: e })
+    }
+  }
+  return groups
+}
+
+/** Renders a merged event group inline. */
+function MergedEventLine({ group, color }: {
+  group: ReturnType<typeof mergeEvents>[number]
+  color: { text: string }
+}) {
+  if (group.kind === 'text') {
+    return <p className="text-xs whitespace-pre-wrap" style={{ color: 'var(--muted-foreground)' }}>{group.text}</p>
+  }
+  if (group.kind === 'reasoning') {
+    return <p className="text-[10px] italic whitespace-pre-wrap" style={{ color: 'var(--muted-foreground)', opacity: 0.65 }}>{group.text}</p>
+  }
+  if (group.kind === 'stdout') {
+    return (
+      <pre className="text-[10px] px-2 py-0.5 rounded overflow-x-auto whitespace-pre-wrap"
+        style={{ background: 'var(--background)', color: 'var(--secondary-foreground)' }}>
+        {group.text}
+      </pre>
+    )
+  }
+  if (group.kind === 'stderr') {
+    return (
+      <pre className="text-[10px] px-2 py-0.5 rounded overflow-x-auto whitespace-pre-wrap"
+        style={{ background: 'var(--background)', color: '#f87171' }}>
+        {group.text}
+      </pre>
+    )
+  }
+  return <SubagentEventLine event={group.event} color={color} />
+}
+
+/**
+ * Per-run collapsible header + inline event list.
+ * `expanded` / `onToggle` / `onFocus` come from the parent.
+ */
+function SubagentRunHeader({
+  agentId, prompt, agentName, colorSeed, startedAt, result, interrupted, expanded, onToggle, onFocus,
+}: {
+  agentId: string
+  prompt: string
+  agentName?: string
+  colorSeed?: number
+  startedAt?: number
+  result?: string
+  interrupted?: boolean
+  expanded: boolean
+  onToggle: () => void
+  onFocus: () => void
+}) {
+  const color = getAgentColor(colorSeed)
+  const isRunning = result === undefined && !interrupted
+  const elapsed = useElapsed(startedAt, isRunning)
+  const shortId = agentId.slice(0, 6)
+  const displayName = agentName ?? 'task'
+
+  let statusLabel = 'running'
+  let statusColor: string = color.text
+  if (interrupted || result === '[interrupted]') { statusLabel = 'cancelled'; statusColor = '#94a3b8' }
+  else if (result !== undefined) { statusLabel = 'done'; statusColor = '#4ade80' }
 
   return (
-    <div className="my-2 rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)', background: 'var(--card)' }}>
-      <button
-        onClick={() => setCollapsed(o => !o)}
-        className="flex items-center gap-2 px-3 py-2 w-full text-left wos-hover-sm transition-colors"
+    <button
+      onClick={onToggle}
+      className="flex items-center gap-2 w-full text-left px-3 py-2 rounded-lg wos-hover-sm transition-colors mt-2"
+      style={{ border: `1px solid ${color.border}`, background: color.bg }}
+      aria-expanded={expanded}
+    >
+      <ChevronRight size={10} className={cn('shrink-0 transition-transform', expanded && 'rotate-90')} style={{ color: color.text }} />
+      <span className="text-[10px] px-1.5 py-0.5 rounded font-mono font-medium shrink-0" style={{ background: color.bg, border: `1px solid ${color.border}`, color: color.text }}>
+        🤖 {displayName}#{shortId}
+      </span>
+      <span
+        className="text-[10px] truncate flex-1 text-left"
+        style={{ color: 'var(--muted-foreground)' }}
+        onClick={e => { e.stopPropagation(); onFocus() }}
+        title="Click to focus this agent"
+        role="button"
+        tabIndex={0}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onFocus() } }}
       >
-        <Zap size={11} className="text-blue-400/70" />
-        <span className="text-xs text-blue-400/70 flex-1 truncate">Subagent: {prompt}</span>
-        <span className="text-[10px]" style={{ color: 'var(--border-strong)' }}>{shortId} · {eventCount} events</span>
-        <ChevronRight
-          size={10}
-          className={cn('transition-transform', !collapsed && 'rotate-90')}
-          style={{ color: 'var(--border-strong)' }}
-        />
-      </button>
-      {!collapsed && (
-        <div className="px-3 py-2 space-y-1" style={{ borderTop: '1px solid var(--border)' }}>
-          {events.slice(-20).map((e, i) => {
-            if (e.type === 'text_delta') {
-              return <p key={i} className="text-xs whitespace-pre-wrap" style={{ color: 'var(--muted-foreground)' }}>{e.content}</p>
-            }
-            if (e.type === 'reasoning_delta') {
-              return <p key={i} className="text-[10px] italic text-purple-300/60 whitespace-pre-wrap">{e.content}</p>
-            }
-            if (e.type === 'tool_use_start') {
-              return <p key={i} className="text-[10px] text-blue-400/60">Tool: {e.toolName}</p>
-            }
-            if (e.type === 'tool_stdout_delta' || e.type === 'tool_stderr_delta') {
-              return (
-                <pre key={i} className="text-[10px] px-2 py-1 rounded overflow-x-auto"
-                  style={{ background: 'var(--background)', color: e.type === 'tool_stderr_delta' ? '#f87171' : 'var(--secondary-foreground)' }}>
-                  {e.delta}
-                </pre>
-              )
-            }
-            if (e.type === 'tool_result') {
-              return (
-                <p key={i} className="text-[10px]" style={{ color: e.error ? '#f87171' : 'var(--border-strong)' }}>
-                  {e.error ? `Tool failed: ${e.error}` : 'Tool completed'}
-                </p>
-              )
-            }
-            if (e.type === 'error') {
-              return <p key={i} className="text-[10px] text-red-400">{e.message}</p>
-            }
-            if (e.type === 'turn_complete') {
-              return <p key={i} className="text-[10px]" style={{ color: 'var(--border-strong)' }}>Subagent turn complete</p>
-            }
-            return null
-          })}
-          {result && (
-            <div className="mt-2 pt-2" style={{ borderTop: '1px solid var(--border)' }}>
-              <p className="text-xs" style={{ color: 'var(--secondary-foreground)' }}>{result.slice(0, 200)}{result.length > 200 ? '…' : ''}</p>
-            </div>
-          )}
+        {prompt.length > 80 ? prompt.slice(0, 80) + '…' : prompt}
+      </span>
+      <span className="text-[10px] shrink-0 font-medium px-1.5 py-0.5 rounded-full" style={{ color: statusColor, background: 'rgba(0,0,0,0.2)' }}>
+        {statusLabel}
+      </span>
+      {isRunning && (
+        <span className="text-[10px] shrink-0" style={{ color: 'var(--muted-foreground)' }}>
+          {formatElapsed(elapsed)}
+        </span>
+      )}
+    </button>
+  )
+}
+
+function SubagentBlock({
+  agentId, prompt, events, result, interrupted, agentName, colorSeed, startedAt,
+  expanded, onToggle, onFocus,
+}: Extract<MessageBlock, { type: 'subagent' }> & {
+  expanded: boolean
+  onToggle: () => void
+  onFocus: () => void
+}) {
+  const color = getAgentColor(colorSeed)
+  const isRunning = result === undefined && !interrupted
+  const merged = useMemo(() => mergeEvents(events), [events])
+
+  // Live-tail: latest event text shown next to header when collapsed
+  const latestPreview = useMemo(() => {
+    for (let i = merged.length - 1; i >= 0; i--) {
+      const g = merged[i]
+      if (g.kind === 'text' && g.text.trim()) return g.text.slice(0, 80)
+      if (g.kind === 'reasoning' && g.text.trim()) return g.text.slice(0, 80)
+    }
+    return null
+  }, [merged])
+
+  return (
+    <div className="my-1">
+      <SubagentRunHeader
+        agentId={agentId}
+        prompt={prompt}
+        agentName={agentName}
+        colorSeed={colorSeed}
+        startedAt={startedAt}
+        result={result}
+        interrupted={interrupted}
+        expanded={expanded}
+        onToggle={onToggle}
+        onFocus={onFocus}
+      />
+
+      {/* Live tail when collapsed */}
+      {!expanded && isRunning && latestPreview && (
+        <div className="flex items-center gap-2 px-3 mt-1">
+          <span className="w-1.5 h-1.5 rounded-full shrink-0 animate-pulse" style={{ background: color.text }} />
+          <span className="text-[10px] truncate" style={{ color: 'var(--muted-foreground)' }}>{latestPreview}</span>
+        </div>
+      )}
+
+      {/* Expanded event list (no truncation) */}
+      {expanded && merged.length > 0 && (
+        <div className="mt-1 ml-3 pl-3 space-y-0.5 py-1" style={{ borderLeft: `2px solid ${color.border}` }}>
+          {merged.map((g, i) => (
+            <MergedEventLine key={i} group={g} color={color} />
+          ))}
+        </div>
+      )}
+
+      {/* Result row */}
+      {result && result !== '[interrupted]' && expanded && (
+        <div className="mt-1 ml-3 pl-3 py-1" style={{ borderLeft: `2px solid ${color.border}` }}>
+          <p className="text-xs" style={{ color: 'var(--secondary-foreground)' }}>
+            ✓ {result.slice(0, 300)}{result.length > 300 ? '…' : ''}
+          </p>
         </div>
       )}
     </div>
@@ -1124,7 +1331,7 @@ const BlockRenderer = memo(function BlockRenderer({
     case 'ask_user':
       if (block.question === '__plan_approval__' || block.question.startsWith('__plan_approval__\n')) return <PlanApprovalBlock {...block} />
       return <AskUserBlock {...block} />
-    case 'subagent': return <SubagentBlock {...block} />
+    case 'subagent': return null // handled directly in AssistantMessage with expand/focus state
     case 'diff': return <DiffBlock {...block} />
     case 'error': return <ErrorBlock {...block} />
     case 'compact_notice': return <CompactNoticeBlock summary={block.summary} />
@@ -1342,7 +1549,7 @@ function StreamingIndicator({ blocks }: { blocks: MessageBlock[] }) {
 
 function AssistantMessage({ message, isStreaming }: { message: DisplayMessage; isStreaming: boolean }) {
   const [copied, setCopied] = useState(false)
-  const { sendMessage } = useAgentStore()
+  const { sendMessage, setFocusedAgentId } = useAgentStore()
   const textContent = message.blocks
     .filter(b => b.type === 'text')
     .map(b => (b as Extract<MessageBlock, { type: 'text' }>).content)
@@ -1350,6 +1557,32 @@ function AssistantMessage({ message, isStreaming }: { message: DisplayMessage; i
 
   const hasInterruption = !isStreaming && blocksHaveInterruption(message.blocks)
   void hasInterruption // intentionally unused — banner removed
+
+  // Expand state: in-flight (no result) runs expanded by default
+  const [expandedRuns, setExpandedRuns] = useState<Record<string, boolean>>(() => {
+    const init: Record<string, boolean> = {}
+    for (const b of message.blocks) {
+      if (b.type === 'subagent') {
+        init[b.agentId] = b.result === undefined
+      }
+    }
+    return init
+  })
+
+  // Sync new subagent blocks into expandedRuns when blocks update
+  useEffect(() => {
+    setExpandedRuns(prev => {
+      const next = { ...prev }
+      let changed = false
+      for (const b of message.blocks) {
+        if (b.type === 'subagent' && !(b.agentId in next)) {
+          next[b.agentId] = b.result === undefined
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [message.blocks])
 
   const handleCopy = () => {
     navigator.clipboard.writeText(textContent)
@@ -1379,6 +1612,20 @@ function AssistantMessage({ message, isStreaming }: { message: DisplayMessage; i
                   ? `s-${block.agentId}`
                   : `${block.type}-${i}`
           const isLast = i === message.blocks.length - 1
+
+          if (block.type === 'subagent') {
+            return (
+              <FadeIn key={key}>
+                <SubagentBlock
+                  {...block}
+                  expanded={expandedRuns[block.agentId] ?? false}
+                  onToggle={() => setExpandedRuns(prev => ({ ...prev, [block.agentId]: !prev[block.agentId] }))}
+                  onFocus={() => setFocusedAgentId(block.agentId)}
+                />
+              </FadeIn>
+            )
+          }
+
           return (
             <FadeIn key={key}>
               <BlockRenderer block={block} isLast={isLast} isLive={isStreaming} />
@@ -1817,20 +2064,14 @@ function Composer() {
                     if (f) {
                       void (async () => {
                         const wsId = workspaces[0]?.id
+                        let content = `[File: ${f}]`
                         if (wsId) {
                           try {
-                            const res = await window.wos.saveWorkspaceFile({ workspaceId: wsId, relPath: f, content: '' })
-                            const absPath = res.absPath
-                            if (absPath) {
-                              const fs = { readFile: async (p: string) => {
-                                // Read via IPC instead — just use path as content reference
-                                return { path: p }
-                              }}
-                              void fs.readFile(absPath)
-                            }
-                          } catch { /* ok */ }
+                            const res = await window.wos.readWorkspaceFile({ workspaceId: wsId, relPath: f })
+                            if (res.ok && typeof res.content === 'string') content = res.content
+                          } catch { /* fall back to placeholder */ }
                         }
-                        setAttachments(prev => [...prev, { name: f, content: `[File: ${f}]`, type: 'text/plain' }])
+                        setAttachments(prev => [...prev, { name: f, content, type: 'text/plain' }])
                       })()
                       setFilePickerOpen(false)
                     } else if (filePickerIndex === filePickerResults.length) {
@@ -1860,7 +2101,17 @@ function Composer() {
                 <button
                   key={f}
                   onMouseDown={() => {
-                    setAttachments(prev => [...prev, { name: f, content: `[File: ${f}]`, type: 'text/plain' }])
+                    void (async () => {
+                      const wsId = workspaces[0]?.id
+                      let content = `[File: ${f}]`
+                      if (wsId) {
+                        try {
+                          const res = await window.wos.readWorkspaceFile({ workspaceId: wsId, relPath: f })
+                          if (res.ok && typeof res.content === 'string') content = res.content
+                        } catch { /* fall back to placeholder */ }
+                      }
+                      setAttachments(prev => [...prev, { name: f, content, type: 'text/plain' }])
+                    })()
                     setFilePickerOpen(false)
                     textareaRef.current?.focus()
                   }}
@@ -2111,7 +2362,7 @@ function Composer() {
 
 /* ─── Main ChatView ─── */
 export function ChatView() {
-  const { currentMessages, isStreaming, activeBranches, switchBranch, editMessage } = useAgentStore()
+  const { currentMessages, isStreaming, activeBranches, switchBranch, editMessage, focusedAgentId, setFocusedAgentId, sendMessage } = useAgentStore()
   const scrollRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
@@ -2140,18 +2391,50 @@ export function ChatView() {
     return counts
   }, [currentMessages])
 
+  // Focus metadata: find agentName for the focused id so we can show it in the banner
+  const focusMeta = React.useMemo(() => {
+    if (!focusedAgentId) return null
+    for (const m of currentMessages) {
+      if (m.role !== 'assistant') continue
+      for (const b of m.blocks) {
+        if (b.type === 'subagent' && b.agentId === focusedAgentId) {
+          return { agentName: b.agentName ?? 'task', colorSeed: b.colorSeed, shortId: focusedAgentId.slice(0, 6) }
+        }
+      }
+    }
+    return { agentName: 'agent', colorSeed: 0, shortId: focusedAgentId.slice(0, 6) }
+  }, [focusedAgentId, currentMessages])
+
   // Group into user/assistant pairs, filtering to active branch per group
   const turns = React.useMemo(() => {
     const activeMessages = currentMessages.filter(m => {
       if (!m.branchGroupId) return true
       return (m.branchIndex ?? 0) === (activeBranches[m.branchGroupId] ?? 0)
     })
+
+    // If focused, keep only turns that have subagent blocks matching focusedAgentId
+    const filteredMessages = focusedAgentId
+      ? activeMessages.filter(m => {
+          if (m.role === 'user') {
+            // Keep user messages that are followed by an assistant with the focused subagent
+            const idx = activeMessages.indexOf(m)
+            const next = activeMessages[idx + 1]
+            if (!next || next.role !== 'assistant') return false
+            return next.blocks.some(b => b.type === 'subagent' && b.agentId === focusedAgentId)
+          }
+          if (m.role === 'assistant') {
+            return m.blocks.some(b => b.type === 'subagent' && b.agentId === focusedAgentId)
+          }
+          return false
+        })
+      : activeMessages
+
     const pairs: Array<{ user: DisplayMessage; assistant: DisplayMessage | null }> = []
     let i = 0
-    while (i < activeMessages.length) {
-      const msg = activeMessages[i]
+    while (i < filteredMessages.length) {
+      const msg = filteredMessages[i]
       if (msg.role === 'user') {
-        const next = activeMessages[i + 1]
+        const next = filteredMessages[i + 1]
         pairs.push({
           user: msg,
           assistant: next?.role === 'assistant' ? next : null,
@@ -2162,10 +2445,33 @@ export function ChatView() {
       }
     }
     return pairs
-  }, [currentMessages, activeBranches])
+  }, [currentMessages, activeBranches, focusedAgentId])
+
+  const focusColor = focusMeta ? getAgentColor(focusMeta.colorSeed) : null
 
   return (
     <div className="flex flex-col h-full relative" style={{ background: 'var(--background)' }}>
+      {/* Focus banner */}
+      {focusMeta && focusColor && (
+        <div
+          className="flex items-center gap-2 px-4 py-2 text-xs shrink-0"
+          style={{ background: focusColor.bg, borderBottom: `1px solid ${focusColor.border}` }}
+        >
+          <span style={{ color: focusColor.text }}>🔍</span>
+          <span style={{ color: focusColor.text }} className="font-medium">
+            Focused on {focusMeta.agentName}#{focusMeta.shortId}
+          </span>
+          <span className="flex-1" />
+          <button
+            onClick={() => { setFocusedAgentId(null); sendMessage('/subagents unfocus') }}
+            className="text-xs px-2 py-0.5 rounded transition-colors wos-hover"
+            style={{ color: focusColor.text, border: `1px solid ${focusColor.border}` }}
+          >
+            Unfocus
+          </button>
+        </div>
+      )}
+
       {/* Messages */}
       <div
         ref={scrollRef}
@@ -2175,7 +2481,9 @@ export function ChatView() {
       >
         {turns.length === 0 ? (
           <div className="flex items-center justify-center h-full">
-            <p style={{ color: 'var(--muted-foreground)', fontSize: '12px' }}>Start a conversation…</p>
+            <p style={{ color: 'var(--muted-foreground)', fontSize: '12px' }}>
+              {focusedAgentId ? 'No messages from this subagent yet.' : 'Start a conversation…'}
+            </p>
           </div>
         ) : (
           <div className="min-h-full flex flex-col">
