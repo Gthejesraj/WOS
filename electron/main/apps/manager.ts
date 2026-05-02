@@ -5,7 +5,7 @@ import { slackApp } from './slack'
 import { githubApp } from './github'
 import { jiraApp } from './jira'
 import { googleApp } from './google'
-import type { AppModule, AppManifest } from './types'
+import type { AppModule, AppManifest, ProjectResourceTypeDef } from './types'
 import type { Tool } from '../tools'
 import { registerHooks, runOnConnect, runOnDisconnect } from '../hooks/manager'
 import { getUserAppSkills, loadAllUserAppHooksOnce } from './userExtensions'
@@ -31,6 +31,80 @@ export function listAvailableApps(): AppManifest[] {
 
 export function getApp(appId: string): AppModule | undefined {
   return REGISTRY[appId]
+}
+
+/**
+ * Catalogue entry shape for a single project resource type, as exposed across
+ * the IPC boundary. **Must NOT contain functions** — Electron's structured-
+ * clone algorithm cannot serialize them. We explicitly omit `fetcher` here;
+ * server-side callers that need it use `findFetcherFor()` below.
+ */
+export type ProjectResourceTypeEntry = Omit<ProjectResourceTypeDef, 'fetcher'> & {
+  appId: string
+  appName: string
+  appIcon?: string
+  /** True if the underlying app is currently connected & enabled. */
+  connected: boolean
+}
+
+/**
+ * Return the union of project-resource-type definitions contributed by all
+ * apps in the registry, optionally filtered to only currently-connected
+ * (and enabled) apps. The Projects feature uses this to render its
+ * resource picker dynamically — never enumerate kinds by hand.
+ *
+ * The `fetcher` function on each `ProjectResourceTypeDef` is intentionally
+ * stripped from the returned objects so this payload is fully clonable for
+ * IPC. Use `findFetcherFor(appId, kind)` to look the function up server-side.
+ */
+export function listProjectResourceTypes(opts: { onlyConnected?: boolean } = {})
+  : ProjectResourceTypeEntry[]
+{
+  const onlyConnected = opts.onlyConnected ?? false
+  const connectedSet = new Set(
+    listConnections().filter(c => c.enabled).map(c => c.appId)
+  )
+  const out: ProjectResourceTypeEntry[] = []
+  for (const [appId, app] of Object.entries(REGISTRY)) {
+    const connected = connectedSet.has(appId)
+    if (onlyConnected && !connected) continue
+    if (typeof app.projectResourceTypes !== 'function') continue
+    try {
+      for (const def of app.projectResourceTypes()) {
+        // Strip `fetcher` (a function) so the payload is structured-clone safe.
+        const { fetcher: _omitFetcher, ...rest } = def
+        void _omitFetcher
+        out.push({
+          appId,
+          appName: app.manifest.name,
+          appIcon: app.manifest.icon,
+          connected,
+          ...rest,
+        })
+      }
+    } catch (err) {
+      console.error(`[apps] projectResourceTypes failed for ${appId}`, err)
+    }
+  }
+  return out
+}
+
+/**
+ * Server-only: look up the fetcher function for a given (appId, kind) pair.
+ * Used by the refresh loop and webhook handlers. Never crosses IPC.
+ */
+export function findFetcherFor(appId: string, kind: string)
+  : ProjectResourceTypeDef['fetcher'] | undefined
+{
+  const app = REGISTRY[appId]
+  if (!app || typeof app.projectResourceTypes !== 'function') return undefined
+  try {
+    const def = app.projectResourceTypes().find(t => t.kind === kind)
+    return def?.fetcher
+  } catch (err) {
+    console.error(`[apps] findFetcherFor failed for ${appId}/${kind}`, err)
+    return undefined
+  }
 }
 
 export interface StoredConnection {

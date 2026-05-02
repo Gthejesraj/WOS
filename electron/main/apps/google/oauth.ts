@@ -7,6 +7,8 @@ const SCOPES = [
   'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',
+  'https://www.googleapis.com/auth/contacts.readonly',
+  'https://www.googleapis.com/auth/contacts.other.readonly',
 ].join(' ')
 
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token'

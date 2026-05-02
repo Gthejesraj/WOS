@@ -1,5 +1,5 @@
 import type { AppModule } from '../types'
-import { getAuthenticatedUser, listRepos } from './api'
+import { getAuthenticatedUser, listRepos, listIssues, listPRs } from './api'
 import { buildGitHubTools } from './tools'
 
 export const githubApp: AppModule = {
@@ -87,4 +87,89 @@ When the user asks you to triage an issue:
       }
     },
   },
+  projectResourceTypes() {
+    return [
+      {
+        kind: 'github:repo',
+        label: 'GitHub repository',
+        description: 'Track PRs, issues and recent commits for this repo.',
+        multiSelect: true,
+        pickerComponentId: 'snapshot-list',
+        snapshotScope: 'repos',
+        refreshIntervalSec: 1200,
+        refSchema: {
+          hint: 'Pick a repo you have access to, or paste owner/name.',
+          fields: [
+            { name: 'owner', label: 'Owner / org', type: 'text', required: true, placeholder: 'octocat' },
+            { name: 'repo', label: 'Repository', type: 'text', required: true, placeholder: 'hello-world' },
+          ],
+          pasteParsers: [
+            { regex: 'github\\.com/(?<owner>[^/\\s]+)/(?<repo>[^/\\s.]+)', groupToField: { owner: 'owner', repo: 'repo' } },
+            { regex: '^(?<owner>[^/\\s]+)/(?<repo>[^/\\s.]+)$', groupToField: { owner: 'owner', repo: 'repo' } },
+          ],
+        },
+        refExamples: ['octocat/hello-world', 'https://github.com/octocat/hello-world'],
+        async fetcher(creds, ref) {
+          if (!creds.token) return []
+          const parsed = parseRepoRef(ref)
+          if (!parsed) return []
+          const { owner, repo } = parsed
+          try {
+            const [issues, prs] = await Promise.all([
+              listIssues(creds.token, owner, repo, { state: 'all', per_page: 20 }).catch(() => [] as unknown[]),
+              listPRs(creds.token, owner, repo, { state: 'all', per_page: 20 }).catch(() => [] as unknown[]),
+            ])
+            const evIssues = (issues as Array<{
+              id: number; number: number; title: string; updated_at: string; html_url: string;
+              user?: { login: string }; pull_request?: unknown; node_id?: string;
+            }>)
+              .filter(i => !i.pull_request)
+              .map(i => ({
+                id: i.node_id ?? `issue-${i.id}`,
+                ts: Date.parse(i.updated_at) || Date.now(),
+                actor: i.user?.login ?? null,
+                title: `#${i.number} ${i.title}`,
+                url: i.html_url,
+              }))
+            const evPRs = (prs as Array<{
+              id: number; number: number; title: string; updated_at: string; html_url: string;
+              user?: { login: string }; node_id?: string; state?: string; draft?: boolean;
+            }>).map(p => ({
+              id: p.node_id ?? `pr-${p.id}`,
+              ts: Date.parse(p.updated_at) || Date.now(),
+              actor: p.user?.login ?? null,
+              title: `PR #${p.number} ${p.title}${p.draft ? ' (draft)' : ''}`,
+              url: p.html_url,
+            }))
+            return [...evIssues, ...evPRs]
+          } catch (err) {
+            console.error('[github/fetcher] failed', err)
+            return []
+          }
+        },
+      },
+    ]
+  },
+}
+
+function parseRepoRef(ref: unknown): { owner: string; repo: string } | null {
+  if (!ref) return null
+  if (typeof ref === 'string') {
+    const m = ref.match(/([^/\s]+)\/([^/\s]+?)(?:\.git)?$/)
+    if (m) return { owner: m[1], repo: m[2] }
+    return null
+  }
+  if (typeof ref === 'object') {
+    const r = ref as Record<string, unknown>
+    if (typeof r.owner === 'string' && typeof r.repo === 'string') return { owner: r.owner, repo: r.repo }
+    if (typeof r.full_name === 'string' && r.full_name.includes('/')) {
+      const [owner, repo] = r.full_name.split('/')
+      return { owner, repo }
+    }
+    if (typeof r.name === 'string' && r.name.includes('/')) {
+      const [owner, repo] = r.name.split('/')
+      return { owner, repo }
+    }
+  }
+  return null
 }

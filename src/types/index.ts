@@ -1,5 +1,5 @@
 export type AgentMode = 'default' | 'plan' | 'yolo'
-export type ViewType = 'home' | 'chat' | 'settings' | 'apps' | 'meetings' | 'automations'
+export type ViewType = 'home' | 'chat' | 'settings' | 'apps' | 'meetings' | 'automations' | 'projects'
 
 /**
  * Render-component protocol for `ask_user`. The agent declares the kind of
@@ -131,4 +131,9 @@ export interface Settings {
   defaultMode: AgentMode
   theme: 'dark' | 'light' | 'system'
   activeWorkspaceId: string | null
+  intentModel: string
+  intentEnabled: boolean
+  maxSubagentDepth: number
+  maxSubagentBreadth: number
+  memoryEnabled: boolean
 }

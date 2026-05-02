@@ -1,195 +1,52 @@
 import type { Tool } from './index'
 import { listConnections, listAvailableApps } from '../apps/manager'
 import { listServers as listMcpServers, listTools as listMcpTools } from '../mcp/manager'
-import { registry, type AutomationKind, type ResultDelivery } from '../automations/registry'
+import { registry, type AutomationKind } from '../automations/registry'
 import { automationsRuntime } from '../automations'
-import { isValidCron } from '../automations/cron'
-import { ensureWebhook } from '../automations/webhooks'
+import { runAutomation } from '../automations/runner'
+import { createAutomation, type AutomationCreateSpec } from '../automations/runtime'
 
-interface SpecInput {
-  id?: string
-  kind: AutomationKind
-  name: string
-  description?: string
-  prompt: string
-  toolsAllow: string[]
-  config: Record<string, unknown>
-  resultDelivery?: ResultDelivery
-  resultTarget?: string | null
-}
+const KIND_LIST: AutomationKind[] = ['schedule', 'hook', 'webhook']
 
-/**
- * Stable hash of an automation spec.
- * Still used internally by automation_propose to generate proposalIds.
- */
-function hashSpec(s: Partial<SpecInput>): string {
-  const tools = Array.isArray(s.toolsAllow) ? [...s.toolsAllow].sort() : []
-  const cfg = s.config ?? {}
-  const cfgKeys = Object.keys(cfg).sort()
-  const cfgCanon: Record<string, unknown> = {}
-  for (const k of cfgKeys) cfgCanon[k] = (cfg as Record<string, unknown>)[k]
-  const obj = {
-    kind: s.kind ?? '',
-    name: (s.name ?? '').trim(),
-    prompt: (s.prompt ?? '').trim(),
-    toolsAllow: tools,
-    config: cfgCanon,
-  }
-  // Lightweight stable hash without pulling in crypto for renderer parity.
-  const json = JSON.stringify(obj)
-  let h1 = 0x811c9dc5
-  for (let i = 0; i < json.length; i++) {
-    h1 ^= json.charCodeAt(i)
-    h1 = Math.imul(h1, 0x01000193)
-  }
-  return ('00000000' + (h1 >>> 0).toString(16)).slice(-8) + ':' + json.length
-}
-
-/** LRU-bounded proposal store (max 50 entries). Proposals are ephemeral — no DB. */
-const PROPOSAL_MAX = 50
-interface Proposal {
-  spec: SpecInput
-  preview: string
-  warnings: string[]
-  createdAt: number
-}
-const proposalStore = new Map<string, Proposal>()
-
-function storeProposal(id: string, proposal: Proposal): void {
-  proposalStore.set(id, proposal)
-  // Evict oldest entry when over capacity
-  if (proposalStore.size > PROPOSAL_MAX) {
-    const oldestKey = proposalStore.keys().next().value
-    if (oldestKey !== undefined) proposalStore.delete(oldestKey)
-  }
-}
-
-function buildPreview(s: SpecInput): string {
-  const lines: string[] = [
-    `Name:    ${s.name}`,
-    `Kind:    ${s.kind}`,
-  ]
-  if (s.description) lines.push(`Desc:    ${s.description}`)
-  if (s.prompt) lines.push(`Prompt:  ${s.prompt.slice(0, 200)}${s.prompt.length > 200 ? '…' : ''}`)
-  if (Array.isArray(s.toolsAllow) && s.toolsAllow.length) {
-    lines.push(`Tools:   ${s.toolsAllow.join(', ')}`)
-  }
-  const cfg = (s.config ?? {}) as Record<string, unknown>
-  // Kind-specific config summary
-  switch (s.kind) {
-    case 'cron': {
-      const tz = (cfg.tz ?? cfg.timezone) as string | undefined
-      if (cfg.expr) lines.push(`Schedule: ${cfg.expr}${tz ? ` (${tz})` : ''}`)
-      break
-    }
-    case 'heartbeat':
-      if (cfg.intervalSec) lines.push(`Interval: every ${cfg.intervalSec}s`)
-      break
-    case 'hook':
-      if (cfg.event) lines.push(`Event:   ${cfg.event}`)
-      break
-    case 'webhook':
-      lines.push('Trigger: inbound HTTPS webhook (slug + secret auto-generated on save)')
-      break
-    case 'standing_order':
-      if (cfg.rule) lines.push(`Rule:    ${String(cfg.rule).slice(0, 200)}`)
-      break
-    case 'task_flow':
-      if (Array.isArray(cfg.steps)) lines.push(`Steps:   ${cfg.steps.length}`)
-      break
-  }
-  if (s.resultDelivery && s.resultDelivery !== 'silent') {
-    lines.push(`Delivery: ${s.resultDelivery}${s.resultTarget ? ` → ${s.resultTarget}` : ''}`)
-  }
-  return lines.join('\n')
-}
-
-/**
- * Normalize a spec in-place:
- *  - canonicalize cron `config.timezone` → `config.tz`
- *  - drop empty top-level fields the runtime ignores
- */
-function normalizeSpec(s: Partial<SpecInput>): void {
-  if (!s || !s.config) return
-  const cfg = s.config as Record<string, unknown>
-  if (s.kind === 'cron') {
-    if (cfg.timezone && !cfg.tz) {
-      cfg.tz = cfg.timezone
-    }
-    if (cfg.timezone) delete cfg.timezone
-  }
-}
-
-function validateSpec(s: Partial<SpecInput>): string | null {
-  if (!s) return 'Spec is required.'
-  if (!s.kind) return 'kind is required. Use one of: cron | heartbeat | hook | webhook | standing_order | task_flow | tasks_ledger.'
-  if (!s.name || !s.name.trim()) return 'name is required (a short human label).'
-  if (s.kind !== 'standing_order' && (!s.prompt || !s.prompt.trim())) {
-    return `prompt is required for kind="${s.kind}". Put the natural-language instruction the worker should run here.`
-  }
-  if (!Array.isArray(s.toolsAllow)) return 'toolsAllow must be an array of tool names. Use [] only when no tools are needed.'
-  normalizeSpec(s)
-  const cfg = (s.config ?? {}) as Record<string, unknown>
-  switch (s.kind) {
-    case 'cron': {
-      const expr = cfg.expr as string | undefined
-      if (!expr) {
-        return 'cron requires config.expr (5- or 6-field cron expression). Example: config: { expr: "0 9 * * *", tz: "UTC" }'
-      }
-      if (!isValidCron(expr)) {
-        return `Invalid cron expression "${expr}". Must be a 5- or 6-field expression like "0 9 * * *" (every day at 9:00). Optional config.tz IANA zone (e.g. "America/Los_Angeles").`
-      }
-      break
-    }
-    case 'heartbeat': {
-      const sec = Number(cfg.intervalSec ?? 0)
-      if (!Number.isFinite(sec) || sec < 5) {
-        return 'heartbeat requires config.intervalSec (integer seconds, minimum 5). Example: config: { intervalSec: 60 }'
-      }
-      break
-    }
-    case 'hook': {
-      if (!cfg.event || typeof cfg.event !== 'string') {
-        return 'hook requires config.event (string event name). Example: config: { event: "meeting:saved" }'
-      }
-      break
-    }
-    case 'webhook':
-      // slug + secret are minted on save; no config required
-      break
-    case 'task_flow': {
-      const steps = cfg.steps as unknown
-      if (!Array.isArray(steps) || steps.length === 0) {
-        return 'task_flow requires config.steps (non-empty array). Example: config: { steps: [{ name: "fetch", prompt: "…" }] }'
-      }
-      break
-    }
-    case 'standing_order': {
-      const rule = cfg.rule as string | undefined
-      if (!rule || !rule.trim()) {
-        return 'standing_order requires config.rule (plain-English instruction). Example: config: { rule: "Always confirm before deleting." }'
-      }
-      break
-    }
-  }
-  return null
-}
-
-const PROPOSE_DESCRIPTION = [
-  'Validate an automation spec, generate a human-readable preview, and store it as a proposal.',
-  'Returns { ok, proposalId, preview, spec, warnings } or { ok:false, error }.',
-  'On user confirmation, call automation_save({ proposalId }) — do NOT re-call propose with the same input.',
+const CREATE_DESCRIPTION = [
+  'Create or replace an automation in ONE call. Returns { ok:true, id, kind, summary } on success or { ok:false, error:{field,expected,got,hint} } on validation failure — read the error and fix the offending field on your next attempt.',
   '',
-  'Required fields per kind:',
-  '  • cron           → config: { expr: "0 9 * * *", tz?: "UTC" }   // 5- or 6-field cron + optional IANA tz',
-  '  • heartbeat      → config: { intervalSec: 300 }                // seconds, min 5',
-  '  • hook           → config: { event: "meeting:saved" }          // WOS event name',
-  '  • webhook        → config: {}                                  // slug+secret minted on save',
-  '  • standing_order → config: { rule: "..." }                     // plain-English rule (no prompt needed)',
-  '  • task_flow      → config: { steps: [{ name, prompt, requires_human? }] }',
+  'Three primitives:',
+  '  • schedule — runs on a clock. Required: schedule:{ mode:"at"|"every"|"cron", ... }',
+  '      mode="at"    → schedule:{ mode:"at",    at:"<ISO 8601 or relative like 20m, 2h, 45s>" }   one-shot, deleted after firing',
+  '      mode="every" → schedule:{ mode:"every", every:"<duration like 30s, 5m, 2h>" }              recurring, min 5s',
+  '      mode="cron"  → schedule:{ mode:"cron",  cron:"0 9 * * *", tz:"America/Los_Angeles" }       cron expression + IANA tz',
+  '  • hook    — runs when a WOS event fires. Required: hook:{ event:"meeting:saved" | "session:new" | ... }',
+  '  • webhook — runs on inbound HTTPS POST. webhook:{ slug?, secret? }  (slug+secret minted automatically)',
   '',
-  'Common fields: { kind, name, description?, prompt, toolsAllow: string[], resultDelivery?: silent|notify|chat|external, resultTarget? }.',
-  'Pick toolsAllow names exactly as returned by automation_listTools — do not invent tool names.',
+  '## The message field — THE MOST IMPORTANT FIELD',
+  'The message is executed verbatim by an autonomous agent with NO access to the current conversation.',
+  'It must be a DIRECT, SELF-CONTAINED task instruction with all resources fully resolved.',
+  '',
+  'WRONG (never do this):',
+  '  ❌ message: "Create an automation that summarizes the Slack channel"',
+  '  ❌ message: "Set up the daily standup summary for the specified channel"',
+  '  ❌ message: "Review messages from the target channel and post a summary"',
+  '  (These all fail: "the specified channel" is a placeholder the autonomous agent can\'t resolve)',
+  '',
+  'RIGHT:',
+  '  ✓ message: "Read the last 24 hours of messages from #engineering on Slack. Summarize the key discussions, decisions, and action items. Post the summary to #engineering."',
+  '  ✓ message: "Check my Google Calendar for meetings tomorrow. For each meeting, create a brief prep note with the attendees and known agenda."',
+  '',
+  'toolsAllow: Leave as [] (empty) in almost all cases — the runtime agent uses whatever tools are available.',
+  'Only set specific tools if the user explicitly wants to restrict the automation.',
+  '',
+  'WORKED EXAMPLES:',
+  '  • "Remind me in 20 minutes" →',
+  '      automation_create({ name:"20-min Reminder", kind:"schedule", schedule:{ mode:"at", at:"20m" }, message:"The 20-minute timer has elapsed. Notify the user." })',
+  '  • User asked for daily standup of #engineering at 9am (channel already confirmed) →',
+  '      automation_create({ name:"Daily standup summary", kind:"schedule", schedule:{ mode:"cron", cron:"0 9 * * 1-5" }, message:"Read the last 24 hours of messages from #engineering on Slack. Write a concise summary of: key discussions, decisions made, open questions, blockers, and action items. Post the summary to #engineering." })',
+  '  • "After every meeting, summarise it" →',
+  '      automation_create({ name:"Meeting auto-summary", kind:"hook", hook:{ event:"meeting:saved" }, message:"The meeting just ended. Summarise it in 5 bullets covering key decisions and action items. Save to memory." })',
+  '',
+  'Do NOT call this multiple times for the same automation.',
+  'Do NOT use placeholder text for resources — resolve them first with AskUser if needed.',
+  'Timezone defaults to the user\'s configured zone. Delivery defaults to inline. Consent for bash/fileWrite/fileEdit is auto-granted.',
 ].join('\n')
 
 export const automationTools: Tool[] = [
@@ -239,7 +96,7 @@ export const automationTools: Tool[] = [
   },
   {
     name: 'automation_listTools',
-    description: 'List all tools currently available to the WOS agent (built-ins + connected apps + MCP). Use to pick the smallest toolsAllow set.',
+    description: 'List all tools currently available to the WOS agent (built-ins + connected apps + MCP). Use to understand what the automation runtime will have access to. You rarely need to set toolsAllow — leave it empty to allow all.',
     inputSchema: { type: 'object', properties: {} },
     async execute() {
       const { getAllTools } = await import('./index')
@@ -250,201 +107,137 @@ export const automationTools: Tool[] = [
     },
   },
   {
-    name: 'automation_proposeSpec',
-    description:
-      'Validate a proposed automation spec WITHOUT storing a proposal. Returns { ok, spec, error? }. ' +
-      'Use this only for quick syntax checks — for the full propose→save flow use automation_propose.\n' +
-      PROPOSE_DESCRIPTION,
+    name: 'automation_create',
+    description: CREATE_DESCRIPTION,
     inputSchema: {
       type: 'object',
       properties: {
-        kind: { type: 'string', enum: ['cron', 'heartbeat', 'hook', 'standing_order', 'task_flow', 'webhook'] },
+        id: { type: 'string', description: 'Optional. When provided, replaces an existing automation with the same id.' },
         name: { type: 'string' },
-        description: { type: 'string' },
-        prompt: { type: 'string' },
+        kind: { type: 'string', enum: KIND_LIST },
+        enabled: { type: 'boolean' },
+        message: { type: 'string', description: 'The natural-language prompt the agent runs when this automation fires.' },
         toolsAllow: { type: 'array', items: { type: 'string' } },
-        config: {
+        schedule: {
           type: 'object',
-          description: 'Kind-specific config. cron: { expr, tz? }. heartbeat: { intervalSec }. hook: { event }. webhook: {}. standing_order: { rule }. task_flow: { steps }.',
+          description: 'Required when kind="schedule".',
+          properties: {
+            mode: { type: 'string', enum: ['at', 'every', 'cron'] },
+            at: { type: 'string', description: 'ISO 8601 timestamp OR relative duration ("20m", "2h", "45s"). Used when mode="at".' },
+            every: { type: 'string', description: 'Duration like "30s", "5m", "2h". Used when mode="every". Min 5 seconds.' },
+            cron: { type: 'string', description: '5- or 6-field cron expression. Used when mode="cron".' },
+            tz: { type: 'string', description: 'IANA timezone (e.g. "America/Los_Angeles"). Defaults to the user\'s configured zone.' },
+            deleteAfterRun: { type: 'boolean', description: 'For mode="at" only. Default true.' },
+            jitterSec: { type: 'number', description: 'For mode="every" only. Random additional delay in seconds.' },
+          },
         },
-        resultDelivery: { type: 'string', enum: ['silent', 'notify', 'chat', 'external'] },
-        resultTarget: { type: 'string' },
+        hook: {
+          type: 'object',
+          description: 'Required when kind="hook".',
+          properties: { event: { type: 'string' } },
+        },
+        webhook: {
+          type: 'object',
+          description: 'Optional config when kind="webhook". Slug + secret are minted automatically.',
+          properties: { slug: { type: 'string' }, secret: { type: 'string' } },
+        },
+        delivery: {
+          type: 'object',
+          properties: {
+            kind: { type: 'string', enum: ['inline', 'channel', 'webhook', 'silent', 'notify', 'chat', 'external'] },
+            channel: { type: 'string' },
+            url: { type: 'string' },
+          },
+        },
+        description: { type: 'string' },
       },
-      required: ['kind', 'name'],
+      required: ['name', 'kind', 'message'],
     },
     async execute(input) {
-      const s = input as SpecInput
-      const err = validateSpec(s)
-      if (err) return { output: { ok: false, error: err, spec: s } }
-      return { output: { ok: true, spec: s } }
+      const result = createAutomation(input as AutomationCreateSpec, { fromAgent: true })
+      return { output: result }
     },
   },
   {
-    name: 'automation_propose',
-    description: PROPOSE_DESCRIPTION,
+    name: 'automation_run_now',
+    description: 'Manually trigger an existing automation by id. Returns { ok, runId, output, error? }. Use { dryRun: true } to preview without side effects.',
     inputSchema: {
       type: 'object',
       properties: {
-        kind: { type: 'string', enum: ['cron', 'heartbeat', 'hook', 'standing_order', 'task_flow', 'webhook'] },
-        name: { type: 'string' },
-        description: { type: 'string' },
-        prompt: { type: 'string', description: 'Natural-language instruction the worker runs. Required for all kinds except standing_order.' },
-        toolsAllow: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Tool names the worker may call. Pick from automation_listTools. [] is valid only for standing_order.',
-        },
-        config: {
-          type: 'object',
-          description: 'Kind-specific config. cron: { expr: "0 9 * * *", tz?: "UTC" }. heartbeat: { intervalSec: 300 }. hook: { event: "meeting:saved" }. webhook: {}. standing_order: { rule }. task_flow: { steps }.',
-        },
-        resultDelivery: { type: 'string', enum: ['silent', 'notify', 'chat', 'external'] },
-        resultTarget: { type: 'string' },
+        id: { type: 'string' },
+        dryRun: { type: 'boolean' },
       },
-      required: ['kind', 'name'],
+      required: ['id'],
     },
     async execute(input) {
-      const s = input as SpecInput
-      const err = validateSpec(s)
-      if (err) return { output: { ok: false, error: err } }
-      const warnings: string[] = []
-      // Warn if toolsAllow is empty for executable automations
-      if (s.kind !== 'standing_order' && (!Array.isArray(s.toolsAllow) || s.toolsAllow.length === 0)) {
-        warnings.push('toolsAllow is empty — the automation will run without any tools.')
-      }
-      const proposalId = hashSpec(s) + '-' + Date.now().toString(36)
-      const preview = buildPreview(s)
-      storeProposal(proposalId, { spec: s, preview, warnings, createdAt: Date.now() })
-      return { output: { ok: true, proposalId, preview, spec: s, warnings } }
-    },
-  },
-  {
-    name: 'automation_dryRun',
-    description: '[DEPRECATED] Use automation_propose instead. This tool is kept as a stub so in-flight prompts referencing it do not crash.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        kind: { type: 'string' },
-        name: { type: 'string' },
-        prompt: { type: 'string' },
-        toolsAllow: { type: 'array', items: { type: 'string' } },
-        config: { type: 'object' },
-      },
-      required: ['kind', 'name', 'prompt'],
-    },
-    async execute(_input) {
+      const { id, dryRun } = input as { id: string; dryRun?: boolean }
+      const row = registry.get(id)
+      if (!row) return { output: { ok: false, error: `Automation ${id} not found.` } }
+      const r = await runAutomation(row, { dryRun: !!dryRun, trigger: { kind: 'manual', firedAt: new Date().toISOString() } })
       return {
         output: {
-          deprecated: true,
-          message: 'automation_dryRun is deprecated. Use automation_propose to generate a preview, then automation_save to persist.',
+          ok: !r.error,
+          runId: r.runId,
+          output: r.output,
+          error: r.error,
         },
       }
-    },
-  },
-  {
-    name: 'automation_save',
-    description:
-      'Persist a NEW automation. Accepts either { proposalId } (from automation_propose) or a full spec directly. ' +
-      'The runtime is reloaded so cron/heartbeat/etc. start scheduling immediately.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        proposalId: { type: 'string', description: 'ID returned by automation_propose — use this path after user confirmation.' },
-        kind: { type: 'string' },
-        name: { type: 'string' },
-        description: { type: 'string' },
-        prompt: { type: 'string' },
-        toolsAllow: { type: 'array', items: { type: 'string' } },
-        config: { type: 'object' },
-        resultDelivery: { type: 'string' },
-        resultTarget: { type: 'string' },
-        enabled: { type: 'boolean' },
-      },
-    },
-    async execute(input) {
-      const raw = input as ({ proposalId: string } | SpecInput) & { enabled?: boolean }
-      let s: SpecInput
-      if ('proposalId' in raw && raw.proposalId) {
-        const proposal = proposalStore.get(raw.proposalId)
-        if (!proposal) {
-          return { output: { ok: false, error: `Proposal ${raw.proposalId} not found. Call automation_propose again to generate a new one.` } }
-        }
-        s = proposal.spec
-      } else {
-        s = raw as SpecInput & { enabled?: boolean }
-      }
-      const err = validateSpec(s)
-      if (err) return { output: { ok: false, error: err } }
-      const row = registry.upsert({
-        kind: s.kind,
-        name: s.name,
-        description: s.description ?? null,
-        prompt: s.prompt ?? '',
-        toolsAllow: s.toolsAllow ?? [],
-        config: s.config ?? {},
-        resultDelivery: s.resultDelivery ?? 'silent',
-        resultTarget: s.resultTarget ?? null,
-        enabled: (raw as { enabled?: boolean }).enabled ?? true,
-      })
-      if ('proposalId' in raw && raw.proposalId) {
-        proposalStore.delete(raw.proposalId)
-      }
-      if (row.kind === 'webhook') {
-        const w = ensureWebhook(row)
-        return { output: { ok: true, automation: row, webhook: w } }
-      }
-      automationsRuntime.reload(row.id)
-      return { output: { ok: true, automation: row } }
     },
   },
   {
     name: 'automation_update',
-    description: 'Update an existing automation by id. Pass only the fields to change. For major behavior changes (prompt/toolsAllow/config), consider calling automation_propose first to get user confirmation, but it is not required.',
+    description: 'Update an existing automation. Pass only the fields to change. To change the schedule/hook/webhook config, pass a complete replacement block (e.g. schedule:{mode,...}).',
     inputSchema: {
       type: 'object',
       properties: {
         id: { type: 'string' },
         name: { type: 'string' },
-        description: { type: 'string' },
-        prompt: { type: 'string' },
-        toolsAllow: { type: 'array', items: { type: 'string' } },
-        config: { type: 'object' },
-        resultDelivery: { type: 'string' },
-        resultTarget: { type: 'string' },
         enabled: { type: 'boolean' },
+        message: { type: 'string' },
+        toolsAllow: { type: 'array', items: { type: 'string' } },
+        schedule: { type: 'object' },
+        hook: { type: 'object' },
+        webhook: { type: 'object' },
+        delivery: { type: 'object' },
+        description: { type: 'string' },
       },
       required: ['id'],
     },
     async execute(input) {
-      const s = input as Partial<SpecInput> & { id: string; enabled?: boolean }
-      const existing = registry.get(s.id)
-      if (!existing) return { output: { ok: false, error: `Automation ${s.id} not found.` } }
-      const merged: SpecInput = {
-        kind: existing.kind,
-        name: s.name ?? existing.name,
-        description: s.description ?? existing.description ?? undefined,
-        prompt: s.prompt ?? existing.prompt,
-        toolsAllow: s.toolsAllow ?? existing.toolsAllow,
-        config: s.config ?? existing.config,
-        resultDelivery: s.resultDelivery ?? existing.resultDelivery,
-        resultTarget: s.resultTarget ?? existing.resultTarget,
-      }
-      const err = validateSpec(merged)
-      if (err) return { output: { ok: false, error: err } }
-      const row = registry.upsert({
+      const patch = input as Partial<AutomationCreateSpec> & { id: string }
+      const existing = registry.get(patch.id)
+      if (!existing) return { output: { ok: false, error: `Automation ${patch.id} not found.` } }
+      const cfg = existing.config as Record<string, unknown>
+      const merged: AutomationCreateSpec = {
         id: existing.id,
-        kind: merged.kind,
-        name: merged.name,
-        description: merged.description ?? null,
-        prompt: merged.prompt,
-        toolsAllow: merged.toolsAllow,
-        config: merged.config,
-        resultDelivery: merged.resultDelivery,
-        resultTarget: merged.resultTarget,
-        enabled: s.enabled ?? existing.enabled,
-      })
-      automationsRuntime.reload(row.id)
-      return { output: { ok: true, automation: row } }
+        kind: existing.kind,
+        name: patch.name ?? existing.name,
+        enabled: patch.enabled ?? existing.enabled,
+        message: patch.message ?? existing.prompt,
+        toolsAllow: patch.toolsAllow ?? existing.toolsAllow,
+        description: patch.description ?? existing.description ?? undefined,
+        delivery: patch.delivery,
+      }
+      if (existing.kind === 'schedule') {
+        merged.schedule = patch.schedule ?? {
+          mode: cfg.mode as 'at' | 'every' | 'cron',
+          at: cfg.at as string | undefined,
+          every: cfg.every as string | undefined,
+          cron: cfg.cron as string | undefined,
+          tz: cfg.tz as string | undefined,
+          deleteAfterRun: cfg.deleteAfterRun as boolean | undefined,
+          jitterSec: cfg.jitterSec as number | undefined,
+        }
+      } else if (existing.kind === 'hook') {
+        merged.hook = patch.hook ?? { event: String(cfg.event ?? '') }
+      } else if (existing.kind === 'webhook') {
+        merged.webhook = patch.webhook ?? {
+          slug: cfg.slug as string | undefined,
+          secret: cfg.secret as string | undefined,
+        }
+      }
+      const result = createAutomation(merged)
+      return { output: result }
     },
   },
   {
@@ -489,7 +282,7 @@ export const automationTools: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        kind: { type: 'string' },
+        kind: { type: 'string', enum: KIND_LIST },
         enabled: { type: 'boolean' },
       },
     },

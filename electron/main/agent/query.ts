@@ -5,6 +5,10 @@ import { canUseTool, PermissionStore } from './permissions'
 import type { AgentMode } from './permissions'
 import { listConnections, listAvailableApps, getApp } from '../apps/manager'
 import { getAllSnapshots } from '../context/snapshotManager'
+import { estimateConversationTokens } from '../context/tokenCounter'
+import { pruneHistory, summarizeHistory } from '../context/compaction'
+import { getContextWindow } from '../../../src/lib/modelCapabilities'
+import { analyzeIntent, extractToolGroups, matchPluginTriggers } from './intentEngine'
 import fs from 'node:fs'
 
 // ─── E2E Agent Stub ──────────────────────────────────────────────────────────
@@ -100,6 +104,12 @@ export interface QueryOptions {
   /** Conversation id, forwarded to ToolContext so tools (e.g. Task subagent)
    * can persist ledger rows scoped to the right conversation. */
   conversationId?: string
+  /** Context window limit for this model. Used to trigger auto-compaction. */
+  contextLimit?: number
+  /** Model to use for intent classification pre-call. Defaults to claude-haiku-4-5-20251001. */
+  intentModel?: string
+  /** When true, skip the intent pre-call (subagents, plan mode, etc.). */
+  skipIntent?: boolean
 }
 
 /**
@@ -141,14 +151,7 @@ function buildConnectedAppsSection(): string {
 
 const SYSTEM_PROMPT = `You are WOS, an AI agent assistant. You have access to tools to help accomplish tasks.
 When using tools, be precise and thorough. Always explain what you are doing.
-If you need clarification, use the AskUser tool.
-
-## Automations
-When the user wants to create or modify an automation, dispatch the \`automation_author\` subagent (via Task tool with preset='automation_author'). The author will gather details conversationally using the connected app context. You do NOT need to gather details upfront — just hand off to the author.
-
-For quick edits to existing automations (toggle, rename), call \`automation_update\` directly with the changed fields. No proposal needed for cosmetic changes.
-
-Never claim an automation is created until \`automation_save\` returns \`ok: true\` with an automation row.`
+If you need clarification, use the AskUser tool.`
 
 
 function buildPlanModePrompt(base: string): string {
@@ -173,13 +176,54 @@ You are in YOLO (fully autonomous) mode. Execute all tasks without asking for pe
 Make decisions autonomously and proceed efficiently.`
 }
 
+/** Trigger compaction when estimated tokens exceed this fraction of context limit. */
+const COMPACT_THRESHOLD = 0.75
+
 export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEvent> {
   const {
     model, messages, userMessage, workspacePath, mode, reasoningEffort,
     signal, permissionStore, onPermissionRequest, onAskUser, maxDepth = 0,
     systemPromptOverride, systemPromptCustom, systemPromptAppend, apiKeyOverride, onEvent,
-    agentKey, conversationId,
+    agentKey, conversationId, contextLimit, intentModel, skipIntent,
   } = options
+
+  const effectiveContextLimit = contextLimit ?? getContextWindow(model) ?? 200_000
+
+  // Run intent analysis once per queryLoop to determine which tools to include.
+  // Skip for subagents (maxDepth > 0), plan mode, and when explicitly disabled.
+  let intentToolFilter: string[] = []
+  if (!skipIntent && maxDepth === 0 && mode !== 'plan' && !process.env.WOS_E2E_AGENT_SCRIPT) {
+    try {
+      const { getAllTools: _getAllToolsForIntent } = await import('../tools')
+      const allToolNames = _getAllToolsForIntent().map(t => t.name)
+      const groups = extractToolGroups(allToolNames)
+      if (groups.length > 0) {
+        const effectiveIntentModel = intentModel ?? 'claude-haiku-4-5-20251001'
+        const intent = await analyzeIntent(
+          userMessage, groups, effectiveIntentModel, apiKeyOverride, signal
+        )
+        // Only filter when confidence is high enough — otherwise include all tools
+        if (intent.confidence >= 0.6 && intent.toolFilter.length > 0) {
+          intentToolFilter = intent.toolFilter
+          // Also add tools from plugins whose trigger keywords appear in the message
+          const { getPluginTriggerMap } = await import('../plugins/loader')
+          const triggerMap = getPluginTriggerMap()
+          if (triggerMap.size > 0) {
+            const matchedPluginIds = matchPluginTriggers(userMessage, triggerMap)
+            if (matchedPluginIds.length > 0) {
+              // Include all tools belonging to matched plugins
+              const pluginToolNames = allToolNames.filter(name =>
+                matchedPluginIds.some(pid => name.startsWith(`${pid}__`))
+              )
+              intentToolFilter = [...new Set([...intentToolFilter, ...pluginToolNames])]
+            }
+          }
+        }
+      }
+    } catch {
+      // Intent analysis failure is non-fatal; fall through to use all tools
+    }
+  }
   const { getAgentDef } = await import('./agentDefs')
   const agentDef = getAgentDef(agentKey ?? 'wos')
 
@@ -238,14 +282,54 @@ export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEve
     const { getAllTools } = await import('../tools')
     const allToolsRaw = getAllTools()
     const allTools = agentDef ? agentDef.toolFilter(allToolsRaw) : allToolsRaw
-    const toolDefs = (maxDepth > 0
-      ? allTools.filter(t => t.name !== 'Task') // No recursive subagents
+
+    // Apply intent-based tool filter when available and confident enough.
+    // Always include builtin tools regardless of filter (they are safe defaults).
+    const ALWAYS_INCLUDE = new Set([
+      'FileRead', 'FileWrite', 'FileEdit', 'Glob', 'Grep', 'Bash',
+      'WebFetch', 'WebSearch', 'Task', 'AskUser', 'TodoWrite',
+      'EnterPlanMode', 'ExitPlanMode', 'ReadSkill', 'ReadAppSkill', 'ReadRule',
+    ])
+    const filteredTools = intentToolFilter.length > 0
+      ? allTools.filter(t => ALWAYS_INCLUDE.has(t.name) || intentToolFilter.includes(t.name))
       : allTools
+
+    const toolDefs = (maxDepth > 0
+      ? filteredTools.filter(t => t.name !== 'Task') // No recursive subagents
+      : filteredTools
     ).map(t => ({
       name: t.name,
       description: t.description,
       inputSchema: t.inputSchema,
     }))
+
+    // Auto-compact if estimated token count exceeds COMPACT_THRESHOLD of context limit.
+    // Skip compaction for subagents (maxDepth > 0) and E2E stubs to keep those simple.
+    if (!process.env.WOS_E2E_AGENT_SCRIPT && maxDepth === 0) {
+      const estimated = estimateConversationTokens(history, systemPrompt, toolDefs)
+      if (estimated > effectiveContextLimit * COMPACT_THRESHOLD && history.length > 4) {
+        yield { type: 'compact_started' }
+        try {
+          // Try pruning first (fast, no API call). If still over threshold, summarize.
+          const { pruned } = pruneHistory(history)
+          const afterPrune = estimateConversationTokens(pruned, systemPrompt, toolDefs)
+          if (afterPrune <= effectiveContextLimit * COMPACT_THRESHOLD) {
+            history.length = 0
+            history.push(...pruned)
+            yield { type: 'compact_complete', summary: `Pruned ${history.length - pruned.length} old messages to stay within context limit.` }
+          } else {
+            const abortSignal = signal ?? new AbortController().signal
+            const { summarized, summary } = await summarizeHistory(history, model, abortSignal, apiKeyOverride)
+            history.length = 0
+            history.push(...summarized)
+            yield { type: 'compact_complete', summary }
+          }
+        } catch {
+          // Compaction failure is non-fatal — continue with original history
+          yield { type: 'compact_complete', summary: 'Context compaction skipped.' }
+        }
+      }
+    }
 
     // E2E: use scripted stub instead of a real LLM call when configured.
     const stream = process.env.WOS_E2E_AGENT_SCRIPT
@@ -509,6 +593,7 @@ export async function* queryLoop(options: QueryOptions): AsyncGenerator<AgentEve
               parentReasoningEffort: reasoningEffort,
               parentApiKeyOverride: apiKeyOverride,
               conversationId,
+              extras: { subagentDepth: maxDepth },
             }
           )
           toolResultMap.set(call.id, { output: result.output })

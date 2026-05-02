@@ -54,8 +54,7 @@ including subagent `queryLoop()` calls.
 When the stub scripts a `tool_use_start` event, the tool **actually executes** in the main
 process. This means:
 
-- `automation_save` will create a real DB row.
-- `automation_dryRun` returns its (deprecated) result.
+- `automation_create` will create a real DB row.
 - **Do not** script `ask_user` — it blocks waiting for a UI response.
 
 ### Stub JSON files
@@ -65,10 +64,7 @@ Pre-built stubs live in `e2e/scripts/stubs/`:
 | File | Description |
 |---|---|
 | `simple-reply.json` | Single text reply — "Hello from WOS stub!" |
-| `dry-run.json` | Calls `automation_dryRun`, then replies "deprecated" |
-| `propose-save.json` | Calls `automation_propose` → `automation_save` → "Saved!" |
 | `subagent-dispatch.json` | Parent dispatches a `Task`, subagent replies, parent confirms |
-| `automation-author-flow.json` | Stub for automation author flow (no real ask_user) |
 
 ## Test suites
 
@@ -76,9 +72,8 @@ Pre-built stubs live in `e2e/scripts/stubs/`:
 |---|---|---|
 | `boot-chat.spec.ts` | d1 | App boot, stub reply, DB persistence, conversation history |
 | `apps-context.spec.ts` | d2 | `app_context_snapshots` seeding and round-trip |
-| `automations.spec.ts` | d3 | `automation_dryRun`, `automation_propose+save`, all `AutomationKind` values |
+| `automations.spec.ts` | d3 | `automation_create` for `schedule` / `hook` / `webhook` kinds |
 | `subagents.spec.ts` | d4 | `/subagents list/kill` slash commands, `subagent_runs` seeding |
-| `automation-author-repro.spec.ts` | d5 | System-prompt regression: `NEVER use kind: 'form'` |
 
 ## Artifacts
 
@@ -125,4 +120,3 @@ Tests marked `test.skip` have a `TODO` comment explaining the blocker. Common bl
 
 - **Clock mocking** — cron triggers require advancing time (`d3`)
 - **OAuth flow** — app context picker requires a mock app connection (`d2`)
-- **Multi-turn ask_user** — requires intercepting the `onAskUser` IPC event (`d5`)

@@ -18,6 +18,11 @@ export const useSettingsStore = create<SettingsStore>()(
       defaultMode: 'default',
       theme: 'dark',
       activeWorkspaceId: null,
+      intentModel: 'claude-haiku-4-5-20251001',
+      intentEnabled: true,
+      maxSubagentDepth: 3,
+      maxSubagentBreadth: 5,
+      memoryEnabled: true,
 
       loadSettings: async () => {
         try {
@@ -31,6 +36,11 @@ export const useSettingsStore = create<SettingsStore>()(
             defaultMode,
             theme: (settings.theme as Settings['theme']) ?? 'dark',
             activeWorkspaceId: (settings.activeWorkspaceId as string | null) ?? null,
+            intentModel: (settings.intentModel as string) ?? 'claude-haiku-4-5-20251001',
+            intentEnabled: (settings.intentEnabled as boolean) ?? true,
+            maxSubagentDepth: (settings.maxSubagentDepth as number) ?? 3,
+            maxSubagentBreadth: (settings.maxSubagentBreadth as number) ?? 5,
+            memoryEnabled: (settings.memoryEnabled as boolean) ?? true,
           })
           // Mirror defaults into the agent store only if the user hasn't already
           // overridden them on an active conversation.
@@ -81,6 +91,11 @@ export const useSettingsStore = create<SettingsStore>()(
         defaultMode: s.defaultMode,
         theme: s.theme,
         activeWorkspaceId: s.activeWorkspaceId,
+        intentModel: s.intentModel,
+        intentEnabled: s.intentEnabled,
+        maxSubagentDepth: s.maxSubagentDepth,
+        maxSubagentBreadth: s.maxSubagentBreadth,
+        memoryEnabled: s.memoryEnabled,
       }),
       merge: (persisted, current) => ({ ...current, ...((persisted ?? {}) as Partial<Settings>) }),
     },

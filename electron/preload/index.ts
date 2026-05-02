@@ -17,6 +17,11 @@ async function safeInvoke<T>(channel: string, fallback: T, ...args: unknown[]): 
 }
 
 contextBridge.exposeInMainWorld('wos', {
+  // Shell
+  shell: {
+    openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
+  },
+
   // Agent
   sendMessage: (params: {
     conversationId: string
@@ -302,6 +307,8 @@ contextBridge.exposeInMainWorld('wos', {
       safeInvoke('automations:runs', [] as unknown[], { id, limit }),
     webhookInfo: (id: string) => safeInvoke('automations:webhookInfo', null as unknown, { id }),
     reloadAll: () => ipcRenderer.invoke('automations:reloadAll'),
+    parseDescription: (description: string) =>
+      ipcRenderer.invoke('automations:parseDescription', { description }),
     onError: (callback: (e: { id: string; runId: string; error: string }) => void) => {
       const handler = (_: Electron.IpcRendererEvent, data: { id: string; runId: string; error: string }) => callback(data)
       ipcRenderer.on('automation:error', handler)
@@ -317,6 +324,103 @@ contextBridge.exposeInMainWorld('wos', {
       ipcRenderer.on('shortcut:open-automations', handler)
       return () => ipcRenderer.removeListener('shortcut:open-automations', handler)
     },
+  },
+
+  // ----- Projects -----
+  projects: {
+    catalogue: (onlyConnected = true) =>
+      safeInvoke('projects:catalogue', [] as unknown[], { onlyConnected }),
+    list: (includeArchived = false) =>
+      safeInvoke('projects:list', [] as unknown[], { includeArchived }),
+    get: (id: string) => safeInvoke('projects:get', null as unknown, { id }),
+    getBySlug: (slug: string) => safeInvoke('projects:getBySlug', null as unknown, { slug }),
+    find: (q: string) => safeInvoke('projects:find', [] as unknown[], { q }),
+    create: (input: unknown) => ipcRenderer.invoke('projects:create', input),
+    update: (id: string, patch: unknown) => ipcRenderer.invoke('projects:update', { id, patch }),
+    delete: (id: string) => ipcRenderer.invoke('projects:delete', { id }),
+    setStatus: (id: string, status: string) => ipcRenderer.invoke('projects:setStatus', { id, status }),
+    setPinned: (id: string, pinned: boolean) => ipcRenderer.invoke('projects:setPinned', { id, pinned }),
+
+    listResources: (projectId: string) =>
+      safeInvoke('projects:listResources', [] as unknown[], { projectId }),
+    addResource: (projectId: string, input: unknown) =>
+      ipcRenderer.invoke('projects:addResource', { projectId, input }),
+    removeResource: (resourceId: string) =>
+      ipcRenderer.invoke('projects:removeResource', { resourceId }),
+    refreshResource: (resourceId: string) =>
+      ipcRenderer.invoke('projects:refreshResource', { resourceId }),
+
+    appSnapshot: (appId: string, scope: string) =>
+      safeInvoke('projects:appSnapshot', null as unknown, { appId, scope }),
+    appSnapshotRefresh: (appId: string, scope?: string) =>
+      ipcRenderer.invoke('projects:appSnapshotRefresh', { appId, scope }),
+    searchGmailContacts: (query: string) =>
+      ipcRenderer.invoke('projects:searchGmailContacts', { query }),
+    nativeSnapshot: (scope: string) =>
+      safeInvoke('projects:nativeSnapshot', { items: [], truncated: false }, { scope }),
+    openLinks: (resourceId: string) =>
+      safeInvoke('projects:openLinks', [] as unknown[], { resourceId }),
+
+    activity: (projectId: string, opts?: { since?: number; limit?: number }) =>
+      safeInvoke('projects:activity', [] as unknown[], { projectId, ...(opts ?? {}) }),
+    recordActivity: (input: unknown) => ipcRenderer.invoke('projects:recordActivity', input),
+
+    listWidgets: (projectId: string) =>
+      safeInvoke('projects:listWidgets', [] as unknown[], { projectId }),
+    addWidget: (projectId: string, input: unknown) =>
+      ipcRenderer.invoke('projects:addWidget', { projectId, input }),
+    updateWidget: (widgetId: string, patch: unknown) =>
+      ipcRenderer.invoke('projects:updateWidget', { widgetId, patch }),
+    removeWidget: (widgetId: string) =>
+      ipcRenderer.invoke('projects:removeWidget', { widgetId }),
+
+    getSummary: (projectId: string, kind: string) =>
+      safeInvoke('projects:getSummary', null as unknown, { projectId, kind }),
+    generateSummary: (projectId: string, kind: string) =>
+      ipcRenderer.invoke('projects:generateSummary', { projectId, kind }),
+
+    listAlerts: (projectId: string) =>
+      safeInvoke('projects:listAlerts', [] as unknown[], { projectId }),
+    addAlert: (projectId: string, input: unknown) =>
+      ipcRenderer.invoke('projects:addAlert', { projectId, input }),
+    removeAlert: (alertId: string) => ipcRenderer.invoke('projects:removeAlert', { alertId }),
+    setAlertEnabled: (alertId: string, enabled: boolean) =>
+      ipcRenderer.invoke('projects:setAlertEnabled', { alertId, enabled }),
+    evaluateAlerts: (projectId: string) =>
+      safeInvoke('projects:evaluateAlerts', { fired: [] }, { projectId }),
+
+    listRisks: (projectId: string) =>
+      safeInvoke('projects:listRisks', [] as unknown[], { projectId }),
+    addRisk: (projectId: string, input: unknown) =>
+      ipcRenderer.invoke('projects:addRisk', { projectId, input }),
+    removeRisk: (riskId: string) => ipcRenderer.invoke('projects:removeRisk', { riskId }),
+    listDecisions: (projectId: string) =>
+      safeInvoke('projects:listDecisions', [] as unknown[], { projectId }),
+    addDecision: (projectId: string, input: unknown) =>
+      ipcRenderer.invoke('projects:addDecision', { projectId, input }),
+    removeDecision: (decisionId: string) =>
+      ipcRenderer.invoke('projects:removeDecision', { decisionId }),
+
+    listMetric: (projectId: string, metricKey: string, opts?: { since?: number; limit?: number }) =>
+      safeInvoke('projects:listMetric', [] as unknown[], { projectId, metricKey, ...(opts ?? {}) }),
+    computeHealth: (projectId: string) =>
+      safeInvoke('projects:computeHealth', { healthScore: 0, riskLevel: 'medium', signals: [] }, { projectId }),
+
+    exportJson: (projectId: string): Promise<string> =>
+      ipcRenderer.invoke('projects:exportJson', { projectId }),
+    exportMarkdown: (projectId: string): Promise<string> =>
+      ipcRenderer.invoke('projects:exportMarkdown', { projectId }),
+    exportHtml: (projectId: string): Promise<string> =>
+      ipcRenderer.invoke('projects:exportHtml', { projectId }),
+
+    listPeople: (projectId: string) =>
+      safeInvoke('projects:listPeople', [] as unknown[], { projectId }),
+    addPerson: (projectId: string, input: unknown) =>
+      ipcRenderer.invoke('projects:addPerson', { projectId, input }),
+    updatePerson: (personId: string, patch: unknown) =>
+      ipcRenderer.invoke('projects:updatePerson', { personId, patch }),
+    removePerson: (personId: string) =>
+      ipcRenderer.invoke('projects:removePerson', { personId }),
   },
 
   // ----- Dictation (Apple Speech) -----

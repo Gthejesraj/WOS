@@ -1,6 +1,19 @@
-import type { Tool } from '../../tools'
+import type { Tool, ToolResult } from '../../tools'
 import type { GoogleCreds } from './api'
 import * as api from './api'
+
+function wrapToolErrors(tools: Tool[]): Tool[] {
+  return tools.map(t => ({
+    ...t,
+    execute: async (input: unknown, ctx: Parameters<Tool['execute']>[1]): Promise<ToolResult> => {
+      try {
+        return await t.execute(input, ctx)
+      } catch (err) {
+        return { output: '', error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  }))
+}
 
 function parseEmailHeaders(payload: Record<string, unknown>): Record<string, string> {
   const headers: Record<string, string> = {}
@@ -31,7 +44,8 @@ function extractBody(payload: Record<string, unknown>, depth = 0): string {
 }
 
 export function buildGoogleTools(creds: GoogleCreds): Tool[] {
-  return [
+  if (!creds.accessToken && !creds.refreshToken) return []
+  const rawTools: Tool[] = [
     /* ─── Gmail ─── */
     {
       name: 'GmailListEmails',
@@ -328,4 +342,5 @@ export function buildGoogleTools(creds: GoogleCreds): Tool[] {
       },
     },
   ]
+  return wrapToolErrors(rawTools)
 }

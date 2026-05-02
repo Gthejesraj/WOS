@@ -8,6 +8,7 @@ import { SettingsView } from './components/cursor/SettingsView'
 import { AppsView } from './components/cursor/AppsView'
 import { AutomationsView } from './components/cursor/AutomationsView'
 import { MeetingsView } from './components/cursor/MeetingsView'
+import { ProjectsView } from './components/cursor/ProjectsView'
 import { CommandPalette, type CommandItem } from './components/cursor/CommandPalette'
 import { DebugDrawer } from './components/cursor/DebugDrawer'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -212,6 +213,8 @@ export default function App() {
           return <SettingsView onBack={() => setCurrentView(activeConversationId ? 'chat' : 'home')} />
         case 'apps':
           return <AppsView />
+        case 'projects':
+          return <ProjectsView />
         case 'automations':
           return <AutomationsView />
         case 'meetings':
@@ -246,6 +249,7 @@ export default function App() {
             onSelectConversation={handleSelectConversation}
             onNewChat={handleNewChat}
             onApps={() => setCurrentView('apps')}
+            onProjects={() => setCurrentView('projects')}
             onMeetings={() => setCurrentView('meetings')}
             onAutomations={() => setCurrentView('automations')}
             onSettings={() => setCurrentView('settings')}

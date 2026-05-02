@@ -131,14 +131,14 @@ describe('subAgent.parallel', () => {
     const events: Array<Record<string, unknown>> = []
 
     await subAgentTool.execute(
-      { description: 'd', prompt: 'p', preset: 'automation_author' },
+      { description: 'd', prompt: 'p', preset: 'meeting' },
       baseCtx(e => { events.push(e as Record<string, unknown>) }) as never,
     )
 
     const agentEvents = events.filter(e => e.type === 'subagent_event')
     expect(agentEvents.length).toBeGreaterThan(0)
     for (const ae of agentEvents) {
-      expect(ae.agentName).toBe('automation_author')
+      expect(ae.agentName).toBe('meeting')
       expect(typeof ae.colorSeed).toBe('number')
     }
   })

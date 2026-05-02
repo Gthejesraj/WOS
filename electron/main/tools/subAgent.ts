@@ -6,6 +6,21 @@ import { eq } from 'drizzle-orm'
 import type { Tool, ToolContext, ToolResult } from './index'
 import type { ConversationMessage } from '../providers/types'
 import { resolveAgent } from '../agent/settings'
+import { registerSubagent, unregisterSubagent, getCurrentBreadth } from '../agent/subagentRegistry'
+
+/** Read subagent limits from settings DB, with sensible defaults. */
+function getSubagentLimits(): { maxDepth: number; maxBreadth: number } {
+  try {
+    const db = getDb()
+    const depthRow = db.select().from(schema.settings).where(eq(schema.settings.key, 'maxSubagentDepth')).get()
+    const breadthRow = db.select().from(schema.settings).where(eq(schema.settings.key, 'maxSubagentBreadth')).get()
+    const maxDepth = depthRow ? Number(depthRow.value) || 3 : 3
+    const maxBreadth = breadthRow ? Number(breadthRow.value) || 5 : 5
+    return { maxDepth, maxBreadth }
+  } catch {
+    return { maxDepth: 3, maxBreadth: 5 }
+  }
+}
 
 /** Stable integer 0-6 derived from agentId for UI color coding. */
 function stableColorSeed(id: string): number {
@@ -86,6 +101,26 @@ export const subAgentTool: Tool = {
     const agentName = preset ?? deriveSubagentName(description)
     const colorSeed = stableColorSeed(agentId)
     const startedAt = new Date()
+
+    // Enforce depth and breadth limits
+    const currentDepth = (ctx.extras?.subagentDepth as number) ?? 0
+    const parentId = (ctx.extras?.subagentId as string) ?? null
+    const { maxDepth, maxBreadth } = getSubagentLimits()
+
+    if (currentDepth >= maxDepth) {
+      return {
+        output: `Subagent spawn blocked: maximum depth of ${maxDepth} reached. Cannot spawn further nested subagents.`,
+        error: `Max subagent depth (${maxDepth}) exceeded`,
+      }
+    }
+
+    const currentBreadth = getCurrentBreadth(parentId)
+    if (currentBreadth >= maxBreadth) {
+      return {
+        output: `Subagent spawn blocked: maximum of ${maxBreadth} parallel subagents already running for this parent. Wait for one to complete.`,
+        error: `Max subagent breadth (${maxBreadth}) exceeded`,
+      }
+    }
 
     const db = getDb()
     const conversationId = ctx.conversationId
@@ -169,6 +204,7 @@ export const subAgentTool: Tool = {
     const onParentAbort = () => runAbortController.abort()
     if (parentSignal) parentSignal.addEventListener('abort', onParentAbort, { once: true })
     _inFlightControllers.set(agentId, runAbortController)
+    registerSubagent(agentId, parentId, currentDepth + 1)
 
     try {
       // Prefer the parent's model; fall back to DB default only if parent didn't pass one.
@@ -212,6 +248,7 @@ export const subAgentTool: Tool = {
         onAskUser: ctx.onAskUser,
         maxDepth: 1,
         agentKey: preset ?? 'wos',
+        skipIntent: true,
         // Forward side-channel events (stdout/stderr deltas from Bash, etc.)
         // up to the parent runner so the UI can render live output.
         onEvent: (e) => ctx.yieldEvent({ type: 'subagent_event', agentId, agentName, colorSeed, event: e }),
@@ -226,6 +263,7 @@ export const subAgentTool: Tool = {
       return { output: `Subagent error: ${msg}`, error: msg }
     } finally {
       _inFlightControllers.delete(agentId)
+      unregisterSubagent(agentId)
       if (parentSignal) parentSignal.removeEventListener('abort', onParentAbort)
     }
 

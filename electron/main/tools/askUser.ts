@@ -74,11 +74,17 @@ interface AskUserInput {
   choices?: string[]
   /** For fileDrop: accepted MIME types or extensions (e.g. ['.txt', '.vtt', 'video/*']). */
   accept?: string[]
-  /** For picker: source. */
+  /** For picker: built-in source (snapshot-backed). Omit when supplying `pickerChoices` directly. */
   source?: 'channel' | 'repo' | 'meeting' | 'calendar'
+  /**
+   * For picker: inline list of options the agent already fetched (e.g. via
+   * `slack_listChannels`, `github_listRepos`, etc.). When provided, this
+   * overrides snapshot-based `source` lookups.
+   */
+  pickerChoices?: Array<{ id: string; label: string; description?: string; [key: string]: unknown }>
   /** For picker: allow multi-select. */
   multi?: boolean
-  /** For choice: also allow free-text answer. */
+  /** For choice and picker: also allow free-text answer for a custom value. */
   allowFreeform?: boolean
   /** For form: schema. */
   fields?: AskUserFormField[]
@@ -94,10 +100,15 @@ export const askUserTool: Tool = {
     '  • choice   — pick one of `choices`. Set `allowFreeform:true` to also accept typed input.',
     '  • confirm  — yes/no confirmation. Returns "yes" | "no".',
     '  • fileDrop — drop one or more files inline. `accept` filters file types. Returns JSON [{name,path,size,type}].',
-    '  • picker   — pick from a built-in registry (`source`: channel|repo|meeting|calendar). Returns selected id(s).',
+    '  • picker   — pick from a list. Either set `source` (built-in: channel|repo|meeting|calendar, snapshot-backed) OR pass `pickerChoices:[{id,label,description?},…]` you fetched yourself. Set `allowFreeform:true` to accept a typed custom value too. Returns selected id(s).',
     '  • form     — multi-field form using `fields`. Returns JSON {key:value,…}.',
     '',
     'Use the most specific kind possible — UI is dramatically better than free text for files, confirms, and pickers.',
+    '',
+    'PREFERRED PATTERN for resource selection (Slack channel, GitHub repo, Jira issue, Google Calendar, file path, etc.):',
+    '  1. Call the listing tool first (e.g. `slack_listChannels`, `github_listRepos`, `jira_searchIssues`).',
+    '  2. Pass the results inline as `pickerChoices` and set `allowFreeform:true` so the user can type a custom value if their option is missing.',
+    '  Never ask the user to type a name when you can fetch the list and present a picker.',
   ].join('\n'),
   inputSchema: {
     type: 'object',
@@ -105,9 +116,22 @@ export const askUserTool: Tool = {
       question: { type: 'string', description: 'The question or prompt shown to the user.' },
       kind: { type: 'string', enum: ['text', 'choice', 'confirm', 'fileDrop', 'picker', 'form'], description: 'Render kind.' },
       choices: { type: 'array', items: { type: 'string' }, description: 'For kind=choice: quick-reply options.' },
-      allowFreeform: { type: 'boolean', description: 'For kind=choice: also allow typed answer.' },
+      allowFreeform: { type: 'boolean', description: 'For kind=choice or kind=picker: also allow a typed custom answer.' },
       accept: { type: 'array', items: { type: 'string' }, description: 'For kind=fileDrop: accepted file types.' },
-      source: { type: 'string', enum: ['channel', 'repo', 'meeting', 'calendar'], description: 'For kind=picker: data source.' },
+      source: { type: 'string', enum: ['channel', 'repo', 'meeting', 'calendar'], description: 'For kind=picker: built-in snapshot-backed data source. Omit when supplying pickerChoices directly.' },
+      pickerChoices: {
+        type: 'array',
+        description: 'For kind=picker: inline list of options the agent already fetched. Each item: {id, label, description?}. Overrides `source` when provided.',
+        items: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            label: { type: 'string' },
+            description: { type: 'string' },
+          },
+          required: ['id', 'label'],
+        },
+      },
       multi: { type: 'boolean', description: 'For kind=picker: allow multi-select.' },
       fields: {
         type: 'array',
@@ -139,11 +163,16 @@ export const askUserTool: Tool = {
       ...(i.fields ? { fields: i.fields } : {}),
     }
 
-    // For picker kind, populate choices from the snapshot cache.
-    if (kind === 'picker' && i.source) {
-      const { choices, staleAt } = await loadPickerChoices(i.source)
-      if (choices.length > 0) extras.pickerChoices = choices
-      if (staleAt !== undefined) extras.staleAt = staleAt
+    // For picker kind, prefer inline pickerChoices supplied by the agent.
+    // Fall back to the snapshot-backed source loader only when no inline list is given.
+    if (kind === 'picker') {
+      if (Array.isArray(i.pickerChoices) && i.pickerChoices.length > 0) {
+        extras.pickerChoices = i.pickerChoices
+      } else if (i.source) {
+        const { choices, staleAt } = await loadPickerChoices(i.source)
+        if (choices.length > 0) extras.pickerChoices = choices
+        if (staleAt !== undefined) extras.staleAt = staleAt
+      }
     }
 
     const answer = await ctx.onAskUser(i.question, randomUUID(), i.choices, extras)

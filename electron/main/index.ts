@@ -9,7 +9,7 @@ import { encryptApiKey } from './crypto'
 import { getSettingJSON, readAllSettings } from './db/settings'
 import { registerIpcHandlers } from './ipc'
 import { automationsRuntime } from './automations'
-import { getLoadedPlugins } from './plugins/loader'
+import { getLoadedPlugins, startPluginWatcher } from './plugins/loader'
 import { scanSkills } from './skills/manager'
 import { scanRules } from './rules/manager'
 import { disconnectAll } from './mcp/manager'
@@ -88,6 +88,14 @@ app.whenReady().then(async () => {
       console.warn('[main] context scheduler failed to start', err)
     }
 
+    // Start projects refresh loop (per-resource smart cadence).
+    try {
+      const { initProjects } = await import('./projects')
+      initProjects()
+    } catch (err) {
+      console.warn('[main] projects refresh loop failed to start', err)
+    }
+
     // E2E: expose a tiny query helper so Playwright tests can introspect the
     // DB through `app.evaluate(...)`. This avoids loading better-sqlite3 in
     // the test runner (it's compiled against Electron's Node ABI, not the
@@ -128,7 +136,7 @@ app.whenReady().then(async () => {
   // Register IPC handlers
   registerIpcHandlers(mainWindow)
 
-  // Automations runtime — boots cron, heartbeat, hook bus, webhooks, task flows.
+  // Automations runtime — boots schedule (at|every|cron), hook bus, and webhooks.
   try {
     const cfg = readAllSettings()
     if (cfg['automations.masterEnabled'] === false) {
@@ -148,6 +156,7 @@ app.whenReady().then(async () => {
   // Discover and load WOS plugins (~/.wos/plugins/<id>/) before tools are first built.
   try {
     await getLoadedPlugins()
+    if (!isE2E) startPluginWatcher()
   } catch (err) {
     console.warn('[main] plugin discovery failed', err)
   }

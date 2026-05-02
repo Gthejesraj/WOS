@@ -1,11 +1,25 @@
-import type { Tool } from '../../tools'
+import type { Tool, ToolResult } from '../../tools'
 import * as api from './api'
 
 interface JiraCreds { baseUrl: string; email: string; token: string }
 
+function wrapToolErrors(tools: Tool[]): Tool[] {
+  return tools.map(t => ({
+    ...t,
+    execute: async (input: unknown, ctx: Parameters<Tool['execute']>[1]): Promise<ToolResult> => {
+      try {
+        return await t.execute(input, ctx)
+      } catch (err) {
+        return { output: '', error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  }))
+}
+
 export function buildJiraTools(creds: JiraCreds): Tool[] {
+  if (!creds.baseUrl || !creds.email || !creds.token) return []
   const { baseUrl, email, token } = creds
-  return [
+  const rawTools: Tool[] = [
     {
       name: 'JiraListProjects',
       description: 'List all accessible Jira projects.',
@@ -195,4 +209,5 @@ export function buildJiraTools(creds: JiraCreds): Tool[] {
       },
     },
   ]
+  return wrapToolErrors(rawTools)
 }

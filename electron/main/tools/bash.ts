@@ -8,7 +8,7 @@ interface BashInput {
 
 export const bashTool: Tool = {
   name: 'Bash',
-  description: 'Execute a bash command. Always requires permission in Default mode. Use for running scripts, installing packages, git operations, etc.',
+  description: 'Execute a bash command. Always requires permission in Default mode. Use for running scripts, installing packages, git operations, etc. Do NOT use `sleep`, `at`, `setTimeout`, or `cron` to schedule work — call `automation_create` instead. Bash sleeps die when the chat ends; automations survive app restarts.',
   inputSchema: {
     type: 'object',
     properties: {

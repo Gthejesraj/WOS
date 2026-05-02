@@ -110,6 +110,38 @@ migrations and is easy to inspect. Tools exposed by an MCP server are exposed
 to the agent under the prefix `mcp__<serverId>__<toolName>` and are subject to
 the standard permission rules.
 
+## Projects
+
+The **Projects** tab (sidebar entry between **Apps** and **Meetings**) gives
+each work effort a single home. A project links resources from connected
+apps — Slack channels, GitHub repos, Jira projects, Gmail labels, Drive
+folders, MCP resources — plus WOS-native objects (meeting recordings,
+workspace files, saved chats, notes, custom URLs) and aggregates them into
+a live dashboard.
+
+Key behaviours:
+- **Resource catalogue is fully dynamic.** The picker is built from each
+  connected `AppModule`'s `projectResourceTypes()` capability — connecting
+  a new app instantly adds new linkable resource kinds without code
+  changes.
+- **Smart-cadence refresh.** A background loop polls each linked resource
+  on its per-kind interval (Slack ~5–10min, GitHub/Jira ~15–30min, Drive/
+  Docs ~1h) by invoking the app's `fetcher` and normalising the result
+  into a deduped `project_activity` feed.
+- **AI summaries on demand.** The detail view's Overview tab can
+  regenerate executive summaries (`status`, `daily`, `weekly`, `standup`)
+  using the user's default model, with a per-project model override.
+- **Health + risk signals.** A computed health score and risk level are
+  shown on each gallery card and in the hero header.
+- **Main-chat integration.** A `projects` subagent is registered; the
+  main WOS agent delegates project-scoped questions to it via the
+  `Task` tool with `preset: "projects"`. Read-only tools
+  (`wos_projects_list`, `wos_projects_find`, `wos_projects_get`,
+  `wos_projects_activity`, `wos_projects_summary`,
+  `wos_projects_health`, etc.) are available to both agents.
+- **Static export.** Projects can be exported as a self-contained HTML
+  status page (no external assets) for handoff or sharing.
+
 ## Testing
 
 ### Unit tests (vitest)

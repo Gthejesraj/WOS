@@ -36,16 +36,40 @@ function persistUpdatedTokens(creds: GoogleCreds): void {
   } catch { /* ignore persistence errors during tool execution */ }
 }
 
+function humanizeGoogleError(status: number, body: string): Error {
+  if (status === 401) return new Error('Google session expired. Please reconnect Google in Settings → Apps → Google.')
+  if (status === 403) {
+    if (body.includes('insufficientPermissions') || body.includes('ACCESS_TOKEN_SCOPE_INSUFFICIENT')) {
+      return new Error('Google permission denied. Make sure you granted the required scopes when connecting Google.')
+    }
+    return new Error('Google access denied. Check that your account has access to this resource.')
+  }
+  if (status === 429) return new Error('Google rate limit reached. Please wait a moment before trying again.')
+  if (status === 404) return new Error('Google resource not found. Check that the ID or path is correct.')
+  if (status === 400) {
+    try {
+      const parsed = JSON.parse(body) as { error?: { message?: string } }
+      if (parsed.error?.message) return new Error(`Google API error: ${parsed.error.message}`)
+    } catch { /* ignore */ }
+  }
+  return new Error(`Google API error (${status}): ${body.slice(0, 200)}`)
+}
+
+async function handleGoogleResponse<T>(res: Response): Promise<T> {
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw humanizeGoogleError(res.status, text)
+  }
+  if (res.status === 204) return {} as T
+  return res.json() as Promise<T>
+}
+
 export async function googleGet<T = unknown>(path: string, creds: GoogleCreds): Promise<T> {
   const token = await getFreshToken(creds)
   const res = await fetch(`https://www.googleapis.com${path}`, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
   })
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`Google API ${res.status}: ${text}`)
-  }
-  return res.json() as Promise<T>
+  return handleGoogleResponse<T>(res)
 }
 
 export async function googlePost<T = unknown>(path: string, body: unknown, creds: GoogleCreds, baseUrl = 'https://www.googleapis.com'): Promise<T> {
@@ -59,12 +83,7 @@ export async function googlePost<T = unknown>(path: string, body: unknown, creds
     },
     body: JSON.stringify(body),
   })
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`Google API ${res.status}: ${text}`)
-  }
-  if (res.status === 204) return {} as T
-  return res.json() as Promise<T>
+  return handleGoogleResponse<T>(res)
 }
 
 export async function googlePatch<T = unknown>(path: string, body: unknown, creds: GoogleCreds): Promise<T> {
@@ -78,11 +97,7 @@ export async function googlePatch<T = unknown>(path: string, body: unknown, cred
     },
     body: JSON.stringify(body),
   })
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`Google API ${res.status}: ${text}`)
-  }
-  return res.json() as Promise<T>
+  return handleGoogleResponse<T>(res)
 }
 
 export async function getUserInfo(creds: GoogleCreds) {
@@ -236,4 +251,65 @@ export async function listCalendarList(creds: GoogleCreds) {
   return googleGet<{ items?: Array<{ id: string; summary: string; primary?: boolean }> }>(
     '/calendar/v3/users/me/calendarList', creds,
   )
+}
+
+/* ── People / contacts search (Gmail-style "To:" autocomplete) ── */
+export interface GmailContact {
+  name: string
+  email: string
+  photoUrl: string | null
+}
+
+export async function searchGmailContacts(creds: GoogleCreds, query: string): Promise<GmailContact[]> {
+  if (!query.trim()) return []
+  const token = await getFreshToken(creds)
+
+  // Try saved contacts first (contacts.readonly scope)
+  const results: GmailContact[] = []
+  const seen = new Set<string>()
+
+  try {
+    const q = new URLSearchParams({ query, readMask: 'names,emailAddresses,photos', pageSize: '10' })
+    const res = await fetch(`https://people.googleapis.com/v1/people:searchContacts?${q}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    })
+    if (res.ok) {
+      const data = await res.json() as { results?: Array<{ person: { names?: Array<{ displayName?: string }>; emailAddresses?: Array<{ value?: string }>; photos?: Array<{ url?: string }> } }> }
+      for (const r of data.results ?? []) {
+        const email = r.person?.emailAddresses?.[0]?.value ?? ''
+        if (!email || seen.has(email.toLowerCase())) continue
+        seen.add(email.toLowerCase())
+        results.push({
+          name: r.person?.names?.[0]?.displayName ?? email,
+          email,
+          photoUrl: r.person?.photos?.[0]?.url ?? null,
+        })
+      }
+    }
+  } catch { /* contacts scope not granted — fall through */ }
+
+  // Also search "other contacts" (people you've emailed — no extra scope beyond contacts.other.readonly)
+  if (results.length < 10) {
+    try {
+      const q = new URLSearchParams({ query, readMask: 'names,emailAddresses,photos', pageSize: String(10 - results.length) })
+      const res = await fetch(`https://people.googleapis.com/v1/otherContacts:search?${q}`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      })
+      if (res.ok) {
+        const data = await res.json() as { results?: Array<{ person: { names?: Array<{ displayName?: string }>; emailAddresses?: Array<{ value?: string }>; photos?: Array<{ url?: string }> } }> }
+        for (const r of data.results ?? []) {
+          const email = r.person?.emailAddresses?.[0]?.value ?? ''
+          if (!email || seen.has(email.toLowerCase())) continue
+          seen.add(email.toLowerCase())
+          results.push({
+            name: r.person?.names?.[0]?.displayName ?? email,
+            email,
+            photoUrl: r.person?.photos?.[0]?.url ?? null,
+          })
+        }
+      }
+    } catch { /* other contacts scope not granted */ }
+  }
+
+  return results
 }

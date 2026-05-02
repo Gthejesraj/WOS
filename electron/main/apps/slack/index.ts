@@ -94,4 +94,105 @@ export const slackApp: AppModule = {
       : []
     return { channels, users }
   },
+  projectResourceTypes() {
+    return [
+      {
+        kind: 'slack:channel',
+        label: 'Slack channel',
+        description: 'Pin a channel — recent messages and mentions surface in Activity.',
+        multiSelect: true,
+        pickerComponentId: 'snapshot-list',
+        snapshotScope: 'channels',
+        refreshIntervalSec: 600,
+        refSchema: {
+          hint: 'Pick a channel from your workspace, or paste a channel id / share link.',
+          fields: [
+            { name: 'id', label: 'Channel id', type: 'text', required: true, placeholder: 'C0123ABCDEF' },
+            { name: 'name', label: 'Display name', type: 'text', placeholder: '#engineering' },
+          ],
+          pasteParsers: [
+            { regex: '/archives/(?<id>[A-Z0-9]+)', groupToField: { id: 'id' } },
+            { regex: '^(?<id>[CDG][A-Z0-9]+)$', groupToField: { id: 'id' } },
+          ],
+        },
+        refExamples: ['C0123ABCDEF', 'https://acme.slack.com/archives/C0123ABCDEF'],
+        async fetcher(creds, ref) {
+          const token = creds.botToken ?? creds.token
+          if (!token) return []
+          const channelId = extractRefId(ref)
+          if (!channelId) return []
+          try {
+            const res = await slackCall<{
+              messages?: Array<{ ts: string; user?: string; text?: string; bot_id?: string }>
+              channel?: { name?: string }
+            }>('conversations.history', token, { channel: channelId, limit: 20 })
+            const teamUrl = (creds.teamUrl ?? '').replace(/\/$/, '')
+            return (res.messages ?? []).map(m => ({
+              id: m.ts,
+              ts: Number(m.ts) * 1000,
+              actor: m.user ?? m.bot_id ?? null,
+              title: (m.text ?? '').slice(0, 200) || '(no text)',
+              url: teamUrl ? `${teamUrl}/archives/${channelId}/p${m.ts.replace('.', '')}` : null,
+            }))
+          } catch (err) {
+            console.error('[slack/fetcher] channel history failed', err)
+            return []
+          }
+        },
+      },
+      {
+        kind: 'slack:user',
+        label: 'Slack person',
+        description: 'Track DMs and @mentions involving this person.',
+        multiSelect: true,
+        pickerComponentId: 'snapshot-list',
+        snapshotScope: 'users',
+        refreshIntervalSec: 900,
+        refSchema: {
+          hint: 'Pick a teammate, or paste their Slack user id (starts with U).',
+          fields: [
+            { name: 'id', label: 'User id', type: 'text', required: true, placeholder: 'U01ABCDEFGH' },
+            { name: 'name', label: 'Handle', type: 'text', placeholder: '@yashwanth' },
+          ],
+        },
+        refExamples: ['U01ABCDEFGH'],
+        async fetcher(creds, ref) {
+          const token = creds.botToken ?? creds.token
+          if (!token) return []
+          const userId = extractRefId(ref)
+          if (!userId) return []
+          try {
+            const open = await slackCall<{ channel?: { id: string } }>('conversations.open', token, { users: userId })
+            const dmId = open.channel?.id
+            if (!dmId) return []
+            const res = await slackCall<{ messages?: Array<{ ts: string; user?: string; text?: string }> }>(
+              'conversations.history', token, { channel: dmId, limit: 15 },
+            )
+            return (res.messages ?? []).map(m => ({
+              id: `${dmId}-${m.ts}`,
+              ts: Number(m.ts) * 1000,
+              actor: m.user ?? null,
+              title: (m.text ?? '').slice(0, 200) || '(dm)',
+              url: null,
+            }))
+          } catch (err) {
+            console.error('[slack/fetcher] dm history failed', err)
+            return []
+          }
+        },
+      },
+    ]
+  },
+}
+
+function extractRefId(ref: unknown): string | null {
+  if (!ref) return null
+  if (typeof ref === 'string') return ref
+  if (typeof ref === 'object') {
+    const r = ref as Record<string, unknown>
+    if (typeof r.id === 'string') return r.id
+    if (typeof r.channel === 'string') return r.channel
+    if (typeof r.user === 'string') return r.user
+  }
+  return null
 }

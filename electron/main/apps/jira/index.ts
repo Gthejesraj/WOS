@@ -1,5 +1,5 @@
 import type { AppModule } from '../types'
-import { getMyself, listProjects } from './api'
+import { getMyself, listProjects, searchIssues } from './api'
 import { buildJiraTools } from './tools'
 
 export const jiraApp: AppModule = {
@@ -65,4 +65,111 @@ export const jiraApp: AppModule = {
     }))
     return { projects }
   },
+  projectResourceTypes() {
+    return [
+      {
+        kind: 'jira:project',
+        label: 'Jira project',
+        description: 'Pull issues, sprints and priority changes from this project.',
+        multiSelect: true,
+        pickerComponentId: 'snapshot-list',
+        snapshotScope: 'projects',
+        refreshIntervalSec: 1200,
+        refSchema: {
+          hint: 'Pick a project, or paste its key.',
+          fields: [
+            { name: 'key', label: 'Project key', type: 'text', required: true, placeholder: 'ATL' },
+            { name: 'name', label: 'Display name', type: 'text', placeholder: 'Atlas Mobile' },
+          ],
+        },
+        refExamples: ['ATL', 'PLAT', 'WEB'],
+        async fetcher(creds, ref) {
+          if (!creds.baseUrl || !creds.email || !creds.token) return []
+          const projectKey = extractProjectKey(ref)
+          if (!projectKey) return []
+          try {
+            const data = await searchIssues(
+              creds.baseUrl, creds.email, creds.token,
+              `project = "${projectKey}" ORDER BY updated DESC`, 25,
+            )
+            return mapJiraIssues(data.issues, creds.baseUrl)
+          } catch (err) {
+            console.error('[jira/fetcher] project failed', err)
+            return []
+          }
+        },
+      },
+      {
+        kind: 'jira:epic',
+        label: 'Jira epic / JQL',
+        description: 'Free-text JQL or epic key — issues matching the query are tracked.',
+        multiSelect: true,
+        pickerComponentId: 'jql-input',
+        refreshIntervalSec: 1500,
+        refSchema: {
+          hint: 'Either an epic key or a JQL query.',
+          fields: [
+            { name: 'jql', label: 'JQL query', type: 'textarea', placeholder: 'project = ATL AND statusCategory != Done' },
+            { name: 'epic', label: 'Epic key', type: 'text', placeholder: 'ATL-42' },
+          ],
+        },
+        refExamples: ['project = ATL ORDER BY updated DESC', '"Epic Link" = ATL-42'],
+        async fetcher(creds, ref) {
+          if (!creds.baseUrl || !creds.email || !creds.token) return []
+          const jql = extractJql(ref)
+          if (!jql) return []
+          try {
+            const data = await searchIssues(creds.baseUrl, creds.email, creds.token, jql, 25)
+            return mapJiraIssues(data.issues, creds.baseUrl)
+          } catch (err) {
+            console.error('[jira/fetcher] epic/jql failed', err)
+            return []
+          }
+        },
+      },
+    ]
+  },
+}
+
+function extractProjectKey(ref: unknown): string | null {
+  if (!ref) return null
+  if (typeof ref === 'string') return ref
+  if (typeof ref === 'object') {
+    const r = ref as Record<string, unknown>
+    if (typeof r.key === 'string') return r.key
+    if (typeof r.id === 'string') return r.id
+  }
+  return null
+}
+
+function extractJql(ref: unknown): string | null {
+  if (!ref) return null
+  if (typeof ref === 'string') return ref
+  if (typeof ref === 'object') {
+    const r = ref as Record<string, unknown>
+    if (typeof r.jql === 'string') return r.jql
+    if (typeof r.query === 'string') return r.query
+    if (typeof r.epic === 'string') return `"Epic Link" = ${r.epic} ORDER BY updated DESC`
+    if (typeof r.key === 'string') return `"Epic Link" = ${r.key} ORDER BY updated DESC`
+  }
+  return null
+}
+
+function mapJiraIssues(issues: unknown[], baseUrl: string) {
+  const url = baseUrl.replace(/\/$/, '')
+  return (issues as Array<{
+    id: string; key: string;
+    fields: {
+      summary?: string; updated?: string; created?: string;
+      assignee?: { displayName?: string } | null;
+      status?: { name?: string } | null;
+      priority?: { name?: string } | null;
+    };
+  }>).map(i => ({
+    id: i.key,
+    ts: Date.parse(i.fields?.updated ?? i.fields?.created ?? '') || Date.now(),
+    actor: i.fields?.assignee?.displayName ?? null,
+    title: `${i.key} ${i.fields?.summary ?? ''}${i.fields?.status?.name ? ` [${i.fields.status.name}]` : ''}`,
+    url: `${url}/browse/${i.key}`,
+  }))
 }

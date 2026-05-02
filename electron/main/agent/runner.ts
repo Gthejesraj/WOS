@@ -8,7 +8,9 @@ import type { ConversationMessage, ContentBlock } from '../providers/types'
 import { eq, asc, and, desc } from 'drizzle-orm'
 import { randomUUID } from 'node:crypto'
 import { resolveAgent } from './settings'
-import { buildStandingOrdersFragment } from '../automations/standingOrders'
+import { getContextWindow } from '../../../src/lib/modelCapabilities'
+import { recallMemories, buildMemoryBlock, pruneOldMemories } from '../memory/memoryService'
+import { extractAndStoreFacts } from '../memory/factExtractor'
 
 const DEBUG = process.env.WOS_DEBUG === '1'
 const dlog = (...args: unknown[]) => { if (DEBUG) console.log('[wos:runner]', ...args) }
@@ -161,9 +163,17 @@ export class AgentRunner {
     const assistantBlocks: MessageBlock[] = []
     const assistantMsgId = randomUUID()
     let turnCompleteEmitted = false
+    let cumulativeInputTokens = 0
+    let cumulativeOutputTokens = 0
+
+    const contextLimit = getContextWindow(conv.model) ?? 200_000
 
     const emit = (event: AgentEvent) => {
       dlog('emit', event.type, event)
+      if (event.type === 'turn_complete') {
+        cumulativeInputTokens += event.usage.inputTokens
+        cumulativeOutputTokens += event.usage.outputTokens
+      }
       // Prefer the invoking webContents; fall back to any live window if the
       // original was destroyed (e.g. window closed mid-run).
       let target: WebContents | null = null
@@ -205,11 +215,31 @@ export class AgentRunner {
       }
     }
 
+    let agentSettings: Awaited<ReturnType<typeof resolveAgent>> | null = null
+    let memoryEnabled = true
+
     try {
-      const agentSettings = await resolveAgent('wos')
-      const standingOrders = buildStandingOrdersFragment()
-      const baseCustom = (agentSettings.systemPrompt || '').trim()
-      const customPrompt = (baseCustom + standingOrders).trim() || undefined
+      agentSettings = await resolveAgent('wos')
+      const intentModelRow = db.select().from(schema.settings).where(eq(schema.settings.key, 'intentModel')).get()
+      const intentModel = (intentModelRow?.value as string)?.replace(/^"|"$/g, '') || 'claude-haiku-4-5-20251001'
+      const intentEnabledRow = db.select().from(schema.settings).where(eq(schema.settings.key, 'intentEnabled')).get()
+      const intentEnabled = intentEnabledRow ? (intentEnabledRow.value as boolean) !== false : true
+      const memoryEnabledRow = db.select().from(schema.settings).where(eq(schema.settings.key, 'memoryEnabled')).get()
+      memoryEnabled = memoryEnabledRow ? (memoryEnabledRow.value as boolean) !== false : true
+
+      // Inject relevant memories into the system prompt
+      let memoryAppend = ''
+      if (memoryEnabled) {
+        try {
+          const memories = recallMemories(fullUserMessage, 5)
+          memoryAppend = buildMemoryBlock(memories)
+        } catch { /* non-fatal */ }
+      }
+
+      const baseCustom = (agentSettings!.systemPrompt || '').trim()
+      const customPrompt = baseCustom || undefined
+      const appendContext = memoryAppend || undefined
+
       for await (const event of queryLoop({
         model: conv.model,
         messages: history,
@@ -218,7 +248,7 @@ export class AgentRunner {
         mode: conv.mode as AgentMode,
         reasoningEffort,
         systemPromptCustom: customPrompt,
-        apiKeyOverride: agentSettings.apiKeyOverride,
+        apiKeyOverride: agentSettings!.apiKeyOverride,
         signal,
         permissionStore: this.permissionStore,
         onPermissionRequest: (toolName, toolId, args) =>
@@ -227,6 +257,10 @@ export class AgentRunner {
           this.askUser(question, questionId, choices, emit, extras),
         onEvent: emit,
         conversationId,
+        contextLimit,
+        intentModel,
+        skipIntent: !intentEnabled,
+        systemPromptAppend: appendContext,
       })) {
         if (signal.aborted) break
         emit(event)
@@ -243,6 +277,18 @@ export class AgentRunner {
         emit({ type: 'turn_complete', usage: { inputTokens: 0, outputTokens: 0 } })
       }
 
+      // Extract and persist facts from this turn (non-blocking, non-fatal)
+      if (memoryEnabled && cumulativeOutputTokens > 0) {
+        const assistantText = assistantBlocks
+          .filter(b => b.type === 'text')
+          .map(b => (typeof b.content === 'string' ? b.content : ''))
+          .join('')
+        const apiKeyOverride = agentSettings?.apiKeyOverride
+        extractAndStoreFacts(fullUserMessage, assistantText, conv.model, apiKeyOverride)
+          .then(() => pruneOldMemories(1000))
+          .catch(() => { /* non-fatal */ })
+      }
+
       // Save assistant message
       if (assistantBlocks.length > 0) {
         db.insert(schema.messages).values({
@@ -253,13 +299,19 @@ export class AgentRunner {
           createdAt: new Date(),
         }).run()
 
-        // Update conversation updatedAt and title if first message
-        const titleUpdate: Record<string, unknown> = { updatedAt: new Date() }
+        // Update conversation: title (first message), token count, context limit
+        const existingConv = db.select().from(schema.conversations).where(eq(schema.conversations.id, conversationId)).get()
+        const prevTokenCount = existingConv?.tokenCount ?? 0
+        const convUpdate: Record<string, unknown> = {
+          updatedAt: new Date(),
+          tokenCount: prevTokenCount + cumulativeInputTokens + cumulativeOutputTokens,
+          contextLimit,
+        }
         if (activeMsgRows.length === 0 && userMessage.length > 0) {
-          titleUpdate.title = userMessage.slice(0, 60) + (userMessage.length > 60 ? '…' : '')
+          convUpdate.title = userMessage.slice(0, 60) + (userMessage.length > 60 ? '…' : '')
         }
         db.update(schema.conversations)
-          .set(titleUpdate as unknown as Partial<typeof schema.conversations.$inferInsert>)
+          .set(convUpdate as unknown as Partial<typeof schema.conversations.$inferInsert>)
           .where(eq(schema.conversations.id, conversationId))
           .run()
         notifyWrite()
@@ -401,9 +453,17 @@ export class AgentRunner {
     const assistantBlocks: MessageBlock[] = []
     const assistantMsgId = randomUUID()
     let turnCompleteEmitted = false
+    let cumulativeInputTokens = 0
+    let cumulativeOutputTokens = 0
+
+    const contextLimit = getContextWindow(conv.model) ?? 200_000
 
     const emit = (event: AgentEvent) => {
       dlog('emit', event.type, event)
+      if (event.type === 'turn_complete') {
+        cumulativeInputTokens += event.usage.inputTokens
+        cumulativeOutputTokens += event.usage.outputTokens
+      }
       let target: WebContents | null = null
       if (sender && !sender.isDestroyed()) {
         target = sender
@@ -423,11 +483,28 @@ export class AgentRunner {
       this.mergeEventIntoBlocks(assistantBlocks, event)
     }
 
+    let agentSettings2: Awaited<ReturnType<typeof resolveAgent>> | null = null
+    let memEnabled2 = true
+
     try {
-      const agentSettings = await resolveAgent('wos')
-      const standingOrders = buildStandingOrdersFragment()
-      const baseCustom = (agentSettings.systemPrompt || '').trim()
-      const customPrompt = (baseCustom + standingOrders).trim() || undefined
+      agentSettings2 = await resolveAgent('wos')
+      const intentModelRow2 = db.select().from(schema.settings).where(eq(schema.settings.key, 'intentModel')).get()
+      const intentModel2 = (intentModelRow2?.value as string)?.replace(/^"|"$/g, '') || 'claude-haiku-4-5-20251001'
+      const intentEnabledRow2 = db.select().from(schema.settings).where(eq(schema.settings.key, 'intentEnabled')).get()
+      const intentEnabled2 = intentEnabledRow2 ? (intentEnabledRow2.value as boolean) !== false : true
+      const memEnabledRow2 = db.select().from(schema.settings).where(eq(schema.settings.key, 'memoryEnabled')).get()
+      memEnabled2 = memEnabledRow2 ? (memEnabledRow2.value as boolean) !== false : true
+      let memAppend2 = ''
+      if (memEnabled2) {
+        try {
+          const mems = recallMemories(userMessage, 5)
+          memAppend2 = buildMemoryBlock(mems)
+        } catch { /* non-fatal */ }
+      }
+      const baseCustom = (agentSettings2!.systemPrompt || '').trim()
+      const customPrompt = baseCustom || undefined
+      const appendContext2 = memAppend2 || undefined
+
       for await (const event of queryLoop({
         model: conv.model,
         messages: history,
@@ -436,7 +513,7 @@ export class AgentRunner {
         mode: conv.mode as AgentMode,
         reasoningEffort,
         systemPromptCustom: customPrompt,
-        apiKeyOverride: agentSettings.apiKeyOverride,
+        apiKeyOverride: agentSettings2!.apiKeyOverride,
         signal,
         permissionStore: this.permissionStore,
         onPermissionRequest: (toolName, toolId, args) =>
@@ -445,6 +522,10 @@ export class AgentRunner {
           this.askUser(question, questionId, choices, emit, extras),
         onEvent: emit,
         conversationId,
+        contextLimit,
+        intentModel: intentModel2,
+        skipIntent: !intentEnabled2,
+        systemPromptAppend: appendContext2,
       })) {
         if (signal.aborted) break
         emit(event)
@@ -460,6 +541,17 @@ export class AgentRunner {
         emit({ type: 'turn_complete', usage: { inputTokens: 0, outputTokens: 0 } })
       }
 
+      // Extract and persist facts from this turn (non-blocking, non-fatal)
+      if (memEnabled2 && cumulativeOutputTokens > 0) {
+        const assistantText2 = assistantBlocks
+          .filter(b => b.type === 'text')
+          .map(b => (typeof b.content === 'string' ? b.content : ''))
+          .join('')
+        extractAndStoreFacts(userMessage, assistantText2, conv.model, agentSettings2?.apiKeyOverride)
+          .then(() => pruneOldMemories(1000))
+          .catch(() => { /* non-fatal */ })
+      }
+
       if (assistantBlocks.length > 0) {
         db.insert(schema.messages).values({
           id: assistantMsgId,
@@ -471,8 +563,14 @@ export class AgentRunner {
           branchIndex: lastMsg.branchIndex ?? 0,
         }).run()
 
+        const existingConv2 = db.select().from(schema.conversations).where(eq(schema.conversations.id, conversationId)).get()
+        const prevCount2 = existingConv2?.tokenCount ?? 0
         db.update(schema.conversations)
-          .set({ updatedAt: new Date() } as unknown as Partial<typeof schema.conversations.$inferInsert>)
+          .set({
+            updatedAt: new Date(),
+            tokenCount: prevCount2 + cumulativeInputTokens + cumulativeOutputTokens,
+            contextLimit,
+          } as unknown as Partial<typeof schema.conversations.$inferInsert>)
           .where(eq(schema.conversations.id, conversationId))
           .run()
         notifyWrite()
@@ -683,6 +781,11 @@ export class AgentRunner {
         // not incorrectly flag them as interrupted when the chat is revisited.
         for (const b of blocks) {
           if (b.type === 'reasoning' && !b.done) b.done = true
+        }
+        break
+      case 'compact_complete':
+        if (event.summary) {
+          blocks.push({ type: 'compact_notice', summary: event.summary })
         }
         break
       case 'error':

@@ -24,6 +24,17 @@ export interface PluginManifest {
   kinds?: Array<'tool'>
   /** Free-form permissions string list (e.g. 'fs.read', 'net'). Logged on load; not enforced in v1. */
   permissions?: string[]
+  /**
+   * Trigger keywords / phrases — used by the intent engine to auto-include
+   * this plugin's tools when the user's message matches one of these terms.
+   * E.g. ["linear", "ticket", "issue tracker"]
+   */
+  triggers?: string[]
+  /**
+   * Lifecycle hooks this plugin wants to subscribe to.
+   * Reserved for v2; declared but not yet dispatched.
+   */
+  hooks?: Array<'before-tool-call' | 'after-tool-call' | 'before-turn' | 'after-turn'>
 }
 
 export interface PluginToolDefinition {

@@ -1,5 +1,18 @@
-import type { Tool } from '../../tools'
+import type { Tool, ToolResult } from '../../tools'
 import { slackCall } from './api'
+
+function wrapToolErrors(tools: Tool[]): Tool[] {
+  return tools.map(t => ({
+    ...t,
+    execute: async (input: unknown, ctx: Parameters<Tool['execute']>[1]): Promise<ToolResult> => {
+      try {
+        return await t.execute(input, ctx)
+      } catch (err) {
+        return { output: '', error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  }))
+}
 
 type SlackCreds = { botToken?: string; userToken?: string; signingSecret?: string }
 
@@ -14,7 +27,9 @@ function token(creds: SlackCreds, prefer: 'bot' | 'user' = 'bot'): string {
 }
 
 function required(t: string, which: 'bot' | 'user') {
-  if (!t) throw new Error(`Slack ${which} token is not configured`)
+  if (!t) throw new Error(
+    `Slack ${which} token is not configured. Please add it in Settings → Apps → Slack.`
+  )
   return t
 }
 
@@ -24,7 +39,7 @@ function truncate(obj: unknown, maxChars = 8000): string {
 }
 
 export function buildSlackTools(creds: SlackCreds): Tool[] {
-  return [
+  const rawTools: Tool[] = [
     {
       name: 'SlackSendMessage',
       description: 'Send a message to a Slack channel, DM, or thread. Use channel ID or `#channel-name`.',
@@ -243,4 +258,6 @@ export function buildSlackTools(creds: SlackCreds): Tool[] {
       },
     },
   ]
+  return wrapToolErrors(rawTools)
 }
+

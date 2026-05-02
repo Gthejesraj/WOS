@@ -38,6 +38,54 @@ export const MIGRATIONS: Migration[] = [
       // future migrations have a starting point.
     },
   },
+  {
+    version: 2,
+    description: 'Automations: collapse cron+heartbeat into unified schedule kind; drop standing_order and task_flow rows (replaced by Rules + native flows).',
+    up(db) {
+      // Skip if automations table doesn't exist yet (fresh DB initialised
+      // before migrations run, or test fixtures without app schema).
+      const hasTable = db.prepare(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name='automations'`,
+      ).get()
+      if (!hasTable) return
+      // cron → schedule (mode=cron). Old cfg: { expr, tz?|timezone? }.
+      db.exec(`
+        UPDATE automations
+        SET kind = 'schedule',
+            config = json_object(
+              'mode', 'cron',
+              'cron', json_extract(config, '$.expr'),
+              'tz', coalesce(json_extract(config, '$.tz'), json_extract(config, '$.timezone'))
+            )
+        WHERE kind = 'cron';
+      `)
+      // heartbeat → schedule (mode=every). Old cfg: { intervalSec, jitterSec? }.
+      db.exec(`
+        UPDATE automations
+        SET kind = 'schedule',
+            config = json_object(
+              'mode', 'every',
+              'every', (json_extract(config, '$.intervalSec') || 's'),
+              'jitterSec', json_extract(config, '$.jitterSec')
+            )
+        WHERE kind = 'heartbeat';
+      `)
+      // standing_order rows are deleted — Rules feature (~/.wos/rules/*.md)
+      // already handles persistent prompt rules.
+      db.exec(`DELETE FROM automations WHERE kind = 'standing_order';`)
+      // task_flow is now an orchestration concern, not an automation kind.
+      db.exec(`DELETE FROM automations WHERE kind = 'task_flow';`)
+    },
+  },
+  {
+    version: 3,
+    description: 'Projects feature: ensure project tables exist (no-op for fresh DBs since initDatabase() already created them; this version pin lets future migrations target the projects schema).',
+    up() {
+      // No-op. The CREATE TABLE IF NOT EXISTS block in initDatabase()
+      // already creates the projects.* tables on every boot. This entry
+      // exists so subsequent migrations can target schema_version >= 3.
+    },
+  },
 ]
 
 function ensureSchemaVersionTable(db: SqliteDb): void {

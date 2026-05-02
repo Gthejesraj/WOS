@@ -19,11 +19,29 @@ async function jiraFetch<T = unknown>(
     },
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   })
+  if (res.status === 429) {
+    const retryAfter = Number(res.headers.get('Retry-After') ?? '2') * 1000
+    await new Promise(r => setTimeout(r, Math.min(retryAfter, 10_000)))
+    const retried = await fetch(url, {
+      method: opts.method ?? 'GET',
+      headers: {
+        Authorization: basicAuth(email, token),
+        Accept: 'application/json',
+        ...(opts.body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    })
+    if (!retried.ok) {
+      if (retried.status === 429) throw new Error('Jira rate limit reached. Please wait a minute before trying again.')
+      const text = await retried.text().catch(() => '')
+      throw new Error(`Jira API error (${retried.status}): ${text}`)
+    }
+    return retried.json() as Promise<T>
+  }
   if (!res.ok) {
     if (res.status === 401) throw new Error('Invalid credentials. Check your Atlassian email and API token at id.atlassian.com/manage-profile/security/api-tokens.')
     if (res.status === 403) throw new Error('Access denied. Make sure your Atlassian account has access to this Jira workspace.')
     if (res.status === 404) throw new Error('Jira workspace not found. Check your Base URL (e.g. https://yourorg.atlassian.net).')
-    if (res.status === 429) throw new Error('Jira rate limit reached. Try again in a minute.')
     const text = await res.text().catch(() => '')
     let msg = text
     try {

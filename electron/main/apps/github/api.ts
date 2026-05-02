@@ -15,10 +15,32 @@ async function githubFetch<T = unknown>(
     },
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   })
+  if (res.status === 429) {
+    const retryAfter = Number(res.headers.get('Retry-After') ?? '2') * 1000
+    await new Promise(r => setTimeout(r, Math.min(retryAfter, 10_000)))
+    const retried = await fetch(`${GITHUB_BASE}${path}`, {
+      method: opts.method ?? 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        ...(opts.body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    })
+    if (retried.status === 429) throw new Error('GitHub rate limit reached. Please wait a minute before trying again.')
+    if (!retried.ok) {
+      const text = await retried.text().catch(() => '')
+      let msg = text
+      try { msg = (JSON.parse(text) as { message?: string }).message ?? text } catch { /* ignore */ }
+      throw new Error(`GitHub API error (${retried.status}): ${msg}`)
+    }
+    if (retried.status === 204) return {} as T
+    return retried.json() as Promise<T>
+  }
   if (!res.ok) {
     if (res.status === 401) throw new Error('Invalid token. Regenerate your GitHub Personal Access Token at github.com/settings/tokens.')
     if (res.status === 403) throw new Error('Access denied. Make sure the token has the required scopes (repo, notifications).')
-    if (res.status === 429) throw new Error('GitHub rate limit reached. Try again in a minute.')
     const text = await res.text().catch(() => '')
     let msg = text
     try { msg = (JSON.parse(text) as { message?: string }).message ?? text } catch { /* ignore */ }

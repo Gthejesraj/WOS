@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Search, Plus, ShoppingBag, Settings, Trash2, X, Calendar, MoreHorizontal, Pencil, Zap } from 'lucide-react'
+import { Search, Plus, ShoppingBag, Settings, Trash2, X, Calendar, MoreHorizontal, Pencil, Zap, FolderKanban } from 'lucide-react'
 import type { Conversation, ViewType } from '../../../types'
 import { useWorkspaceStore } from '../../../store/workspaceStore'
 
@@ -12,6 +12,7 @@ interface SidebarProps {
   onSelectConversation: (id: string) => void
   onNewChat: () => void
   onApps: () => void
+  onProjects: () => void
   onMeetings: () => void
   onAutomations: () => void
   onSettings: () => void
@@ -28,6 +29,7 @@ export function Sidebar({
   onSelectConversation,
   onNewChat,
   onApps,
+  onProjects,
   onMeetings,
   onAutomations,
   onSettings,
@@ -121,6 +123,21 @@ export function Sidebar({
           style={{ color: currentView === 'apps' ? 'var(--foreground)' : 'var(--zinc-400)' }}
         >
           Apps
+        </span>
+      </button>
+
+      <button
+        onClick={onProjects}
+        className={`flex items-center gap-2 mx-2 px-2 py-1.5 rounded-md transition-colors group mb-0.5 ${
+          currentView === 'projects' ? 'wos-sidebar-active' : 'wos-hover-sm'
+        }`}
+      >
+        <FolderKanban size={13} className="shrink-0" style={{ color: currentView === 'projects' ? 'var(--amber)' : 'var(--zinc-500)' }} />
+        <span
+          className="text-[12px]"
+          style={{ color: currentView === 'projects' ? 'var(--foreground)' : 'var(--zinc-400)' }}
+        >
+          Projects
         </span>
       </button>
 

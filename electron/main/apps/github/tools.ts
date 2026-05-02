@@ -1,9 +1,23 @@
-import type { Tool } from '../../tools'
+import type { Tool, ToolResult } from '../../tools'
 import * as api from './api'
 
+function wrapToolErrors(tools: Tool[]): Tool[] {
+  return tools.map(t => ({
+    ...t,
+    execute: async (input: unknown, ctx: Parameters<Tool['execute']>[1]): Promise<ToolResult> => {
+      try {
+        return await t.execute(input, ctx)
+      } catch (err) {
+        return { output: '', error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  }))
+}
+
 export function buildGitHubTools(creds: { token: string }): Tool[] {
+  if (!creds.token) return []
   const { token } = creds
-  return [
+  const rawTools: Tool[] = [
     {
       name: 'GitHubListRepos',
       description: 'List GitHub repositories for the authenticated user.',
@@ -326,4 +340,5 @@ export function buildGitHubTools(creds: { token: string }): Tool[] {
       },
     },
   ]
+  return wrapToolErrors(rawTools)
 }

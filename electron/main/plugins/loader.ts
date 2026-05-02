@@ -46,6 +46,12 @@ function validateManifest(raw: unknown, dir: string): PluginManifest | string {
     permissions: Array.isArray(m.permissions)
       ? m.permissions.filter((p): p is string => typeof p === 'string')
       : [],
+    triggers: Array.isArray(m.triggers)
+      ? m.triggers.filter((t): t is string => typeof t === 'string').map(t => t.toLowerCase())
+      : [],
+    hooks: Array.isArray(m.hooks)
+      ? m.hooks.filter((h): h is string => typeof h === 'string') as PluginManifest['hooks']
+      : [],
   }
 }
 
@@ -235,4 +241,65 @@ export async function listPluginSummaries(): Promise<PluginSummary[]> {
     toolCount: p.tools.length,
     loadError: p.loadError,
   }))
+}
+
+/**
+ * Return all trigger keywords declared across loaded plugins.
+ * Used by the intent engine to auto-include relevant plugin tools.
+ * Map: lowercase trigger → plugin id
+ */
+export function getPluginTriggerMap(): Map<string, string> {
+  const map = new Map<string, string>()
+  if (!cache) return map
+  for (const p of cache) {
+    if (p.loadError || !p.manifest.triggers) continue
+    for (const trigger of p.manifest.triggers) {
+      map.set(trigger.toLowerCase(), p.manifest.id)
+    }
+  }
+  return map
+}
+
+let _watcher: fs.FSWatcher | null = null
+
+/**
+ * Start watching ~/.wos/plugins/ for manifest changes (add / change / delete).
+ * When a wos-plugin.json changes, invalidates the plugin cache so the next
+ * getAllTools() call re-discovers the updated plugin. Call once at startup.
+ * Returns a cleanup function that stops the watcher.
+ */
+export function startPluginWatcher(): () => void {
+  if (_watcher) return () => { /* already watching */ }
+  const root = pluginsDir()
+  ensureDir(root)
+
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null
+
+  const onchange = (filename: string | null) => {
+    if (filename && !filename.endsWith('wos-plugin.json')) return
+    if (debounceTimer) clearTimeout(debounceTimer)
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null
+      console.log('[plugins] manifest changed, reloading...')
+      reloadPlugins().then(plugins => {
+        const ok = plugins.filter(p => !p.loadError).length
+        const fail = plugins.filter(p => p.loadError).length
+        console.log(`[plugins] hot-reload complete: ${ok} loaded, ${fail} failed`)
+      }).catch(err => console.warn('[plugins] hot-reload failed', err))
+    }, 250)
+  }
+
+  try {
+    _watcher = fs.watch(root, { recursive: true }, (_, filename) => onchange(filename))
+    _watcher.on('error', (err) => console.warn('[plugins] watcher error', err))
+    console.log(`[plugins] watching ${root} for changes`)
+  } catch (err) {
+    console.warn('[plugins] could not start watcher (non-fatal)', err)
+  }
+
+  return () => {
+    if (debounceTimer) clearTimeout(debounceTimer)
+    _watcher?.close()
+    _watcher = null
+  }
 }

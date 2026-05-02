@@ -1,4 +1,7 @@
 interface WosAPI {
+  shell: {
+    openExternal: (url: string) => Promise<{ ok: boolean }>
+  }
   sendMessage: (params: { conversationId: string; message: string; attachments?: Array<{ name: string; content: string }> }) => Promise<{ success: boolean; error?: string }>
   continueConversation: (conversationId: string) => Promise<{ success: boolean; error?: string }>
   cancelAgent: () => Promise<void>
@@ -122,6 +125,58 @@ interface WosAPI {
     onCaptionUpdate: (callback: (data: { text: string; timestamp: number }) => void) => () => void
     onMeetingClosed: (callback: (data?: { id?: string; analyzed?: boolean; captionCount?: number }) => void) => () => void
     onAnalysisError: (callback: (data: { error: string | null }) => void) => () => void
+  }
+
+  projects: {
+    catalogue: (onlyConnected?: boolean) => Promise<unknown[]>
+    list: (includeArchived?: boolean) => Promise<unknown[]>
+    get: (id: string) => Promise<unknown>
+    getBySlug: (slug: string) => Promise<unknown>
+    find: (q: string) => Promise<unknown[]>
+    create: (input: unknown) => Promise<unknown>
+    update: (id: string, patch: unknown) => Promise<unknown>
+    delete: (id: string) => Promise<{ ok: boolean }>
+    setStatus: (id: string, status: string) => Promise<unknown>
+    setPinned: (id: string, pinned: boolean) => Promise<unknown>
+    listResources: (projectId: string) => Promise<unknown[]>
+    addResource: (projectId: string, input: unknown) => Promise<unknown>
+    removeResource: (resourceId: string) => Promise<{ ok: boolean }>
+    refreshResource: (resourceId: string) => Promise<{ ok: boolean }>
+    appSnapshot: (appId: string, scope: string) => Promise<{ appId: string; scope: string; data: unknown[]; fetchedAt: number; stale: boolean } | null>
+    appSnapshotRefresh: (appId: string, scope?: string) => Promise<unknown>
+    searchGmailContacts: (query: string) => Promise<Array<{ name: string; email: string; photoUrl: string | null }>>
+    nativeSnapshot: (scope: string) => Promise<{ items: Array<Record<string, unknown>>; truncated: boolean }>
+    openLinks: (resourceId: string) => Promise<Array<{ label: string; url: string; icon?: string }>>
+    activity: (projectId: string, opts?: { since?: number; limit?: number }) => Promise<unknown[]>
+    recordActivity: (input: unknown) => Promise<unknown>
+    listWidgets: (projectId: string) => Promise<unknown[]>
+    addWidget: (projectId: string, input: unknown) => Promise<unknown>
+    updateWidget: (widgetId: string, patch: unknown) => Promise<{ ok: boolean }>
+    removeWidget: (widgetId: string) => Promise<{ ok: boolean }>
+    getSummary: (projectId: string, kind: string) => Promise<unknown>
+    generateSummary: (projectId: string, kind: string) => Promise<{ ok: boolean; summary?: string; error?: string }>
+    listAlerts: (projectId: string) => Promise<unknown[]>
+    addAlert: (projectId: string, input: unknown) => Promise<unknown>
+    removeAlert: (alertId: string) => Promise<{ ok: boolean }>
+    setAlertEnabled: (alertId: string, enabled: boolean) => Promise<{ ok: boolean }>
+    evaluateAlerts: (projectId: string) => Promise<{ fired: Array<{ alert: unknown; reason: string }> }>
+    listRisks: (projectId: string) => Promise<unknown[]>
+    addRisk: (projectId: string, input: unknown) => Promise<unknown>
+    removeRisk: (riskId: string) => Promise<{ ok: boolean }>
+    updateRisk: (riskId: string, patch: unknown) => Promise<unknown>
+    listDecisions: (projectId: string) => Promise<unknown[]>
+    addDecision: (projectId: string, input: unknown) => Promise<unknown>
+    removeDecision: (decisionId: string) => Promise<{ ok: boolean }>
+    updateDecision: (decisionId: string, patch: unknown) => Promise<unknown>
+    listMetric: (projectId: string, metricKey: string, opts?: { since?: number; limit?: number }) => Promise<unknown[]>
+    computeHealth: (projectId: string) => Promise<{ healthScore: number; riskLevel: string; signals: Array<{ label: string; weight: number; positive: boolean; detail?: string }> }>
+    exportJson: (projectId: string) => Promise<string>
+    exportMarkdown: (projectId: string) => Promise<string>
+    exportHtml: (projectId: string) => Promise<string>
+    listPeople: (projectId: string) => Promise<unknown[]>
+    addPerson: (projectId: string, input: unknown) => Promise<unknown>
+    updatePerson: (personId: string, patch: unknown) => Promise<unknown>
+    removePerson: (personId: string) => Promise<{ ok: boolean }>
   }
 }
 

@@ -3,11 +3,8 @@ import { getDb, schema, notifyWrite } from '../db'
 import { eq, desc } from 'drizzle-orm'
 
 export type AutomationKind =
-  | 'cron'
-  | 'heartbeat'
+  | 'schedule'
   | 'hook'
-  | 'standing_order'
-  | 'task_flow'
   | 'webhook'
 
 export type ResultDelivery = 'silent' | 'notify' | 'chat' | 'external'

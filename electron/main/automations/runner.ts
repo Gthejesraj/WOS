@@ -8,6 +8,7 @@ import { consent } from './consent'
 import { createRunSandbox } from './sandbox'
 import { registry, type AutomationRow } from './registry'
 import { deliverResult } from './delivery'
+import { listConnections, listAvailableApps } from '../apps/manager'
 
 /**
  * In-flight automation runs keyed by runId. Allows the runtime to abort all
@@ -61,8 +62,8 @@ export async function runAutomation(
   const scratchDir = createRunSandbox(`auto-${Date.now()}`)
   const runId = audit.startRun(automation.id, trigger ?? null, scratchDir)
 
-  // Resolve model: try automation_author preset → wos default
-  const agent = await resolveAgent('automation_author')
+  // Resolve model from the default WOS agent settings.
+  const agent = await resolveAgent('wos')
   let model = agent.model
   if (!model || !model.trim()) {
     const db = getDb()
@@ -87,12 +88,45 @@ export async function runAutomation(
   const runAbort = new AbortController()
   inflight.set(`${automation.id}:${runId}`, runAbort)
 
-  // Build trigger context block prepended to the prompt so the agent knows
-  // why it's running.
+  // Build runtime context: discover what tools and apps are actually available
+  // so the autonomous agent can adapt rather than fail silently.
+  const { getAllTools } = await import('../tools')
+  const allToolNames = getAllTools().map(t => t.name).join(', ')
+  const allApps = listAvailableApps()
+  const appById = new Map(allApps.map(a => [a.id, a]))
+  const connectedApps = listConnections()
+    .map(c => `${appById.get(c.appId)?.name ?? c.appId} (${c.enabled ? 'connected' : 'disconnected'})`)
+    .join(', ') || 'none'
+
+  // Dedicated autonomous system prompt for headless execution.
+  // Deliberately does not include the WOS chat agent's routing/subagent/creation instructions.
+  // Inspired by OpenClaw's cron execution context: the agent executes the stored task directly —
+  // it never creates new automations, never asks the user, just does the work.
+  const autonomousSystemPrompt = [
+    'You are an autonomous task executor. You are running as a scheduled or triggered automation — no user is present.',
+    `Connected apps: ${connectedApps}`,
+    `Available tools: ${allToolNames}`,
+    '',
+    'CRITICAL RULES:',
+    '1. Execute the task described in the prompt DIRECTLY using the available tools.',
+    '2. Do NOT call automation_create, automation_update, automation_delete, or any other automation management tool.',
+    '   You ARE the automation — do the work, do not try to schedule or create more automations.',
+    '3. Do NOT ask the user any questions. There is no user to ask.',
+    '4. If a channel, repo, or resource is referenced but cannot be found or accessed, report that clearly and stop.',
+    '5. If a required app is disconnected, say which app is missing and stop gracefully.',
+    '6. Be concise. Report what you did and the outcome.',
+  ].join('\n')
+
+  // Build full prompt: intent + runtime context blocks for adaptive execution
   const triggerBlock = trigger
-    ? `\n\n<trigger>\n${typeof trigger === 'string' ? trigger : JSON.stringify(trigger, null, 2)}\n</trigger>`
+    ? `<trigger>\n${typeof trigger === 'string' ? trigger : JSON.stringify(trigger, null, 2)}\n</trigger>`
     : ''
-  const fullPrompt = `${automation.prompt}${triggerBlock}`
+  const contextBlock = [
+    `<available_tools>${allToolNames}</available_tools>`,
+    `<connected_apps>${connectedApps}</connected_apps>`,
+    triggerBlock,
+  ].filter(Boolean).join('\n')
+  const fullPrompt = `${automation.prompt}\n\n${contextBlock}`
 
   try {
     for await (const event of queryLoop({
@@ -102,15 +136,27 @@ export async function runAutomation(
       workspacePath: scratchDir,
       mode: 'default',
       reasoningEffort: 'medium',
-      systemPromptOverride: agent.systemPrompt,
+      systemPromptOverride: autonomousSystemPrompt,
       apiKeyOverride: agent.apiKeyOverride,
       signal: runAbort.signal,
       permissionStore: permStore,
       onPermissionRequest: async (toolName) => {
-        // Enforce allowlist + consent gates here.
+        // Automation management tools are NEVER allowed from within an automation.
+        // This mirrors OpenClaw's resolveCronOwnerOnlyToolAllowlist pattern:
+        // the cron/automation tool is excluded from cron execution to prevent recursive creation.
+        const AUTOMATION_MANAGEMENT = new Set([
+          'automation_create', 'automation_update', 'automation_delete',
+          'automation_toggle', 'automation_run_now',
+        ])
+        if (AUTOMATION_MANAGEMENT.has(toolName)) {
+          return 'deny'
+        }
+
+        // Enforce explicit allowlist if set (non-empty = user restricted this automation).
         if (automation.toolsAllow.length && !automation.toolsAllow.includes(toolName)) {
           return 'deny'
         }
+
         if (consent.isDestructive(toolName) && !consent.has(automation.id, toolName)) {
           return 'deny'
         }
@@ -123,7 +169,7 @@ export async function runAutomation(
         // Headless runs cannot ask the user. Auto-cancel.
         throw new Error('Automation runs cannot ask the user. Use a Task Flow with requires_human steps instead.')
       },
-      agentKey: 'automation_author',
+      agentKey: 'wos',
     })) {
       switch (event.type) {
         case 'text_delta':
@@ -153,6 +199,21 @@ export async function runAutomation(
     status = 'error'
   } finally {
     inflight.delete(`${automation.id}:${runId}`)
+  }
+
+  // Promote status to 'error' if any tool was silently denied.
+  // Previously these were swallowed and the run reported 'success' even though nothing worked.
+  if (status !== 'error') {
+    const denied = toolCalls.filter(tc =>
+      tc.error?.toLowerCase().includes('denied') ||
+      tc.error?.toLowerCase().includes('permission') ||
+      tc.error?.toLowerCase().includes('blocked by policy')
+    )
+    if (denied.length > 0) {
+      status = 'error'
+      const names = [...new Set(denied.map(t => t.tool))].join(', ')
+      errorMessage = `Tool access denied: ${names}. Ensure the required apps are connected and tools are available.`
+    }
   }
 
   audit.endRun(runId, status, output || null, errorMessage ?? null, toolCalls)

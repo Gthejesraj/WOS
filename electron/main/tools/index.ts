@@ -17,6 +17,7 @@ import { readSkillTool, readAppSkillTool } from '../skills/manager'
 import { readRuleTool } from '../rules/manager'
 import { meetingTools } from './meetings'
 import { automationTools } from './automations'
+import { projectTools } from './projects'
 import { buildPluginToolsSync } from '../plugins/loader'
 import { CONTEXT_TOOLS } from './context'
 import path from 'node:path'
@@ -107,6 +108,7 @@ export function getAllTools(): Tool[] {
     ...ensureValidNames(CONTEXT_TOOLS, 'context'),
     ...ensureValidNames(meetingTools, 'meetings'),
     ...ensureValidNames(automationTools, 'automations'),
+    ...ensureValidNames(projectTools, 'projects'),
     ...ensureValidNames(buildConnectedAppTools(), 'apps'),
     ...ensureValidNames(buildMcpTools(), 'mcp'),
     ...ensureValidNames(buildPluginToolsSync(), 'plugins'),

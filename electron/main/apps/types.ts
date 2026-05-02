@@ -64,5 +64,91 @@ export interface AppModule {
    * become individual snapshot scopes (e.g. "channels", "repos").
    */
   snapshot?(creds: Record<string, string>): Promise<Record<string, unknown[]>>
+  /**
+   * Optional: declare what kinds of project resources this app contributes.
+   * Used by the Projects feature to render dynamic pickers and refresh
+   * loops. The catalogue is derived live from connected apps — never
+   * hardcoded — so new apps automatically participate.
+   */
+  projectResourceTypes?(): ProjectResourceTypeDef[]
+}
+
+export interface ProjectResourceTypeDef {
+  /** Namespaced kind, e.g. 'slack:channel', 'github:repo'. */
+  kind: string
+  /** Human label rendered in the picker. */
+  label: string
+  /** Short helper sentence shown under the label. */
+  description?: string
+  /** Allow multiple selections in the picker UI. */
+  multiSelect: boolean
+  /**
+   * Renderer-side picker component id. The renderer maintains a registry
+   * mapping these ids to React components. Falls back to a generic snapshot
+   * picker when unknown.
+   */
+  pickerComponentId: string
+  /**
+   * Snapshot scope to source picker choices from (when using the generic
+   * picker). e.g. 'channels' | 'repos'. When omitted the renderer falls
+   * back to a free-form text input.
+   */
+  snapshotScope?: string
+  /** Default refresh cadence in seconds for resources of this kind. */
+  refreshIntervalSec: number
+  /**
+   * Declarative schema for the "custom value" fallback in the picker UI.
+   * Pure data (no functions) so it can cross IPC. The renderer renders a
+   * tiny form using these fields, then submits them as the resource ref.
+   * Apps are encouraged to ship this so the renderer never has to hand-code
+   * per-kind labels/placeholders.
+   */
+  refSchema?: ProjectResourceRefSchema
+  /** Plain-text examples of valid refs (shown as placeholder hints). */
+  refExamples?: string[]
+  /**
+   * Optional fetcher: pulls fresh data for one resource. Receives the
+   * stored ref payload from project_resources and returns activity-shaped
+   * objects to be normalised into project_activity by the refresh loop.
+   * Implementations are app-specific.
+   *
+   * NOTE: this function is server-only — it must NEVER be included in any
+   * IPC payload because Electron's structured-clone cannot serialize
+   * functions. `apps/manager.ts → listProjectResourceTypes()` strips it
+   * before returning. Use `findFetcherFor(appId, kind)` server-side to look
+   * it up at refresh time.
+   */
+  fetcher?(creds: Record<string, string>, ref: unknown): Promise<unknown>
+}
+
+export interface ProjectResourceRefSchema {
+  /** Plain-language helper sentence shown above the form. */
+  hint?: string
+  /** One or more form fields the user fills in to construct the ref. */
+  fields: ProjectResourceRefField[]
+  /**
+   * If set, the renderer also exposes a "Paste raw JSON / URL" toggle that
+   * accepts a single string and parses it via the listed strategies. All
+   * strategies are pure regex/string operations (no functions over IPC).
+   */
+  pasteParsers?: ProjectResourceRefPasteParser[]
+}
+
+export interface ProjectResourceRefField {
+  name: string
+  label: string
+  /** 'text' renders an input; 'textarea' a multiline; 'select' a dropdown. */
+  type: 'text' | 'textarea' | 'select'
+  required?: boolean
+  placeholder?: string
+  hint?: string
+  options?: Array<{ value: string; label: string }>
+}
+
+export interface ProjectResourceRefPasteParser {
+  /** Regex string that, when matched against pasted input, yields named groups. */
+  regex: string
+  /** Map of regex group → ref field name. */
+  groupToField: Record<string, string>
 }
 

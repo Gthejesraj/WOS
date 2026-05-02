@@ -223,7 +223,7 @@ export async function initDatabase(): Promise<WosDb> {
     -- ── Automations v2 (OpenClaw-parity, redesigned) ─────────────────────
     CREATE TABLE IF NOT EXISTS automations (
       id TEXT PRIMARY KEY,
-      kind TEXT NOT NULL,           -- 'cron' | 'heartbeat' | 'hook' | 'standing_order' | 'task_flow' | 'webhook'
+      kind TEXT NOT NULL,           -- 'schedule' | 'hook' | 'webhook'
       name TEXT NOT NULL,
       description TEXT,
       enabled INTEGER NOT NULL DEFAULT 1,
@@ -327,9 +327,159 @@ export async function initDatabase(): Promise<WosDb> {
       data_json TEXT NOT NULL DEFAULT '[]',
       fetched_at INTEGER NOT NULL,
       etag TEXT,
+      project_id TEXT,
+      resource_ref TEXT,
       PRIMARY KEY (app_id, scope)
     );
 
+    -- ── Projects ─────────────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS projects (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL UNIQUE,
+      icon TEXT,
+      color TEXT,
+      status TEXT NOT NULL DEFAULT 'draft',
+      owner_email TEXT,
+      description TEXT,
+      summary TEXT,
+      health_score INTEGER,
+      risk_level TEXT,
+      model_override TEXT,
+      pinned INTEGER NOT NULL DEFAULT 0,
+      metadata_json TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      archived_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
+    CREATE INDEX IF NOT EXISTS idx_projects_pinned ON projects(pinned);
+
+    CREATE TABLE IF NOT EXISTS project_resources (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      ref TEXT NOT NULL,
+      label TEXT NOT NULL,
+      description TEXT,
+      added_at INTEGER NOT NULL,
+      last_fetched_at INTEGER,
+      refresh_interval_sec INTEGER,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_resources_pid ON project_resources(project_id);
+    CREATE INDEX IF NOT EXISTS idx_project_resources_kind ON project_resources(kind);
+
+    CREATE TABLE IF NOT EXISTS project_widgets (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      tab TEXT NOT NULL,
+      widget_kind TEXT NOT NULL,
+      config_json TEXT,
+      x INTEGER NOT NULL DEFAULT 0,
+      y INTEGER NOT NULL DEFAULT 0,
+      w INTEGER NOT NULL DEFAULT 4,
+      h INTEGER NOT NULL DEFAULT 3,
+      hidden INTEGER NOT NULL DEFAULT 0,
+      sort INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_widgets_pid_tab ON project_widgets(project_id, tab);
+
+    CREATE TABLE IF NOT EXISTS project_alerts (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      rule_kind TEXT NOT NULL,
+      config_json TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      severity TEXT NOT NULL DEFAULT 'important',
+      last_fired_at INTEGER,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_alerts_pid ON project_alerts(project_id);
+
+    CREATE TABLE IF NOT EXISTS project_summaries (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      body TEXT NOT NULL,
+      model_used TEXT,
+      tokens_in INTEGER DEFAULT 0,
+      tokens_out INTEGER DEFAULT 0,
+      generated_at INTEGER NOT NULL,
+      source_fingerprint TEXT,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_summaries_pid_kind ON project_summaries(project_id, kind);
+
+    CREATE TABLE IF NOT EXISTS project_activity (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      source_app TEXT NOT NULL,
+      source_kind TEXT NOT NULL,
+      ts INTEGER NOT NULL,
+      actor TEXT,
+      title TEXT NOT NULL,
+      url TEXT,
+      payload_json TEXT,
+      dedupe_key TEXT NOT NULL,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_activity_pid_ts ON project_activity(project_id, ts);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_project_activity_dedupe ON project_activity(project_id, dedupe_key);
+
+    CREATE TABLE IF NOT EXISTS project_metrics (
+      project_id TEXT NOT NULL,
+      metric_key TEXT NOT NULL,
+      ts INTEGER NOT NULL,
+      value INTEGER NOT NULL,
+      unit TEXT,
+      PRIMARY KEY (project_id, metric_key, ts),
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS project_decisions (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT,
+      decided_at INTEGER NOT NULL,
+      decided_by TEXT,
+      linked_activity_id TEXT,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_decisions_pid ON project_decisions(project_id);
+
+    CREATE TABLE IF NOT EXISTS project_risks (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      severity TEXT NOT NULL DEFAULT 'medium',
+      status TEXT NOT NULL DEFAULT 'open',
+      owner TEXT,
+      mitigation TEXT,
+      created_at INTEGER NOT NULL,
+      resolved_at INTEGER,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_risks_pid ON project_risks(project_id);
+
+    CREATE TABLE IF NOT EXISTS project_people (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      email TEXT,
+      role TEXT,
+      avatar_url TEXT,
+      source_app TEXT,             -- 'manual' | 'slack' | 'github' | 'jira' | 'google'
+      external_id TEXT,            -- e.g. slack user id, github login, email
+      notes TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_people_pid ON project_people(project_id);
   `)
   // FTS5 ships with the better-sqlite3 amalgamation, so we always create the
   // virtual table + sync triggers — no probe + LIKE fallback needed.
@@ -373,6 +523,10 @@ export async function initDatabase(): Promise<WosDb> {
   tryExec('DROP TABLE IF EXISTS hook_runs')
   tryExec('DROP TABLE IF EXISTS hooks')
   tryExec('DROP TABLE IF EXISTS standing_orders')
+  // Projects feature: ensure new columns exist on app_context_snapshots for
+  // installs that pre-date the projects feature.
+  tryExec('ALTER TABLE app_context_snapshots ADD COLUMN project_id TEXT')
+  tryExec('ALTER TABLE app_context_snapshots ADD COLUMN resource_ref TEXT')
   runMigrations(_sqlDb)
 
   // Seed default settings on first run
@@ -447,6 +601,12 @@ export function queryRaw<T extends Record<string, unknown> = Record<string, unkn
 ): T[] {
   if (!_sqlDb) throw new Error('Database not initialized — call initDatabase() first')
   return _sqlDb.prepare(sql).all(...toSqliteParams(params)) as T[]
+}
+
+/** Execute a DDL or multi-statement SQL string (no parameters). */
+export function execRaw(sql: string): void {
+  if (!_sqlDb) throw new Error('Database not initialized — call initDatabase() first')
+  _sqlDb.exec(sql)
 }
 
 export { schema }

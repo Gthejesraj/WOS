@@ -214,11 +214,8 @@ export const subagentRuns = sqliteTable('subagent_runs', {
 // OpenClaw-parity rebuild. See plan.md and electron/main/automations/.
 
 export type AutomationKind =
-  | 'cron'
-  | 'heartbeat'
+  | 'schedule'
   | 'hook'
-  | 'standing_order'
-  | 'task_flow'
   | 'webhook'
 
 export type AutomationResultDelivery = 'silent' | 'notify' | 'chat' | 'external'
@@ -320,4 +317,138 @@ export const appContextSnapshots = sqliteTable('app_context_snapshots', {
   dataJson: text('data_json').notNull().default('[]'),
   fetchedAt: integer('fetched_at').notNull(),
   etag: text('etag'),
+  // Optional project scoping — set when the snapshot was fetched in the
+  // context of a specific project resource (e.g. a single Slack channel
+  // linked to project Atlas). Null for app-wide catalogue snapshots.
+  projectId: text('project_id'),
+  resourceRef: text('resource_ref'),
+})
+
+// ─── Projects ─────────────────────────────────────────────────────────────────
+// First-class hub linking resources from connected apps + WOS-native to a
+// single dashboard. See plan.md for full spec.
+
+export type ProjectStatus = 'draft' | 'active' | 'paused' | 'shipped' | 'archived'
+export type ProjectRiskLevel = 'low' | 'medium' | 'high' | 'critical'
+
+export const projects = sqliteTable('projects', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  slug: text('slug').notNull().unique(),
+  icon: text('icon'),                    // emoji or short string
+  color: text('color'),                  // hex / css color
+  status: text('status').notNull().default('draft'),
+  ownerEmail: text('owner_email'),
+  description: text('description'),
+  summary: text('summary'),              // latest short AI summary cached
+  healthScore: integer('health_score'),  // 0..100
+  riskLevel: text('risk_level'),         // ProjectRiskLevel
+  modelOverride: text('model_override'), // optional per-project model id
+  pinned: integer('pinned', { mode: 'boolean' }).notNull().default(false),
+  metadataJson: text('metadata_json', { mode: 'json' }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  archivedAt: integer('archived_at', { mode: 'timestamp' }),
+})
+
+// Each row links one external/native resource to a project.
+// `kind` is namespaced by source app or native domain:
+//   slack:channel · github:repo · jira:project · jira:epic · google:calendar
+//   google:drive_folder · google:gmail_label · meeting · workspace:file ·
+//   mcp:resource · conversation · note · custom_link
+export const projectResources = sqliteTable('project_resources', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull(),
+  kind: text('kind').notNull(),
+  ref: text('ref', { mode: 'json' }).notNull(), // app-specific identifier blob
+  label: text('label').notNull(),
+  description: text('description'),
+  addedAt: integer('added_at', { mode: 'timestamp' }).notNull(),
+  lastFetchedAt: integer('last_fetched_at', { mode: 'timestamp' }),
+  refreshIntervalSec: integer('refresh_interval_sec'),
+})
+
+// One row per widget instance placed on a tab of a project's detail view.
+export const projectWidgets = sqliteTable('project_widgets', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull(),
+  tab: text('tab').notNull(),            // 'overview' | 'activity' | ...
+  widgetKind: text('widget_kind').notNull(),
+  configJson: text('config_json', { mode: 'json' }),
+  x: integer('x').notNull().default(0),
+  y: integer('y').notNull().default(0),
+  w: integer('w').notNull().default(4),
+  h: integer('h').notNull().default(3),
+  hidden: integer('hidden', { mode: 'boolean' }).notNull().default(false),
+  sort: integer('sort').notNull().default(0),
+})
+
+export const projectAlerts = sqliteTable('project_alerts', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull(),
+  ruleKind: text('rule_kind').notNull(), // 'p1_ticket' | 'pr_awaiting_review' | 'mention' | 'meeting_soon' | 'ai_risk'
+  configJson: text('config_json', { mode: 'json' }),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  severity: text('severity').notNull().default('important'), // 'all' | 'important' | 'off'
+  lastFiredAt: integer('last_fired_at', { mode: 'timestamp' }),
+})
+
+// AI-generated summaries (executive, weekly, risk, decisions).
+// `sourceFingerprint` lets us decide if regeneration is needed.
+export const projectSummaries = sqliteTable('project_summaries', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull(),
+  kind: text('kind').notNull(),         // 'executive' | 'weekly' | 'risk' | 'decisions'
+  body: text('body').notNull(),
+  modelUsed: text('model_used'),
+  tokensIn: integer('tokens_in').default(0),
+  tokensOut: integer('tokens_out').default(0),
+  generatedAt: integer('generated_at', { mode: 'timestamp' }).notNull(),
+  sourceFingerprint: text('source_fingerprint'),
+})
+
+// Cross-app activity feed normalised into a single timeline.
+export const projectActivity = sqliteTable('project_activity', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull(),
+  sourceApp: text('source_app').notNull(),  // 'slack' | 'github' | ...
+  sourceKind: text('source_kind').notNull(), // 'message' | 'pr_opened' | ...
+  ts: integer('ts', { mode: 'timestamp' }).notNull(),
+  actor: text('actor'),
+  title: text('title').notNull(),
+  url: text('url'),
+  payloadJson: text('payload_json', { mode: 'json' }),
+  dedupeKey: text('dedupe_key').notNull(),
+})
+
+// Time-series KPI samples for sparklines/trends.
+export const projectMetrics = sqliteTable('project_metrics', {
+  projectId: text('project_id').notNull(),
+  metricKey: text('metric_key').notNull(), // 'open_prs' | 'open_p1' | 'velocity' | ...
+  ts: integer('ts', { mode: 'timestamp' }).notNull(),
+  value: integer('value').notNull(),
+  unit: text('unit'),
+})
+
+export const projectDecisions = sqliteTable('project_decisions', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull(),
+  title: text('title').notNull(),
+  body: text('body'),
+  decidedAt: integer('decided_at', { mode: 'timestamp' }).notNull(),
+  decidedBy: text('decided_by'),
+  linkedActivityId: text('linked_activity_id'),
+})
+
+export const projectRisks = sqliteTable('project_risks', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull(),
+  title: text('title').notNull(),
+  description: text('description'),
+  severity: text('severity').notNull().default('medium'), // ProjectRiskLevel
+  status: text('status').notNull().default('open'),       // 'open' | 'mitigating' | 'resolved' | 'accepted'
+  owner: text('owner'),
+  mitigation: text('mitigation'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  resolvedAt: integer('resolved_at', { mode: 'timestamp' }),
 })

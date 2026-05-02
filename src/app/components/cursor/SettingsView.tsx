@@ -144,7 +144,7 @@ function PreferencesSection() {
 
 // AI & Agents = Model + Reasoning + Agents + Workspaces
 function AIAgentsSection() {
-  const { defaultModel, reasoningEffort, saveSetting } = useSettingsStore()
+  const { defaultModel, reasoningEffort, intentModel, intentEnabled, maxSubagentDepth, maxSubagentBreadth, memoryEnabled, saveSetting } = useSettingsStore()
   const { models, loading, refresh } = useSavedModels()
 
   const selected = models.find(m => m.id === defaultModel)
@@ -206,6 +206,102 @@ function AIAgentsSection() {
       <div className="space-y-6">
         <h3 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Agents</h3>
         <AgentsSection />
+      </div>
+
+      <div style={{ height: '1px', background: 'var(--border)' }} />
+
+      {/* Intent Engine */}
+      <div className="space-y-4">
+        <h3 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Intent Engine</h3>
+        <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+          Automatically selects the right tools based on what you're asking — reduces noise and speeds up responses.
+        </p>
+        <Field label="Enable Intent Routing" hint="Pre-classifies each message with a fast model to filter to relevant tools">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => saveSetting('intentEnabled', !intentEnabled)}
+              className="px-3 py-1.5 rounded-md text-xs transition-colors"
+              style={{
+                background: intentEnabled ? 'var(--amber-muted)' : 'var(--surface-base)',
+                color: intentEnabled ? 'var(--amber)' : 'var(--muted-foreground)',
+                border: intentEnabled ? '1px solid var(--surface-stronger)' : '1px solid var(--border)',
+              }}
+            >
+              {intentEnabled ? 'Enabled' : 'Disabled'}
+            </button>
+          </div>
+        </Field>
+        <div className={intentEnabled ? '' : 'opacity-40 pointer-events-none'}>
+          <Field label="Intent Model" hint="Lightweight model used for pre-call intent classification">
+            <ModelAutocomplete
+              models={models}
+              loading={loading}
+              value={intentModel}
+              onChange={(id) => saveSetting('intentModel', id)}
+              onRefresh={refresh}
+            />
+            <p className="mt-1 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+              Default: claude-haiku-4-5-20251001 (fast, cheap, recommended)
+            </p>
+          </Field>
+        </div>
+      </div>
+
+      <div style={{ height: '1px', background: 'var(--border)' }} />
+
+      {/* Subagent Limits */}
+      <div className="space-y-4">
+        <h3 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Subagent Limits</h3>
+        <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+          Prevent unbounded subagent spawning that can exhaust memory and API quota.
+        </p>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Max Depth" hint="Nesting levels (1 = top-level only)">
+            <input
+              type="number"
+              min={1}
+              max={10}
+              value={maxSubagentDepth}
+              onChange={e => saveSetting('maxSubagentDepth', Math.max(1, parseInt(e.target.value, 10) || 3))}
+              className="w-full px-3 py-2 rounded-lg text-xs"
+              style={{ background: 'var(--input)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+            />
+          </Field>
+          <Field label="Max Breadth" hint="Parallel subagents per parent">
+            <input
+              type="number"
+              min={1}
+              max={20}
+              value={maxSubagentBreadth}
+              onChange={e => saveSetting('maxSubagentBreadth', Math.max(1, parseInt(e.target.value, 10) || 5))}
+              className="w-full px-3 py-2 rounded-lg text-xs"
+              style={{ background: 'var(--input)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+            />
+          </Field>
+        </div>
+      </div>
+
+      <div style={{ height: '1px', background: 'var(--border)' }} />
+
+      {/* Memory */}
+      <div className="space-y-4">
+        <h3 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Cross-Conversation Memory</h3>
+        <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+          Extracts key facts from conversations and recalls them in future sessions. Stored locally, never synced.
+        </p>
+        <Field label="Enable Memory" hint="Facts are extracted by a background haiku call after each turn">
+          <button
+            onClick={() => saveSetting('memoryEnabled', !memoryEnabled)}
+            className="px-3 py-1.5 rounded-md text-xs transition-colors"
+            style={{
+              background: memoryEnabled ? 'var(--amber-muted)' : 'var(--surface-base)',
+              color: memoryEnabled ? 'var(--amber)' : 'var(--muted-foreground)',
+              border: memoryEnabled ? '1px solid var(--surface-stronger)' : '1px solid var(--border)',
+            }}
+          >
+            {memoryEnabled ? 'Enabled' : 'Disabled'}
+          </button>
+        </Field>
       </div>
 
       <div style={{ height: '1px', background: 'var(--border)' }} />
@@ -917,7 +1013,6 @@ interface AutomationsConfig {
   defaultTimezone: string
   webhookPort: number
   tunnelProvider: 'cloudflared' | 'none'
-  heartbeatMinSec: number
   ledgerRetentionDays: number
   sandboxDir: string
   subagentPromptOverride: string
@@ -929,7 +1024,6 @@ const AUTOMATIONS_DEFAULTS: AutomationsConfig = {
   defaultTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
   webhookPort: 47817,
   tunnelProvider: 'none',
-  heartbeatMinSec: 30,
   ledgerRetentionDays: 30,
   sandboxDir: '',
   subagentPromptOverride: '',
@@ -937,7 +1031,7 @@ const AUTOMATIONS_DEFAULTS: AutomationsConfig = {
 
 const AUTOMATIONS_KEYS: (keyof AutomationsConfig)[] = [
   'masterEnabled', 'launchAtLogin', 'defaultTimezone', 'webhookPort',
-  'tunnelProvider', 'heartbeatMinSec', 'ledgerRetentionDays', 'sandboxDir',
+  'tunnelProvider', 'ledgerRetentionDays', 'sandboxDir',
   'subagentPromptOverride',
 ]
 
@@ -1074,18 +1168,6 @@ function AutomationsSection() {
       <div className="space-y-6">
         <h3 className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Limits & safety</h3>
 
-        <Field label="Minimum heartbeat interval (seconds)" hint="Floor for `heartbeat` automations to prevent runaway loops.">
-          <input
-            type="number"
-            min={5}
-            value={cfg.heartbeatMinSec}
-            onChange={e => setCfg(c => ({ ...c, heartbeatMinSec: Number(e.target.value) }))}
-            onBlur={e => update('heartbeatMinSec', Number(e.target.value))}
-            className="w-32 px-2 py-1.5 rounded-md font-mono"
-            style={{ background: 'var(--surface-base)', border: '1px solid var(--border)', color: 'var(--foreground)', fontSize: '12px' }}
-          />
-        </Field>
-
         <Field label="Tasks ledger retention (days)" hint="Older entries are auto-pruned.">
           <input
             type="number"
@@ -1123,7 +1205,7 @@ function AutomationsSection() {
             onChange={e => setCfg(c => ({ ...c, subagentPromptOverride: e.target.value }))}
             onBlur={e => update('subagentPromptOverride', e.target.value)}
             rows={6}
-            placeholder="(uses default automation_author prompt)"
+            placeholder="(uses default subagent prompt)"
             className="w-full px-2 py-1.5 rounded-md font-mono"
             style={{ background: 'var(--surface-base)', border: '1px solid var(--border)', color: 'var(--foreground)', fontSize: '11px' }}
           />

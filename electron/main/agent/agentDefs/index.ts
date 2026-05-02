@@ -14,7 +14,7 @@
 import type { Tool } from '../../tools'
 import { wosAgent } from './wos'
 import { meetingAgent } from './meeting'
-import { automationAuthorAgent } from './automationAuthor'
+import { projectsAgent } from './projects'
 
 export interface AgentDef {
   key: string
@@ -29,7 +29,7 @@ export interface AgentDef {
 const defs: Record<string, AgentDef> = {
   [wosAgent.key]: wosAgent,
   [meetingAgent.key]: meetingAgent,
-  [automationAuthorAgent.key]: automationAuthorAgent,
+  [projectsAgent.key]: projectsAgent,
 }
 
 export function getAgentDef(key: string | undefined | null): AgentDef | undefined {
@@ -41,4 +41,4 @@ export function listAgentDefs(): AgentDef[] {
   return Object.values(defs)
 }
 
-export { wosAgent, meetingAgent, automationAuthorAgent }
+export { wosAgent, meetingAgent, projectsAgent }
