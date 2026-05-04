@@ -89,10 +89,10 @@ contextBridge.exposeInMainWorld('wos', {
   saveAgentSettings: (input: unknown) => ipcRenderer.invoke('settings:agents:save', input),
 
   // API Keys
-  saveApiKey: (provider: 'openai' | 'anthropic', key: string) =>
+  saveApiKey: (provider: 'openai' | 'anthropic' | 'hf' | 'openrouter' | 'together', key: string) =>
     ipcRenderer.invoke('settings:save-api-key', { provider, key }),
   getApiKeysPresence: () => ipcRenderer.invoke('settings:get-api-keys-presence'),
-  testApiKey: (provider: 'openai' | 'anthropic', key: string) =>
+  testApiKey: (provider: 'openai' | 'anthropic' | 'hf' | 'openrouter' | 'together', key: string) =>
     ipcRenderer.invoke('settings:test-api-key', { provider, key }),
 
   // Models

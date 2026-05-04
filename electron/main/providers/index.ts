@@ -1,19 +1,23 @@
 import { OpenAIProvider } from './openai'
 import { AnthropicProvider } from './anthropic'
+import { VLLMProvider, WOS_FINE_TUNED_MODELS } from './vllm'
 import type { ModelProvider, ModelInfo } from './types'
 import { enrichModel } from './capabilities'
 
 const providers: Record<string, ModelProvider> = {
   openai: new OpenAIProvider(),
   anthropic: new AnthropicProvider(),
+  wos: new VLLMProvider(),
 }
 
 export function getProvider(model: string): ModelProvider {
   return providers[getProviderNameForModel(model)]
 }
 
-export function getProviderNameForModel(model: string): 'openai' | 'anthropic' {
+export function getProviderNameForModel(model: string): 'openai' | 'anthropic' | 'wos' {
   if (model.startsWith('claude')) return 'anthropic'
+  if (model.startsWith('wos-')) return 'wos'
+  if (model.startsWith('qwen-')) return 'wos'
   if (
     model.startsWith('gpt-') ||
     model.startsWith('o1') ||
@@ -26,7 +30,7 @@ export function getProviderNameForModel(model: string): 'openai' | 'anthropic' {
   return 'openai'
 }
 
-export function getProviderByName(name: 'openai' | 'anthropic'): ModelProvider {
+export function getProviderByName(name: 'openai' | 'anthropic' | 'wos'): ModelProvider {
   return providers[name]
 }
 
@@ -40,6 +44,8 @@ export const FALLBACK_MODELS: ModelInfo[] = ([
   { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai' },
   { id: 'o3', name: 'o3', provider: 'openai' },
   { id: 'o4-mini', name: 'o4-mini', provider: 'openai' },
+  // WOS fine-tuned models (served via vLLM or HF Inference Endpoints)
+  ...WOS_FINE_TUNED_MODELS,
 ] as ModelInfo[]).map(enrichModel)
 
 export { providers }

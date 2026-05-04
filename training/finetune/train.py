@@ -43,7 +43,7 @@ def format_sample(example, tokenizer):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", choices=["coding", "meeting"], required=True)
+    parser.add_argument("--model", choices=["coding", "meeting", "main"], required=True)
     args = parser.parse_args()
 
     cfg = MODEL_CONFIGS[args.model]

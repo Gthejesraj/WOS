@@ -821,8 +821,8 @@ function ApiKeysSection() {
 }
 
 function ApiKeyRow({
-  provider, label, hasKey, onChange,
-}: { provider: 'openai' | 'anthropic'; label: string; hasKey: boolean; onChange: () => void }) {
+  provider, label, hasKey, onChange, hint,
+}: { provider: 'openai' | 'anthropic' | 'hf' | 'openrouter' | 'together'; label: string; hasKey: boolean; onChange: () => void; hint?: string }) {
   const [value, setValue] = useState('')
   const [state, setState] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -837,6 +837,13 @@ function ApiKeyRow({
 
   const save = async () => {
     if (!value) return
+    if (provider === 'hf' || provider === 'openrouter' || provider === 'together') {
+      await window.wos.saveApiKey(provider, value)
+      toast.success(`${label} key saved`)
+      setValue(''); setState('idle')
+      onChange()
+      return
+    }
     setState('testing'); setError(null)
     const r = await window.wos.testApiKey(provider, value)
     if (!r.ok) { setState('error'); setError(r.error ?? 'Failed'); return }
@@ -854,6 +861,11 @@ function ApiKeyRow({
           <div style={{ color: 'var(--muted-foreground)', fontSize: '11px' }}>
             {hasKey ? '✓ Key configured' : 'No key saved'}
           </div>
+          {hint && (
+            <div style={{ color: 'var(--muted-foreground)', fontSize: '10px', marginTop: '2px', maxWidth: '360px' }}>
+              {hint}
+            </div>
+          )}
         </div>
       </div>
       <div className="flex items-center gap-2">

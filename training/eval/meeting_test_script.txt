@@ -1,0 +1,140 @@
+# Meeting Agent Test Script
+## Use this BEFORE and AFTER fine-tuning to compare results
+
+---
+
+## THE MEETING TRANSCRIPT
+### (Paste this into WOS app when testing)
+
+```
+Meeting: WOS Product Sprint Planning — Q3 Review & Roadmap
+Date: May 3, 2026
+Attendees: Sarah (PM), James (Lead Engineer), Priya (Designer), Tom (QA), Marcus (CEO)
+
+---
+
+Marcus: Alright everyone, let's get started. First I want to address the Q3 numbers. 
+We hit 82% of our revenue target which is below expectations. Sarah, can you walk us through what happened?
+
+Sarah: Sure. The main issue was the delayed launch of the automation feature. We originally 
+planned to ship it by March 15th but it didn't go out until April 2nd. That 18-day delay 
+cost us roughly 3 enterprise clients who went with a competitor.
+
+James: To be fair, we had two critical bugs in the webhook integration that we couldn't 
+ship with. We made the right call delaying it.
+
+Marcus: I agree the call was right, but we need better early warning systems. James, 
+can you put together a proposal for an improved QA pipeline by next Friday?
+
+James: Yes I can do that.
+
+Tom: I'd like to be involved in that — I have some ideas around automated regression testing 
+that could help catch these issues earlier.
+
+James: Absolutely Tom, let's sync Wednesday at 2pm to align before I write the proposal.
+
+Sarah: On the roadmap side, we have three major items for Q4. First, the mobile app — 
+Priya has completed 80% of the designs. Second, the AI meeting summarizer which is our 
+biggest priority. Third, the Slack deep integration.
+
+Priya: For mobile, I need engineering feedback on the navigation flow by May 10th. 
+After that I can finalize the remaining screens in about a week.
+
+James: I'll review the mobile designs by May 9th and send feedback same day.
+
+Sarah: For the AI meeting summarizer — Marcus, you mentioned a budget for this. 
+What are we looking at?
+
+Marcus: We're allocating $50,000 for the meeting summarizer feature. That covers 
+API costs, one additional engineer hire, and marketing. I want this live by August 1st.
+
+James: August 1st is tight. Realistically I'd say August 15th if we start hiring now.
+
+Marcus: Let's say August 10th as a compromise. Sarah, can you post the job listing today?
+
+Sarah: Will do. I'll have it up on LinkedIn and our careers page by end of day.
+
+Tom: I want to flag a performance issue we found last week. Under heavy load, 
+the agent response time goes from 1.2 seconds to over 8 seconds. This needs to be 
+fixed before we onboard any more enterprise clients.
+
+James: That's a known issue with the context window size. I'll assign it to David 
+with a target fix date of May 12th.
+
+Marcus: Good. Anything else before we wrap up?
+
+Priya: Just a reminder that the design system documentation needs to be updated. 
+I'll have that done by May 7th.
+
+Sarah: One more thing — the customer success team needs training on the new 
+automation features. I'll schedule a session for May 15th.
+
+Marcus: Perfect. Let's reconvene next Monday same time. Thanks everyone.
+```
+
+---
+
+## TEST PROMPTS
+### Run these one by one in the WOS app
+
+**Prompt 1 — Summary:**
+```
+Please summarize the above meeting transcript in 5-6 bullet points covering the key topics discussed.
+```
+
+**Prompt 2 — Action Items:**
+```
+Extract all action items from this meeting. For each one list: who is responsible, what they need to do, and the deadline.
+```
+
+**Prompt 3 — Decisions:**
+```
+What key decisions were made in this meeting? List each decision clearly.
+```
+
+**Prompt 4 — Follow-up Email:**
+```
+Write a follow-up email to send to all meeting attendees summarizing what was discussed, decisions made, and next steps.
+```
+
+**Prompt 5 — Risk Analysis:**
+```
+Based on this meeting, what are the top 3 risks to the project and how should the team address them?
+```
+
+---
+
+## HOW TO USE THIS
+
+### Step 1 — Before Fine-tuning (GPT-5.4)
+1. Open WOS app
+2. Make sure model is set to **GPT-5.4**
+3. Paste the transcript above into chat
+4. Ask each prompt one by one
+5. Screenshot every response or copy to a doc
+
+### Step 2 — After Fine-tuning (wos-meeting-32b)
+1. Open WOS app
+2. Switch model to **WOS Meeting (fine-tuned)**
+3. Start a NEW conversation
+4. Paste the SAME transcript
+5. Ask the EXACT SAME prompts
+6. Screenshot every response
+
+### Step 3 — Compare
+Look for differences in:
+- **Accuracy** — does it catch all action items?
+- **Structure** — is the output better organized?
+- **Detail** — does it include dates, owners, deadlines?
+- **Speed** — how fast does it respond?
+
+---
+
+## WHAT TO EXPECT AFTER FINE-TUNING
+
+The fine-tuned meeting model should:
+- Extract action items more completely (catch all 7 action items in this transcript)
+- Always include owner + deadline for each item
+- Produce more structured summaries
+- Write better follow-up emails with proper sections
+- Identify risks more specifically tied to meeting content

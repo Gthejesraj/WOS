@@ -123,7 +123,9 @@ export async function resolveAgent(agentKey: AgentKey): Promise<AgentRuntimeSett
 
   if (!model) model = defaults.model
   const provider = getProviderNameForModel(model)
-  const apiKeyOverride = decryptAgentKey(config, provider) ?? await getDecryptedApiKeyOrNull(provider) ?? undefined
+  const keystoreProvider = provider === 'wos' ? null : provider
+  const agentKeyDecrypted = keystoreProvider ? decryptAgentKey(config, keystoreProvider) : undefined
+  const apiKeyOverride = agentKeyDecrypted ?? (keystoreProvider ? await getDecryptedApiKeyOrNull(keystoreProvider) : null) ?? undefined
 
   return {
     agentKey,

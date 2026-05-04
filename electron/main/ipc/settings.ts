@@ -4,6 +4,7 @@ import { getDb, schema, notifyWrite } from '../db'
 import { eq } from 'drizzle-orm'
 import { encryptApiKey, decryptApiKey } from '../crypto'
 import { getProviderByName, FALLBACK_MODELS } from '../providers'
+import { WOS_FINE_TUNED_MODELS } from '../providers/vllm'
 import { getDecryptedApiKeyOrNull } from '../providers/keystore'
 import { resolveAgent, redactAgentConfig, type AgentConfig } from '../agent/settings'
 
@@ -117,7 +118,7 @@ export function registerSettingsHandlers() {
     return { success: true, config: redactAgentConfig(config) }
   })
 
-  ipcMain.handle('settings:save-api-key', (_event, { provider, key }: { provider: 'openai' | 'anthropic'; key: string }) => {
+  ipcMain.handle('settings:save-api-key', (_event, { provider, key }: { provider: 'openai' | 'anthropic' | 'hf' | 'openrouter' | 'together'; key: string }) => {
     const db = getDb()
     const { encrypted, iv } = encryptApiKey(key)
     const now = new Date()
@@ -144,8 +145,11 @@ export function registerSettingsHandlers() {
 
   ipcMain.handle(
     'settings:test-api-key',
-    async (_event, { provider, key }: { provider: 'openai' | 'anthropic'; key: string }) => {
+    async (_event, { provider, key }: { provider: 'openai' | 'anthropic' | 'hf' | 'openrouter' | 'together'; key: string }) => {
       try {
+        if (provider === 'hf' || provider === 'openrouter' || provider === 'together') {
+          return { ok: true, modelCount: 1 }
+        }
         const p = getProviderByName(provider)
         const models = await p.fetchModels(key)
         return { ok: true, modelCount: models.length }
@@ -189,7 +193,7 @@ export function registerSettingsHandlers() {
     if (merged.length === 0) {
       return { success: false, models: FALLBACK_MODELS, errors: results.filter(r => r.error) }
     }
-    return { success: true, models: merged, errors: results.filter(r => r.error) }
+    return { success: true, models: [...merged, ...WOS_FINE_TUNED_MODELS], errors: results.filter(r => r.error) }
   })
 
   ipcMain.handle('app:version', () => app.getVersion())
