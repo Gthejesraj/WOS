@@ -169,11 +169,21 @@ def main():
     # Training
     output_dir = f"./checkpoints/wos-{args.model}-{args.base}"
 
+    # Auto-scale batch size: 80GB GPU → batch 4, 40GB → batch 2
+    gpu_mem_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
+    if gpu_mem_gb >= 70:
+        per_device_batch = 4
+        grad_accum = 4
+    else:
+        per_device_batch = 2
+        grad_accum = 8
+    print(f"GPU memory: {gpu_mem_gb:.0f}GB → batch_size={per_device_batch}, grad_accum={grad_accum}")
+
     training_args = TrainingArguments(
         output_dir=output_dir,
         num_train_epochs=cfg["num_train_epochs"],
-        per_device_train_batch_size=4,
-        gradient_accumulation_steps=4,
+        per_device_train_batch_size=per_device_batch,
+        gradient_accumulation_steps=grad_accum,
         warmup_ratio=0.03,
         learning_rate=cfg["learning_rate"],
         weight_decay=0.01,
