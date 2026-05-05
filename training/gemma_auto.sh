@@ -2,6 +2,9 @@
 LOG=/workspace/gemma_auto.log
 echo "=== WOS Gemma Auto-Training $(date) ===" | tee -a $LOG
 
+# Pull latest code (fixes Gemma system role bug)
+cd /workspace/WOS && git pull 2>&1 | tee -a $LOG
+
 # Free space
 echo "[cleanup] Freeing disk..." | tee -a $LOG
 rm -rf /workspace/hf_cache/hub/models--mistralai*

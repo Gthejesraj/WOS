@@ -32,16 +32,33 @@ def load_jsonl(path: str):
     return Dataset.from_list(records)
 
 
-def format_sample(example, tokenizer):
+def format_sample(example, tokenizer, gemma_mode=False):
     convs = example["conversations"]
-    messages = []
     role_map = {"system": "system", "human": "user", "gpt": "assistant"}
+    system_content = None
+    turns = []
     if isinstance(convs, dict):
         for f, v in zip(convs["from"], convs["value"]):
-            messages.append({"role": role_map.get(f, f), "content": v})
+            role = role_map.get(f, f)
+            if role == "system":
+                system_content = v
+            else:
+                turns.append({"role": role, "content": v})
     else:
         for turn in convs:
-            messages.append({"role": role_map.get(turn["from"], turn["from"]), "content": turn["value"]})
+            role = role_map.get(turn["from"], turn["from"])
+            if role == "system":
+                system_content = turn["value"]
+            else:
+                turns.append({"role": role, "content": turn["value"]})
+
+    if gemma_mode and system_content and turns:
+        # Gemma 2 doesn't support system role — prepend to first user message
+        turns[0]["content"] = f"{system_content}\n\n{turns[0]['content']}"
+        messages = turns
+    else:
+        messages = ([{"role": "system", "content": system_content}] if system_content else []) + turns
+
     return {"text": tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)}
 
 
@@ -159,8 +176,10 @@ def main():
 
     print(f"Formatting {len(train_dataset)} train + {len(eval_dataset)} eval samples...")
 
+    gemma_mode = (args.base == "gemma")
+
     def fmt(example):
-        return format_sample(example, tokenizer)
+        return format_sample(example, tokenizer, gemma_mode=gemma_mode)
 
     train_dataset = train_dataset.map(fmt, remove_columns=train_dataset.column_names)
     eval_dataset  = eval_dataset.map(fmt,  remove_columns=eval_dataset.column_names)
