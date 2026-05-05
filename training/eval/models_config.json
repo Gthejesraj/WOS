@@ -1,0 +1,75 @@
+{
+  "note": "Fill in endpoint URLs after deploying RunPod Serverless vLLM endpoints",
+  "models": [
+    {
+      "label": "Baseline (Mixtral untuned)",
+      "endpoint": "https://YOUR_BASELINE_ENDPOINT/v1",
+      "model_id": "mistralai/Mixtral-8x7B-Instruct-v0.1",
+      "api_key": "EMPTY",
+      "type": "baseline"
+    },
+    {
+      "label": "WOS Coding — Mixtral",
+      "endpoint": "https://YOUR_CODING_MIXTRAL_ENDPOINT/v1",
+      "model_id": "thejesraj/wos-coding-mixtral",
+      "api_key": "EMPTY",
+      "type": "coding"
+    },
+    {
+      "label": "WOS Meeting — Mixtral",
+      "endpoint": "https://YOUR_MEETING_MIXTRAL_ENDPOINT/v1",
+      "model_id": "thejesraj/wos-meeting-mixtral",
+      "api_key": "EMPTY",
+      "type": "meeting"
+    },
+    {
+      "label": "WOS Main — Mixtral",
+      "endpoint": "https://YOUR_MAIN_MIXTRAL_ENDPOINT/v1",
+      "model_id": "thejesraj/wos-main-mixtral",
+      "api_key": "EMPTY",
+      "type": "main"
+    },
+    {
+      "label": "WOS Coding — Gemma 2-27B",
+      "endpoint": "https://YOUR_CODING_GEMMA_ENDPOINT/v1",
+      "model_id": "thejesraj/wos-coding-gemma",
+      "api_key": "EMPTY",
+      "type": "coding"
+    },
+    {
+      "label": "WOS Meeting — Gemma 2-27B",
+      "endpoint": "https://YOUR_MEETING_GEMMA_ENDPOINT/v1",
+      "model_id": "thejesraj/wos-meeting-gemma",
+      "api_key": "EMPTY",
+      "type": "meeting"
+    },
+    {
+      "label": "WOS Main — Gemma 2-27B",
+      "endpoint": "https://YOUR_MAIN_GEMMA_ENDPOINT/v1",
+      "model_id": "thejesraj/wos-main-gemma",
+      "api_key": "EMPTY",
+      "type": "main"
+    },
+    {
+      "label": "WOS Coding — Qwen 32B",
+      "endpoint": "https://YOUR_CODING_QWEN_ENDPOINT/v1",
+      "model_id": "thejesraj/wos-coding-32b",
+      "api_key": "EMPTY",
+      "type": "coding"
+    },
+    {
+      "label": "WOS Meeting — Qwen 32B",
+      "endpoint": "https://YOUR_MEETING_QWEN_ENDPOINT/v1",
+      "model_id": "thejesraj/wos-meeting-32b",
+      "api_key": "EMPTY",
+      "type": "meeting"
+    },
+    {
+      "label": "WOS Main — Qwen 32B",
+      "endpoint": "https://YOUR_MAIN_QWEN_ENDPOINT/v1",
+      "model_id": "thejesraj/wos-main-32b",
+      "api_key": "EMPTY",
+      "type": "main"
+    }
+  ]
+}

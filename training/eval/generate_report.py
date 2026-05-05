@@ -4,9 +4,10 @@ Run eval scripts first to generate result files, then:
   python generate_report.py
 
 Reads:
-  coding_results_*.json   — from eval_coding.py
-  meeting_results_*.json  — from eval_meeting.py
-  main_results_*.json     — from eval_main.py
+  coding_results_*.json      — from eval_coding.py
+  meeting_results_*.json     — from eval_meeting.py
+  main_results_*.json        — from eval_main.py
+  cross_compare_results.json — from eval_compare.py
 
 Generates: comparison_report.html
 """
@@ -67,6 +68,40 @@ def get_color(label: str) -> str:
     if "Gemma" in label:    return MODEL_COLORS["Gemma"]
     if "Qwen" in label:     return MODEL_COLORS["Qwen"]
     return "#94a3b8"
+
+
+def load_cross_compare():
+    p = Path("cross_compare_results.json")
+    if not p.exists():
+        return []
+    try:
+        return json.loads(p.read_text()).get("models", [])
+    except Exception:
+        return []
+
+
+def rows_cross(models):
+    if not models:
+        return ""
+    # Find best coding and meeting scores for highlighting
+    best_coding  = max((m.get("coding_pass_at_1", 0) for m in models), default=0)
+    best_meeting = max((m.get("meeting_rougeL", 0) for m in models), default=0)
+    rows = ""
+    for m in models:
+        cp = m.get("coding_pass_at_1", "—")
+        passed = f"{m.get('coding_passed','—')}/{m.get('coding_total','—')}"
+        mr = m.get("meeting_rougeL", "—")
+        is_baseline = "Baseline" in m["label"] or "untuned" in m["label"].lower()
+        tag = "Baseline" if is_baseline else "Fine-tuned"
+        tag_class = "badge-gray" if is_baseline else "badge-blue"
+        c_win = 'class="win"' if cp == best_coding and not is_baseline else ""
+        m_win = 'class="win"' if mr == best_meeting and not is_baseline else ""
+        rows += f"""<tr>
+          <td><span class="tag {tag_class}">{tag}</span> {m['label']}</td>
+          <td {c_win}>{cp}% ({passed})</td>
+          <td {m_win}>{mr}</td>
+        </tr>"""
+    return rows
 
 
 def load_results():
@@ -196,7 +231,7 @@ def chart_data(models, key, label):
     return labels, values, colors
 
 
-def generate_html(coding, meeting, main):
+def generate_html(coding, meeting, main, cross=[]):
     ts = datetime.now().strftime("%B %d, %Y %H:%M")
     tc = TRAINING_CONFIG
 
@@ -210,6 +245,10 @@ def generate_html(coding, meeting, main):
     _, m_r2, _                 = chart_data(meeting, "rouge2", "ROUGE-2") if has_meeting else ("[]","[]","[]")
     _, m_rl, _                 = chart_data(meeting, "rougeL", "ROUGE-L") if has_meeting else ("[]","[]","[]")
     mn_labels, mn_vals, mn_col = chart_data(main, "overall_rougeL", "ROUGE-L") if has_main else ("[]","[]","[]")
+    has_cross = len(cross) > 0
+    cross_labels   = json.dumps([m["label"] for m in cross])
+    cross_coding   = json.dumps([m.get("coding_pass_at_1", 0) for m in cross])
+    cross_meeting  = json.dumps([m.get("meeting_rougeL", 0) for m in cross])
 
     no_data_msg = lambda task: f'<div class="no-data">No {task} results yet — run eval_{task.lower()}.py first</div>'
 
@@ -320,6 +359,26 @@ footer{{text-align:center;padding:40px;color:#374151;font-size:0.82rem;border-to
 </div>
 ''' if has_main else ""}
 
+<!-- ══ CROSS-MODEL TRADEOFF ════════════════════════════════════════════════ -->
+<div class="section-title">Specialization Tradeoff <span>All models · same coding + meeting prompts</span></div>
+{"" if cross else '<div class="no-data">No cross-compare results yet — run eval_compare.py after filling in models_config.json</div>'}
+{f\'\'\'
+<div class="chart-card">
+  <h3>Coding vs Meeting — All Models Side by Side</h3>
+  <canvas id="crossChart" height="80"></canvas>
+</div>
+<div class="table-card">
+  <table>
+    <thead><tr><th>Model</th><th>Coding pass@1</th><th>Meeting ROUGE-L</th></tr></thead>
+    <tbody>{rows_cross(cross)}</tbody>
+  </table>
+</div>
+<p style="color:#6b7280;font-size:0.82rem;padding:0 4px 20px">
+  Coding model scores highest on coding but lower on meeting. Meeting model is the reverse.
+  Main model is competitive on both — the best all-rounder.
+</p>
+\'\'\' if cross else ""}
+
 <!-- ══ TRAINING CONFIG ═════════════════════════════════════════════════════ -->
 <div class="section-title">Training Configuration <span>QLoRA Hyperparameters</span></div>
 
@@ -395,6 +454,20 @@ new Chart(document.getElementById('meetingChart'), {{
 }})
 """}
 
+{"" if not has_cross else f"""
+new Chart(document.getElementById('crossChart'), {{
+  type:'bar',
+  data:{{
+    labels:{cross_labels},
+    datasets:[
+      {{label:'Coding pass@1 (%)', data:{cross_coding}, backgroundColor:'rgba(59,130,246,0.85)', borderRadius:5}},
+      {{label:'Meeting ROUGE-L',   data:{cross_meeting}, backgroundColor:'rgba(16,185,129,0.85)', borderRadius:5}}
+    ]
+  }},
+  options:{{...chartDefaults, scales:{{...chartDefaults.scales, y:{{...chartDefaults.scales.y, max:100, ticks:{{...chartDefaults.scales.y.ticks, callback:v=>v+'%'}}}}}}}}
+}})
+"""}
+
 {"" if not has_main else f"""
 new Chart(document.getElementById('mainChart'), {{
   type:'bar',
@@ -418,10 +491,12 @@ new Chart(document.getElementById('mainChart'), {{
 
 def main():
     coding, meeting, main_models = load_results()
+    cross = load_cross_compare()
     total = len(coding) + len(meeting) + len(main_models)
     print(f"Found {len(coding)} coding, {len(meeting)} meeting, {len(main_models)} main result files ({total} total)")
+    print(f"Cross-compare: {len(cross)} models" if cross else "Cross-compare: not yet run")
 
-    html = generate_html(coding, meeting, main_models)
+    html = generate_html(coding, meeting, main_models, cross)
     out = Path("comparison_report.html")
     out.write_text(html)
     print(f"\nReport generated: {out.absolute()}")
