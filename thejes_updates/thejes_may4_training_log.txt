@@ -1,0 +1,144 @@
+WOS Model Training Log — Thejes — May 4-5, 2026
+=======================================================
+
+WHAT WAS BUILT
+--------------
+Fine-tuned 4 specialized LLMs for the WOS desktop app using QLoRA (4-bit NF4,
+r=16, LoRA alpha=16) on a RunPod H100 80GB GPU.
+
+
+MODELS TRAINED
+--------------
+1. wos-coding-mixtral
+   Base model : Mistral AI — Mixtral 8x7B Instruct v0.1
+   Task       : Coding assistant
+   HuggingFace: huggingface.co/thejesraj/wos-coding-mixtral
+   Status     : DONE — live on HuggingFace
+
+2. wos-meeting-mixtral
+   Base model : Mistral AI — Mixtral 8x7B Instruct v0.1
+   Task       : Meeting intelligence (summarization, action items, decisions)
+   HuggingFace: huggingface.co/thejesraj/wos-meeting-mixtral
+   Status     : DONE — live on HuggingFace
+
+3. wos-coding-gemma
+   Base model : Google — Gemma 2-27B Instruct
+   Task       : Coding assistant
+   HuggingFace: huggingface.co/thejesraj/wos-coding-gemma
+   Status     : TRAINING IN PROGRESS (started overnight May 5)
+
+4. wos-meeting-gemma
+   Base model : Google — Gemma 2-27B Instruct
+   Task       : Meeting intelligence
+   HuggingFace: huggingface.co/thejesraj/wos-meeting-gemma
+   Status     : QUEUED (runs automatically after coding-gemma finishes)
+
+
+TRAINING DETAILS
+----------------
+Method          : QLoRA — 4-bit NF4 quantization + LoRA adapters merged into full model
+GPU             : NVIDIA H100 80GB HBM3 (RunPod On-Demand, $2.99/hr)
+Batch size      : 4 (auto-detected for 80GB GPU), grad accumulation 4
+LoRA rank       : r=16, alpha=16
+Optimizer       : paged_adamw_8bit
+Scheduler       : cosine
+Max seq length  : 1024 (packing enabled)
+
+Coding dataset  : 60,000 samples
+  - CodeFeedback-Filtered-Instruction : 40,000 samples
+  - CodeAlpaca-20k                    : 12,000 samples
+  - Python Instructions 18k           : 8,000 samples
+
+Meeting dataset : ~22,000 samples
+  - DialogSum (knkarthick)
+  - MeetingBank (huuuyeah)
+  - QMSum (yale-nlp)
+
+Mixtral coding  : 177 steps | ~24 min | Loss: 0.5019
+Mixtral meeting : ~31 min   | Loss: 1.7773
+Gemma models    : ~1.5 hrs each (running overnight)
+
+
+INFRASTRUCTURE
+--------------
+Platform        : RunPod On-Demand Pod
+GPU             : H100 80GB ($2.99/hr) — switched from A40 ($0.44/hr)
+Volume disk     : 150GB at /workspace
+HF model cache  : /workspace/hf_cache (redirected via HF_HOME env var)
+Model storage   : HuggingFace public repos (thejesraj/)
+Model serving   : RunPod Serverless vLLM (next step after training)
+
+
+ISSUES SOLVED
+-------------
+1. HF model cache filling root disk (20GB container)
+   Fix: export HF_HOME=/workspace/hf_cache
+
+2. Root disk 100% full during push_to_hub
+   Fix: rm -rf /root/.cache/huggingface (freed 14GB)
+         export TMPDIR=/workspace/tmp
+         Used huggingface-cli upload directly from saved merged folder
+
+3. tmux/screen not available on RunPod
+   Fix: nohup + tail -f for live monitoring with background persistence
+
+4. Gemma 2 "System role not supported" error
+   Fix: Modified format_sample() in train.py to detect gemma_mode=True
+        and prepend system prompt to the first user message instead of
+        using a separate system role
+
+5. train.py only supported coding/meeting (not main or --base flag)
+   Fix: Added --base (qwen/mixtral/gemma) and --model main arguments
+
+6. Disk space running out mid-training (Mixtral 93GB + merged 25GB)
+   Fix: gemma_auto.sh deletes Mixtral cache and old merged models
+        before starting Gemma training
+
+
+CODE CHANGES MADE
+-----------------
+training/finetune/train.py
+  - Added --base argument (qwen/mixtral/gemma), default qwen
+  - Added --with-tools argument for mixing tool-calling samples
+  - Auto-detect GPU memory and scale batch size (80GB=4, 40GB=2)
+  - Auto-resume from latest checkpoint on restart
+  - Fixed Gemma system role with gemma_mode flag
+
+training/finetune/config.py
+  - Added BASE_MODELS dict (qwen/mixtral/gemma)
+  - Added 6 new MODEL_CONFIGS for mixtral and gemma variants
+
+training/datasets/toolcalling/download.py
+  - New script: downloads Glaive function-calling + XLAM tool-calling data
+
+training/finetune/WOS_Training_Colab.ipynb
+  - Self-contained Colab notebook for Gemma 2-27B training on A100 40GB
+
+training/setup_runpod.sh
+  - One-shot setup script: clone repo + install deps on any new RunPod pod
+
+training/gemma_auto.sh
+  - Automated overnight script: cleanup + train coding gemma + upload +
+    train meeting gemma + upload
+
+
+REMAINING MODELS (not yet trained)
+-----------------------------------
+- thejesraj/wos-coding-32b   — Qwen 2.5-32B coding
+- thejesraj/wos-meeting-32b  — Qwen 2.5-32B meeting
+- thejesraj/wos-main-32b     — Qwen 2.5-32B general assistant
+- thejesraj/wos-main-mixtral — Mixtral 8x7B general
+- thejesraj/wos-main-gemma   — Gemma 2-27B general
+
+
+NEXT STEPS
+----------
+1. Check HuggingFace in the morning — verify wos-coding-gemma and
+   wos-meeting-gemma are live
+2. Deploy all 4 models as RunPod Serverless vLLM endpoints
+   - Go to RunPod -> Serverless -> Quick Deploy -> Serverless vLLM
+   - Point each endpoint to the HF repo
+   - Get Endpoint IDs
+3. Add RunPod API key + endpoint IDs to WOS app settings
+4. Models appear in app model picker for demo comparison
+5. Train Qwen 32B variants when ready (need H100 80GB, ~4hrs each)
