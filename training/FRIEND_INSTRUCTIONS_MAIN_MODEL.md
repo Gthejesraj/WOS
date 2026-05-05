@@ -118,7 +118,17 @@ export HF_TOKEN=paste_your_own_token_here
 In **RunPod web terminal**:
 
 ```bash
-cd /workspace/training && python finetune/train.py --model main
+cd /workspace/training && python datasets/toolcalling/download.py
+```
+Wait for it to finish (5 min). Then:
+
+```bash
+nohup python finetune/train.py --model main --with-tools > main.log 2>&1 & echo "PID: $!"
+```
+
+Monitor:
+```bash
+tail -f /workspace/training/main.log
 ```
 
 You will see:
@@ -170,8 +180,12 @@ cd /workspace/training && python datasets/main/download.py
 # 3. Set HF token
 export HF_TOKEN=paste_token_here
 
-# 4. Train
-cd /workspace/training && python finetune/train.py --model main
+# 4. Download tool-calling data
+cd /workspace/training && python datasets/toolcalling/download.py
+
+# 5. Train (runs in background, safe to close terminal)
+nohup python finetune/train.py --model main --with-tools > main.log 2>&1 & echo "PID: $!"
+tail -f /workspace/training/main.log
 ```
 
 That's it!

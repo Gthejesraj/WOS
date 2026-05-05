@@ -1,8 +1,12 @@
-"""QLoRA fine-tuning — coding and meeting models.
+"""QLoRA fine-tuning — WOS models.
 
 Usage:
   python train.py --model coding
   python train.py --model meeting
+  python train.py --model main
+  python train.py --model coding --base mixtral
+  python train.py --model meeting --base gemma
+  python train.py --model coding --with-tools
 """
 
 import argparse
@@ -14,7 +18,7 @@ from pathlib import Path
 import torch
 
 sys.path.insert(0, str(Path(__file__).parent))
-from config import BASE_MODEL, MODEL_CONFIGS, LORA_CONFIG, AWS_S3_BUCKET
+from config import BASE_MODELS, MODEL_CONFIGS, LORA_CONFIG, AWS_S3_BUCKET
 
 
 def load_jsonl(path: str):
@@ -44,16 +48,24 @@ def format_sample(example, tokenizer):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", choices=["coding", "meeting", "main"], required=True)
+    parser.add_argument("--base", choices=["qwen", "mixtral", "gemma"], default="qwen",
+                        help="Base model family (default: qwen)")
+    parser.add_argument("--with-tools", action="store_true",
+                        help="Mix in tool-calling samples from datasets/toolcalling/processed/")
     args = parser.parse_args()
 
-    cfg = MODEL_CONFIGS[args.model]
+    # Select config key: "coding" for qwen (default), "coding-mixtral" for mixtral, etc.
+    config_key = args.model if args.base == "qwen" else f"{args.model}-{args.base}"
+    cfg = MODEL_CONFIGS[config_key]
+    base_model = BASE_MODELS[args.base]
 
     print(f"\n{'='*60}")
-    print(f"Training WOS-{args.model.upper()} model")
-    print(f"Base:    {BASE_MODEL}")
+    print(f"Training WOS-{args.model.upper()} model ({args.base})")
+    print(f"Base:    {base_model}")
     print(f"Target:  {cfg['model_id']}")
     print(f"PyTorch: {torch.__version__}")
     print(f"GPU:     {torch.cuda.get_device_name(0)}")
+    print(f"Tools:   {'yes' if args.with_tools else 'no'}")
     print(f"{'='*60}\n")
 
     # HF login
@@ -84,15 +96,15 @@ def main():
 
     # Tokenizer
     print("Loading tokenizer...")
-    tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"
 
     # Model in 4-bit
-    print("Loading model in 4-bit (takes ~10 min for 32B)...")
+    print(f"Loading model in 4-bit (takes ~10 min for large models)...")
     model = AutoModelForCausalLM.from_pretrained(
-        BASE_MODEL,
+        base_model,
         quantization_config=bnb_config,
         device_map="auto",
         trust_remote_code=True,
@@ -102,11 +114,18 @@ def main():
     model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
     model.enable_input_require_grads()
 
-    # LoRA
+    # LoRA — adjust target_modules per model family
+    target_modules = LORA_CONFIG["target_modules"]
+    if args.base == "mixtral":
+        # Mixtral uses same projection names but also has MoE experts
+        target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "w1", "w2", "w3"]
+    elif args.base == "gemma":
+        target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+
     lora_config = LoraConfig(
         r=LORA_CONFIG["r"],
         lora_alpha=LORA_CONFIG["lora_alpha"],
-        target_modules=LORA_CONFIG["target_modules"],
+        target_modules=target_modules,
         lora_dropout=LORA_CONFIG["lora_dropout"],
         bias=LORA_CONFIG["bias"],
         task_type=TaskType.CAUSAL_LM,
@@ -122,6 +141,22 @@ def main():
     if cfg.get("max_samples") and len(train_dataset) > cfg["max_samples"]:
         train_dataset = train_dataset.select(range(cfg["max_samples"]))
 
+    # Optionally mix in tool-calling data
+    if args.with_tools:
+        tools_dir = Path(__file__).parent.parent / "datasets" / "toolcalling" / "processed"
+        tools_path = tools_dir / "train_split.jsonl"
+        if tools_path.exists():
+            from datasets import concatenate_datasets
+            tools_ds = load_jsonl(str(tools_path))
+            n_tools = min(2000, len(tools_ds))
+            tools_ds = tools_ds.select(range(n_tools))
+            train_dataset = concatenate_datasets([train_dataset, tools_ds])
+            train_dataset = train_dataset.shuffle(seed=42)
+            print(f"Mixed in {n_tools} tool-calling samples → total {len(train_dataset)}")
+        else:
+            print(f"WARNING: tool-calling dataset not found at {tools_path}")
+            print("Run: python datasets/toolcalling/download.py first")
+
     print(f"Formatting {len(train_dataset)} train + {len(eval_dataset)} eval samples...")
 
     def fmt(example):
@@ -132,7 +167,7 @@ def main():
     print(f"Preview:\n{train_dataset[0]['text'][:300]}\n")
 
     # Training
-    output_dir = f"./checkpoints/wos-{args.model}"
+    output_dir = f"./checkpoints/wos-{args.model}-{args.base}"
 
     training_args = TrainingArguments(
         output_dir=output_dir,
@@ -197,14 +232,14 @@ def main():
     print("\nUploading to S3...")
     os.system(
         f"aws s3 sync {merged_path} "
-        f"s3://{AWS_S3_BUCKET}/models/wos-{args.model}/merged/ --region us-east-1"
+        f"s3://{AWS_S3_BUCKET}/models/wos-{args.model}-{args.base}/merged/ --region us-east-1"
     )
 
     print(f"\n{'='*60}")
-    print(f"WOS-{args.model.upper()} COMPLETE!")
+    print(f"WOS-{args.model.upper()} ({args.base.upper()}) COMPLETE!")
     print(f"  Full model:  {merged_path}")
     print(f"  HuggingFace: huggingface.co/{cfg['model_id']}")
-    print(f"  S3:          s3://{AWS_S3_BUCKET}/models/wos-{args.model}/")
+    print(f"  S3:          s3://{AWS_S3_BUCKET}/models/wos-{args.model}-{args.base}/")
     print(f"{'='*60}")
 
 
