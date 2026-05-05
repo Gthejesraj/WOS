@@ -25,6 +25,8 @@ MODEL_CONFIGS = {
         "max_samples": 20_000,
         "num_train_epochs": 1,
         "learning_rate": 2e-4,
+        "lora_r": 32,
+        "mix_tasks": True,
     },
     "meeting": {
         "model_id": f"{HF_USERNAME}/wos-meeting-32b",
@@ -64,6 +66,8 @@ MODEL_CONFIGS = {
         "max_samples": 20_000,
         "num_train_epochs": 1,
         "learning_rate": 2e-4,
+        "lora_r": 32,
+        "mix_tasks": True,
     },
     "meeting-mixtral": {
         "model_id": f"{HF_USERNAME}/wos-meeting-mixtral",
@@ -103,6 +107,8 @@ MODEL_CONFIGS = {
         "max_samples": 20_000,
         "num_train_epochs": 1,
         "learning_rate": 2e-4,
+        "lora_r": 32,
+        "mix_tasks": True,
     },
     "meeting-gemma": {
         "model_id": f"{HF_USERNAME}/wos-meeting-gemma",

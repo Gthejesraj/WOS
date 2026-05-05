@@ -111,20 +111,34 @@ def main():
     model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
     model.enable_input_require_grads()
 
+    lora_r = cfg.get("lora_r", LORA_CONFIG["r"])
     lora_config = LoraConfig(
-        r=LORA_CONFIG["r"], lora_alpha=LORA_CONFIG["lora_alpha"],
+        r=lora_r, lora_alpha=lora_r,
         target_modules=TARGET_MODULES, lora_dropout=LORA_CONFIG["lora_dropout"],
         bias=LORA_CONFIG["bias"], task_type=TaskType.CAUSAL_LM,
     )
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
 
-    dataset_dir = Path(__file__).parent.parent / "datasets" / args.model / "processed"
+    datasets_root = Path(__file__).parent.parent / "datasets"
+    dataset_dir = datasets_root / args.model / "processed"
     train_dataset = load_jsonl(str(dataset_dir / "train_split.jsonl"))
     eval_dataset  = load_jsonl(str(dataset_dir / "eval_split.jsonl"))
 
     if cfg.get("max_samples") and len(train_dataset) > cfg["max_samples"]:
         train_dataset = train_dataset.select(range(cfg["max_samples"]))
+
+    if cfg.get("mix_tasks"):
+        from datasets import concatenate_datasets
+        for task in ["coding", "meeting"]:
+            task_path = datasets_root / task / "processed" / "train_split.jsonl"
+            if task_path.exists():
+                task_ds = load_jsonl(str(task_path))
+                n = min(2500, len(task_ds))
+                train_dataset = concatenate_datasets([train_dataset, task_ds.select(range(n))])
+                print(f"Mixed in {n} {task} samples")
+        train_dataset = train_dataset.shuffle(seed=42)
+        print(f"Total after mixing: {len(train_dataset)} samples")
 
     print(f"Formatting {len(train_dataset)} train + {len(eval_dataset)} eval samples...")
     train_dataset = train_dataset.map(lambda x: format_sample(x, tokenizer), remove_columns=train_dataset.column_names)
