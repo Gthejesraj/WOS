@@ -211,8 +211,16 @@ def main():
         args=training_args,
     )
 
-    print("\nStarting training...")
-    stats = trainer.train()
+    # Auto-resume from latest checkpoint if one exists
+    import glob
+    checkpoints = sorted(glob.glob(f"{output_dir}/checkpoint-*"))
+    resume_from = checkpoints[-1] if checkpoints else None
+    if resume_from:
+        print(f"\nResuming from checkpoint: {resume_from}")
+    else:
+        print("\nStarting training from scratch...")
+
+    stats = trainer.train(resume_from_checkpoint=resume_from)
     print(f"\nDone! Time: {stats.metrics['train_runtime']:.0f}s | Loss: {stats.metrics['train_loss']:.4f}")
 
     # Save adapter
