@@ -95,8 +95,11 @@ def main():
     parser.add_argument("--endpoint", default="http://localhost:8000/v1")
     parser.add_argument("--model", required=True)
     parser.add_argument("--api_key", default="EMPTY")
-    parser.add_argument("--out", default="meeting_results.json")
+    parser.add_argument("--out", default=None, help="Output file (default: meeting_results_<model>.json)")
     args = parser.parse_args()
+
+    slug = args.model.replace("/", "_").replace(".", "-")
+    out_file = args.out or f"meeting_results_{slug}.json"
 
     print(f"\nEvaluating: {args.model}")
     print(f"Endpoint:   {args.endpoint}")
@@ -112,9 +115,9 @@ def main():
     print(f"  Avg latency:  {result['avg_latency_sec']}s")
     print(f"{'='*50}")
 
-    with open(args.out, "w") as f:
+    with open(out_file, "w") as f:
         json.dump(result, f, indent=2)
-    print(f"\nSaved to {args.out}")
+    print(f"\nSaved to {out_file}")
 
 
 if __name__ == "__main__":
