@@ -6,8 +6,8 @@ os.environ["HF_HOME"] = "/workspace/hf_cache"
 from peft import AutoPeftModelForCausalLM
 from transformers import AutoTokenizer
 
-ADAPTER_PATH = "./checkpoints/wos-main-mixtral/adapter"
-MERGED_PATH = "./checkpoints/wos-main-mixtral/merged"
+ADAPTER_PATH = "./training/checkpoints/wos-main-mixtral/adapter"
+MERGED_PATH = "./training/checkpoints/wos-main-mixtral/merged"
 HF_CACHE_MIXTRAL = "/workspace/hf_cache/hub/models--mistralai__Mixtral-8x7B-Instruct-v0.1"
 
 print("Loading adapter + base model into RAM (CPU)...")
