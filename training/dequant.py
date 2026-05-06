@@ -60,7 +60,18 @@ for name, w, b, in_f, out_f in replacements:
 
 torch.cuda.empty_cache()
 gc.collect()
-model = model.cpu().to(torch.bfloat16)
+
+# Clear bitsandbytes flags so .to() doesn't raise
+model.is_loaded_in_4bit = False
+model.is_loaded_in_8bit = False
+model.is_quantized = False
+if hasattr(model.config, "quantization_config"):
+    del model.config.quantization_config
+model.config.torch_dtype = torch.bfloat16
+model.config.use_cache = True
+
+# Move all remaining GPU params to CPU bfloat16 using base nn.Module.to
+torch.nn.Module.to(model, device="cpu", dtype=torch.bfloat16)
 print("Model is now bfloat16 on CPU.")
 
 print("Freeing hf_cache...")
