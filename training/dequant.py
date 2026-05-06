@@ -67,7 +67,7 @@ model.is_loaded_in_8bit = False
 model.is_quantized = False
 if hasattr(model.config, "quantization_config"):
     del model.config.quantization_config
-model.config.torch_dtype = torch.bfloat16
+model.config.torch_dtype = "bfloat16"
 model.config.use_cache = True
 
 # Move all remaining GPU params to CPU bfloat16 using base nn.Module.to
