@@ -9,7 +9,7 @@ from transformers import AutoTokenizer
 
 ADAPTER_PATH = "./training/checkpoints/wos-main-mixtral/adapter"
 MERGED_PATH = "./training/checkpoints/wos-main-mixtral/merged"
-HF_CACHE_MIXTRAL = "/workspace/hf_cache/hub/models--mistralai__Mixtral-8x7B-Instruct-v0.1"
+HF_CACHE_MIXTRAL = "/workspace/hf_cache/hub"
 
 print("Loading adapter + base model into RAM (bfloat16, CPU)...")
 model = AutoPeftModelForCausalLM.from_pretrained(
