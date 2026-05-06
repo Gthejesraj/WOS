@@ -35,11 +35,19 @@ model = model.to(torch.bfloat16)
 print(f"Model dtype: {next(model.parameters()).dtype}")
 print("Disk after load:", disk())
 
+# Clone all tensors into real RAM to break mmap references to hf_cache files.
+# Without this, Linux keeps the hf_cache disk blocks allocated even after rmtree.
+print("Cloning tensors into RAM (breaks mmap)...")
+for param in model.parameters():
+    param.data = param.data.clone()
+for buf in model.buffers():
+    buf.data = buf.data.clone()
+
 print("Freeing hf_cache...")
 shutil.rmtree("/workspace/hf_cache", ignore_errors=False)
 print("Disk after freeing:", disk())
 
-print("Saving merged model...")
+print("Saving merged model (bfloat16)...")
 os.makedirs(MERGED_PATH, exist_ok=True)
 model.save_pretrained(MERGED_PATH, safe_serialization=True, max_shard_size="4GB")
 AutoTokenizer.from_pretrained(ADAPTER_PATH).save_pretrained(MERGED_PATH)
