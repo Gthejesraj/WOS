@@ -70,6 +70,12 @@ if hasattr(model.config, "quantization_config"):
 model.config.torch_dtype = "bfloat16"
 model.config.use_cache = True
 
+# Convert any remaining torch.dtype objects in config to strings
+for key in list(vars(model.config).keys()):
+    val = getattr(model.config, key)
+    if isinstance(val, torch.dtype):
+        setattr(model.config, key, str(val).replace("torch.", ""))
+
 # Move all remaining GPU params to CPU bfloat16 using base nn.Module.to
 torch.nn.Module.to(model, device="cpu", dtype=torch.bfloat16)
 print("Model is now bfloat16 on CPU.")
