@@ -1,0 +1,38 @@
+{
+  "models": [
+    {
+      "label": "Baseline (Qwen2.5-7B untuned)",
+      "model_id": "Qwen/Qwen2.5-7B-Instruct-Turbo",
+      "coding_pass_at_1": 100.0,
+      "coding_passed": 3,
+      "coding_total": 3,
+      "meeting_rougeL": 46.5
+    },
+    {
+      "label": "WOS Coding \u2014 Qwen 32B",
+      "model_id": "thejesraj/wos-coding-32b",
+      "coding_pass_at_1": 100.0,
+      "coding_passed": 3,
+      "coding_total": 3,
+      "meeting_rougeL": 63.5
+    },
+    {
+      "label": "WOS Meeting \u2014 Qwen 32B",
+      "model_id": "thejesraj/wos-meeting-32b",
+      "coding_pass_at_1": 100.0,
+      "coding_passed": 3,
+      "coding_total": 3,
+      "meeting_rougeL": 63.5
+    },
+    {
+      "label": "WOS Main \u2014 Qwen 32B",
+      "model_id": "thejesraj/wos-main-32b",
+      "coding_pass_at_1": 0.0,
+      "coding_passed": 0,
+      "coding_total": 3,
+      "meeting_rougeL": 0.0
+    }
+  ],
+  "coding_problems": 3,
+  "meeting_samples": 3
+}

@@ -1,0 +1,15 @@
+{
+  "model": "thejesraj/wos-meeting-32b",
+  "dataset": "DialogSum test",
+  "num_samples": 50,
+  "rouge1_p": 13.99,
+  "rouge1_r": 60.17,
+  "rouge1": 22.23,
+  "rouge2_p": 3.92,
+  "rouge2_r": 16.98,
+  "rouge2": 6.22,
+  "rougeL_p": 10.44,
+  "rougeL_r": 45.53,
+  "rougeL": 16.65,
+  "avg_latency_sec": 5.77
+}

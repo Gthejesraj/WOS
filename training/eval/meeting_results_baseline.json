@@ -1,0 +1,15 @@
+{
+  "model": "llama-3.3-70b-versatile",
+  "dataset": "DialogSum test",
+  "num_samples": 50,
+  "rouge1_p": 12.19,
+  "rouge1_r": 56.06,
+  "rouge1": 19.77,
+  "rouge2_p": 3.48,
+  "rouge2_r": 16.18,
+  "rouge2": 5.65,
+  "rougeL_p": 8.87,
+  "rougeL_r": 41.43,
+  "rougeL": 14.43,
+  "avg_latency_sec": 1.61
+}

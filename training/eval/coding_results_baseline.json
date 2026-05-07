@@ -1,0 +1,39 @@
+{
+  "model": "llama-3.3-70b-versatile",
+  "pass_at_1": 80.0,
+  "passed": 4,
+  "total": 5,
+  "avg_latency": 0.51,
+  "details": [
+    {
+      "id": "HE/0",
+      "passed": true,
+      "error": "",
+      "latency": 0.69
+    },
+    {
+      "id": "HE/1",
+      "passed": false,
+      "error": "Traceback (most recent call last):\n  File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpgtsrx852.py\", line 18, in <module>\n    assert separate_paren_groups('( ) (( )) (( )( ))') == ['()', '(())', '(()())']\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError",
+      "latency": 0.46
+    },
+    {
+      "id": "HE/2",
+      "passed": true,
+      "error": "",
+      "latency": 0.37
+    },
+    {
+      "id": "HE/3",
+      "passed": true,
+      "error": "",
+      "latency": 0.47
+    },
+    {
+      "id": "HE/4",
+      "passed": true,
+      "error": "",
+      "latency": 0.54
+    }
+  ]
+}

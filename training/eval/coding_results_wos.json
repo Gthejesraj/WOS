@@ -1,0 +1,14 @@
+{
+  "model": "thejesraj/wos-coding-32b",
+  "pass_at_1": 80.0,
+  "passed": 4,
+  "total": 5,
+  "avg_latency": 4.74,
+  "details": [
+    {"id": "HE/0", "passed": true, "error": "", "latency": 4.21},
+    {"id": "HE/1", "passed": false, "error": "AssertionError", "latency": 5.12},
+    {"id": "HE/2", "passed": true, "error": "", "latency": 4.53},
+    {"id": "HE/3", "passed": true, "error": "", "latency": 4.82},
+    {"id": "HE/4", "passed": true, "error": "", "latency": 5.02}
+  ]
+}
