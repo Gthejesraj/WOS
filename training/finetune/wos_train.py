@@ -262,8 +262,8 @@ check_disk("/", min_gb=60)
 
 # ── tokenizer ─────────────────────────────────────────────────────────────────
 
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-from peft import LoraConfig, prepare_model_for_kbit_training
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import LoraConfig, get_peft_model
 from trl import SFTTrainer, SFTConfig
 
 print(f"\nLoading tokenizer: {args.base}")
@@ -272,34 +272,25 @@ if tok.pad_token is None:
     tok.pad_token = tok.eos_token
 tok.padding_side = "right"
 
-# ── model ─────────────────────────────────────────────────────────────────────
+# ── model (bfloat16, no quantization — H200 has 141GB VRAM, fits all models) ──
 
-print(f"Loading model (4-bit QLoRA): {args.base}")
-bnb_cfg = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_quant_type="nf4",
-    bnb_4bit_compute_dtype=torch.bfloat16,
-    bnb_4bit_use_double_quant=True,
-)
-
-# Use flash_attention_2 if installed (H200/H100), fall back to sdpa
+# Use flash_attention_2 if installed, fall back to sdpa
 try:
     import flash_attn  # noqa: F401
     attn_impl = "flash_attention_2"
     print("  flash-attn found — using flash_attention_2")
 except ImportError:
     attn_impl = "sdpa"
-    print("  flash-attn not found — using sdpa (still fast on H200)")
+    print("  flash-attn not found — using sdpa")
 
+print(f"Loading model (bfloat16 LoRA, no quantization): {args.base}")
 model = AutoModelForCausalLM.from_pretrained(
     args.base,
-    quantization_config=bnb_cfg,
     device_map="auto",
     trust_remote_code=True,
     torch_dtype=torch.bfloat16,
     attn_implementation=attn_impl,
 )
-model = prepare_model_for_kbit_training(model)
 model.config.use_cache = False
 
 # ── LoRA ──────────────────────────────────────────────────────────────────────
@@ -328,7 +319,7 @@ sft_cfg = SFTConfig(
     save_strategy="no",
     warmup_ratio=0.03,
     lr_scheduler_type="cosine",
-    optim="paged_adamw_8bit",
+    optim="adamw_torch",
     gradient_checkpointing=True,
     report_to="none",
 )
@@ -346,14 +337,11 @@ trainer.train()
 print("Training complete.")
 
 # ── merge → clean bfloat16 ────────────────────────────────────────────────────
-# Merge while model is in memory. NEVER save 4-bit and convert later.
 
 print("\nMerging LoRA adapter into base weights...")
 merged = trainer.model.merge_and_unload()
 merged = merged.to(torch.bfloat16)
 merged.config.use_cache = True
-if hasattr(merged.config, "quantization_config"):
-    del merged.config.quantization_config
 
 print(f"Saving to {MERGED_DIR}...")
 merged.save_pretrained(MERGED_DIR, safe_serialization=True, max_shard_size=args.shard)
