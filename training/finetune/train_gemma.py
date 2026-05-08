@@ -211,7 +211,7 @@ def train(task, repo):
         report_to=[],
         remove_unused_columns=False,
     )
-    trainer = Trainer(model=model, args=args, train_dataset=train_ds, tokenizer=tok)
+    trainer = Trainer(model=model, args=args, train_dataset=train_ds)
     print("Training...")
     trainer.train()
 
