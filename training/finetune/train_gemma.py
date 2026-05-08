@@ -5,7 +5,7 @@ Trains coding → meeting → main sequentially, pushes each to HF.
 
 Setup (run once before this script):
   pip install "torch==2.6.0" --index-url https://download.pytorch.org/whl/cu124 -q
-  pip install transformers peft trl datasets accelerate safetensors huggingface_hub tqdm liger-kernel -q
+  pip install transformers peft datasets accelerate safetensors huggingface_hub tqdm -q
   pip uninstall torchvision torchaudio -y
 
 Run:
@@ -34,9 +34,8 @@ if not HF_TOKEN:
 import shutil, json, random, torch
 from tqdm import tqdm
 from datasets import load_dataset, Dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from peft import LoraConfig
-from trl import SFTTrainer, SFTConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, Trainer
+from peft import LoraConfig, get_peft_model
 
 # ── check GPU ─────────────────────────────────────────────────────────────────
 if not torch.cuda.is_available():
@@ -183,33 +182,58 @@ def train(task, repo):
     lora = LoraConfig(r=16, lora_alpha=32,
         target_modules=["q_proj","k_proj","v_proj","o_proj","gate_proj","up_proj","down_proj"],
         lora_dropout=0.05, bias="none", task_type="CAUSAL_LM")
+    model = get_peft_model(model, lora)
+    model.print_trainable_parameters()
 
-    cfg = SFTConfig(
+    def tokenize_batch(batch):
+        out = tok(batch["text"], truncation=True, max_length=2048, padding="max_length")
+        out["labels"] = [
+            [tid if tid != tok.pad_token_id else -100 for tid in ids]
+            for ids in out["input_ids"]
+        ]
+        return out
+    train_ds = ds.map(tokenize_batch, batched=True, remove_columns=ds.column_names)
+
+    args = TrainingArguments(
         output_dir=f"{WORK}/adapter",
-        num_train_epochs=1, per_device_train_batch_size=4,
-        gradient_accumulation_steps=8, learning_rate=2e-4,
-        bf16=True, fp16=False, dataset_text_field="text",
-        logging_steps=50, save_strategy="no", warmup_ratio=0.03,
-        lr_scheduler_type="cosine", optim="adamw_torch",
-        gradient_checkpointing=True, report_to="none",
+        num_train_epochs=1,
+        per_device_train_batch_size=2,
+        gradient_accumulation_steps=16,
+        learning_rate=2e-4,
+        bf16=True,
+        fp16=False,
+        logging_steps=50,
+        save_strategy="no",
+        warmup_ratio=0.03,
+        lr_scheduler_type="cosine",
+        optim="adamw_torch",
+        gradient_checkpointing=True,
+        report_to=[],
+        remove_unused_columns=False,
     )
-    trainer = SFTTrainer(model=model, args=cfg, train_dataset=ds,
-                         peft_config=lora, tokenizer=tok, max_seq_length=2048)
+    trainer = Trainer(model=model, args=args, train_dataset=train_ds, tokenizer=tok)
     print("Training...")
     trainer.train()
 
     print("Merging adapter...")
     merged = trainer.model.merge_and_unload()
     merged = merged.to(torch.bfloat16)
+    merged.config.torch_dtype = torch.bfloat16
     merged.config.use_cache = True
     merged.save_pretrained(MERGED, safe_serialization=True, max_shard_size="4GB")
     tok.save_pretrained(MERGED)
 
     files = os.listdir(MERGED)
     shards = [f for f in files if f.startswith("model-") and f.endswith(".safetensors")]
-    assert "adapter_config.json" not in files, "Merge failed"
-    assert shards, "No shard files"
-    print(f"  {len(shards)} clean bfloat16 shards ✓")
+    required = ["config.json", "tokenizer_config.json"]
+    optional_tokenizer = ["tokenizer.json", "tokenizer.model"]
+    assert "adapter_config.json" not in files, "Merge failed — adapter config present"
+    assert "adapter_model.safetensors" not in files, "Merge failed — adapter weights present"
+    assert shards or "model.safetensors" in files, "No model safetensors found"
+    for rf in required:
+        assert rf in files, f"Missing required file: {rf}"
+    assert any(f in files for f in optional_tokenizer), "Missing tokenizer file"
+    print(f"  Model export verified: {len(shards) if shards else 1} safetensor file(s) ✓")
 
     print(f"Uploading to {repo}...")
     merged.push_to_hub(repo, safe_serialization=True, max_shard_size="4GB",
