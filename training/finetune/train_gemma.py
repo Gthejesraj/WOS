@@ -36,6 +36,7 @@ from tqdm import tqdm
 from datasets import load_dataset, Dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, Trainer
 from peft import LoraConfig, get_peft_model
+from huggingface_hub import upload_folder
 
 # ── check GPU ─────────────────────────────────────────────────────────────────
 if not torch.cuda.is_available():
@@ -256,14 +257,17 @@ def train(task, repo):
     assert any(f in files for f in optional_tokenizer), "Missing tokenizer file"
     print(f"  Model export verified: {len(shards) if shards else 1} safetensor file(s) ✓")
 
+    # Upload via huggingface_hub only (MERGED already has model + tokenizer; avoids
+    # transformers push_to_hub kwarg mismatches across versions).
     print(f"Uploading to {repo}...")
-    # transformers/peft hubs: omit safe_serialization (not accepted on PushToHubMixin.push_to_hub in some versions)
-    merged.push_to_hub(
-        repo,
+    print(f"  Local merged directory: {MERGED}")
+    upload_folder(
+        folder_path=MERGED,
+        repo_id=repo,
+        repo_type="model",
         token=HF_TOKEN,
         commit_message="WOS fine-tune (bfloat16, vLLM-ready)",
     )
-    tok.push_to_hub(repo, token=HF_TOKEN)
     print(f"Done: https://huggingface.co/{repo}")
 
     shutil.rmtree(WORK, ignore_errors=True)
