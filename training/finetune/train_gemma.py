@@ -14,7 +14,7 @@ Run:
 
 # ── workspace redirect — MUST be before all other imports ────────────────────
 import os, sys
-for _d in ["/dev/shm/hf_cache", "/dev/shm/wos_tmp", "/dev/shm/.huggingface"]:
+for _d in ["/dev/shm/hf_cache", "/dev/shm/wos_tmp", "/dev/shm/.huggingface", "/tmp/.triton"]:
     os.makedirs(_d, exist_ok=True)
 os.environ["HOME"]                 = "/dev/shm"
 os.environ["HF_HOME"]                 = "/dev/shm/hf_cache"
@@ -24,6 +24,7 @@ os.environ["TMPDIR"]                  = "/dev/shm/wos_tmp"
 os.environ["TEMP"]                    = "/dev/shm/wos_tmp"
 os.environ["TMP"]                     = "/dev/shm/wos_tmp"
 os.environ["HF_HUB_DISABLE_XET"]      = "1"   # use standard download, respects HF_HOME
+os.environ["TRITON_CACHE_DIR"]        = "/tmp/.triton"  # /dev/shm is noexec; .so files need exec
 
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
 if not HF_TOKEN:
