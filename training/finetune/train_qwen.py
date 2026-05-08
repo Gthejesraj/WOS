@@ -14,15 +14,15 @@ Run:
 
 # ── workspace redirect — MUST be before all other imports ────────────────────
 import os, sys
-for _d in ["/tmp/hf_cache", "/tmp/wos_tmp", "/tmp/.huggingface"]:
+for _d in ["/dev/shm/hf_cache", "/dev/shm/wos_tmp", "/dev/shm/.huggingface"]:
     os.makedirs(_d, exist_ok=True)
-os.environ["HOME"]                 = "/tmp"
-os.environ["HF_HOME"]                 = "/tmp/hf_cache"
-os.environ["TRANSFORMERS_CACHE"]      = "/tmp/hf_cache"
-os.environ["HUGGINGFACE_HUB_CACHE"]   = "/tmp/hf_cache"
-os.environ["TMPDIR"]                  = "/tmp/wos_tmp"
-os.environ["TEMP"]                    = "/tmp/wos_tmp"
-os.environ["TMP"]                     = "/tmp/wos_tmp"
+os.environ["HOME"]                 = "/dev/shm"
+os.environ["HF_HOME"]                 = "/dev/shm/hf_cache"
+os.environ["TRANSFORMERS_CACHE"]      = "/dev/shm/hf_cache"
+os.environ["HUGGINGFACE_HUB_CACHE"]   = "/dev/shm/hf_cache"
+os.environ["TMPDIR"]                  = "/dev/shm/wos_tmp"
+os.environ["TEMP"]                    = "/dev/shm/wos_tmp"
+os.environ["TMP"]                     = "/dev/shm/wos_tmp"
 os.environ["HF_HUB_DISABLE_XET"]      = "1"   # use standard download, respects HF_HOME
 
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
@@ -149,7 +149,7 @@ def train(task, repo):
     print(f"Training: {task} → {repo}")
     print(f"{'='*60}")
 
-    WORK = f"/tmp/wos_{task}"
+    WORK = f"/dev/shm/wos_{task}"
     MERGED = f"{WORK}/merged"
     for d in [WORK, MERGED]:
         shutil.rmtree(d, ignore_errors=True); os.makedirs(d)
@@ -172,6 +172,8 @@ def train(task, repo):
 
     # model
     print("Loading model (bfloat16)...")
+    # Qwen2.5-32B base is ~64GB; after loading into VRAM, clear the HF cache so
+    # the merged copy (~64GB) fits in /dev/shm (117GB RAM disk).
     try:
         import flash_attn; attn = "flash_attention_2"
     except ImportError:
@@ -181,6 +183,11 @@ def train(task, repo):
         torch_dtype=torch.bfloat16, attn_implementation=attn, token=HF_TOKEN,
     )
     model.config.use_cache = False
+
+    # Free the downloaded weights from RAM disk — model is now fully in VRAM
+    print("Clearing HF cache to free /dev/shm space for merge output...")
+    shutil.rmtree("/dev/shm/hf_cache", ignore_errors=True)
+    os.makedirs("/dev/shm/hf_cache", exist_ok=True)
 
     # LoRA
     lora = LoraConfig(r=16, lora_alpha=32,
@@ -229,6 +236,8 @@ def train(task, repo):
     del model, merged, trainer
     torch.cuda.empty_cache()
     print(f"Free VRAM: {torch.cuda.mem_get_info()[0]/1e9:.1f}GB")
+    # Recreate HF cache dir for next model download
+    os.makedirs("/dev/shm/hf_cache", exist_ok=True)
 
 # ── run all 3 ─────────────────────────────────────────────────────────────────
 

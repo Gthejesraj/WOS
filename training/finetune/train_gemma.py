@@ -14,15 +14,15 @@ Run:
 
 # ── workspace redirect — MUST be before all other imports ────────────────────
 import os, sys
-for _d in ["/tmp/hf_cache", "/tmp/wos_tmp", "/tmp/.huggingface"]:
+for _d in ["/dev/shm/hf_cache", "/dev/shm/wos_tmp", "/dev/shm/.huggingface"]:
     os.makedirs(_d, exist_ok=True)
-os.environ["HOME"]                 = "/tmp"
-os.environ["HF_HOME"]                 = "/tmp/hf_cache"
-os.environ["TRANSFORMERS_CACHE"]      = "/tmp/hf_cache"
-os.environ["HUGGINGFACE_HUB_CACHE"]   = "/tmp/hf_cache"
-os.environ["TMPDIR"]                  = "/tmp/wos_tmp"
-os.environ["TEMP"]                    = "/tmp/wos_tmp"
-os.environ["TMP"]                     = "/tmp/wos_tmp"
+os.environ["HOME"]                 = "/dev/shm"
+os.environ["HF_HOME"]                 = "/dev/shm/hf_cache"
+os.environ["TRANSFORMERS_CACHE"]      = "/dev/shm/hf_cache"
+os.environ["HUGGINGFACE_HUB_CACHE"]   = "/dev/shm/hf_cache"
+os.environ["TMPDIR"]                  = "/dev/shm/wos_tmp"
+os.environ["TEMP"]                    = "/dev/shm/wos_tmp"
+os.environ["TMP"]                     = "/dev/shm/wos_tmp"
 os.environ["HF_HUB_DISABLE_XET"]      = "1"   # use standard download, respects HF_HOME
 
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
@@ -149,7 +149,7 @@ def train(task, repo):
     print(f"Training: {task} → {repo}")
     print(f"{'='*60}")
 
-    WORK = f"/tmp/wos_{task}"
+    WORK = f"/dev/shm/wos_{task}"
     MERGED = f"{WORK}/merged"
     for d in [WORK, MERGED]:
         shutil.rmtree(d, ignore_errors=True); os.makedirs(d)
