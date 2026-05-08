@@ -14,17 +14,30 @@ Run:
 
 # ── workspace redirect — MUST be before all other imports ────────────────────
 import os, sys
-for _d in ["/dev/shm/hf_cache", "/dev/shm/wos_tmp", "/dev/shm/.huggingface", "/tmp/.triton"]:
+# Put HF + big temp on /workspace when present so /dev/shm (often ~50–120GB) is not filled by 27B weights.
+_USE_WORKSPACE = os.path.isdir("/workspace")
+if _USE_WORKSPACE:
+    _HF = "/workspace/hf_cache"
+    _TMP = "/workspace/wos_tmp"
+    _HOME = "/workspace/wos_home"
+else:
+    _HF = "/dev/shm/hf_cache"
+    _TMP = "/dev/shm/wos_tmp"
+    _HOME = "/dev/shm"
+for _d in [_HF, _TMP, os.path.join(_HOME, ".huggingface"), "/tmp/.triton"]:
     os.makedirs(_d, exist_ok=True)
-os.environ["HOME"]                 = "/dev/shm"
-os.environ["HF_HOME"]                 = "/dev/shm/hf_cache"
-os.environ["TRANSFORMERS_CACHE"]      = "/dev/shm/hf_cache"
-os.environ["HUGGINGFACE_HUB_CACHE"]   = "/dev/shm/hf_cache"
-os.environ["TMPDIR"]                  = "/dev/shm/wos_tmp"
-os.environ["TEMP"]                    = "/dev/shm/wos_tmp"
-os.environ["TMP"]                     = "/dev/shm/wos_tmp"
-os.environ["HF_HUB_DISABLE_XET"]      = "1"   # use standard download, respects HF_HOME
-os.environ["TRITON_CACHE_DIR"]        = "/tmp/.triton"  # /dev/shm is noexec; .so files need exec
+os.environ["HOME"] = _HOME
+os.environ["HF_HOME"] = _HF
+os.environ["TRANSFORMERS_CACHE"] = _HF
+os.environ["HUGGINGFACE_HUB_CACHE"] = _HF
+os.environ["HF_DATASETS_CACHE"] = os.path.join(_HF, "datasets")
+os.environ["TMPDIR"] = _TMP
+os.environ["TEMP"] = _TMP
+os.environ["TMP"] = _TMP
+os.environ["HF_HUB_DISABLE_XET"] = "1"
+os.environ["TRITON_CACHE_DIR"] = "/tmp/.triton"  # /dev/shm is noexec; .so files need exec
+if _USE_WORKSPACE:
+    print(f"[env] HF + datasets cache → {_HF} (workspace); tmp → {_TMP}")
 
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
 if not HF_TOKEN:
