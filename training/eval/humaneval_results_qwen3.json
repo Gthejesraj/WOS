@@ -1,0 +1,40 @@
+{
+  "model": "qwen/qwen3-32b",
+  "benchmark": "humaneval",
+  "pass_at_1": 0.0,
+  "passed": 0,
+  "total": 5,
+  "avg_latency": 7.63,
+  "details": [
+    {
+      "id": "HE/0",
+      "passed": false,
+      "error": "File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpqy1f7yqd.py\", line 5\n    First, the function takes a list of floats and a threshold. The output is a boolean. The examples given: for [1.0, 2.0, 3.0] with threshold 0.5, the answer is False because each adjacent pair is exactly 1.0 apart. But in the second example, there's 2.8 and 2.0, which are 0.8 apart, but wait, the example says it returns True. Wait, the second example's threshold is 0.3. Wait, the list includes 2.8 and 3.0? No, looking at the list [1.0, 2.8, 3.0, 4.0, 5.0, 2.0]. Let me check the pairs. Maybe the 2.8 and 3.0 are 0.2 apart? Oh yes, 3.0 - 2.8 is 0.2, which is less than 0.3. So that's why it returns True.\n                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           ^\nSyntaxError: unterminated string literal (detected at line 5)",
+      "latency": 11.4
+    },
+    {
+      "id": "HE/1",
+      "passed": false,
+      "error": "File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmp9moknsuv.py\", line 3\n    Okay, I need to solve this problem where I have to separate groups of nested parentheses from a given string. Let's think about what the problem is asking.\n                                                                                                                     ^\nSyntaxError: unterminated string literal (detected at line 3)",
+      "latency": 1.64
+    },
+    {
+      "id": "HE/2",
+      "passed": false,
+      "error": "File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpq3gsi84k.py\", line 5\n    Wait, but what about numbers that are already integers? Like 4.0. Then the decimal part is 0.0, which is correct.\n              ^^^^\nSyntaxError: invalid syntax",
+      "latency": 11.89
+    },
+    {
+      "id": "HE/3",
+      "passed": false,
+      "error": "File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpygsincgj.py\", line 18\n    Example 1: operations [100, -50, -60]. Let's see:\n                                              ^\nSyntaxError: unterminated string literal (detected at line 18)",
+      "latency": 1.63
+    },
+    {
+      "id": "HE/4",
+      "passed": false,
+      "error": "File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpda2ive8i.py\", line 9\n    Wait, but what about when numbers is empty? Well, the function would divide by zero. But the problem says it's given a list of input numbers. So we can assume len(numbers) >= 1.\n                                                                                                                ^\nSyntaxError: unterminated string literal (detected at line 9)",
+      "latency": 11.57
+    }
+  ]
+}

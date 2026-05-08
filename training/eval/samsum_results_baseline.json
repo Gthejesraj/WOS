@@ -1,0 +1,15 @@
+{
+  "model": "llama-3.3-70b-versatile",
+  "dataset": "samsum test",
+  "num_samples": 50,
+  "rouge1_p": 18.02,
+  "rouge1_r": 67.24,
+  "rouge1": 27.25,
+  "rouge2_p": 6.85,
+  "rouge2_r": 27.01,
+  "rouge2": 10.39,
+  "rougeL_p": 13.05,
+  "rougeL_r": 50.78,
+  "rougeL": 19.91,
+  "avg_latency_sec": 2.11
+}

@@ -14,7 +14,8 @@ import json
 import time
 
 import requests
-from rouge_score import rouge_scorer
+
+from eval_metrics_common import rouge_single_prf
 
 SYSTEM = (
     "You are WOS, a highly capable AI assistant. "
@@ -126,6 +127,55 @@ PROMPTS = [
             "much faster than a CPU."
         ),
     },
+    # ── extra orchestration coverage (longer / multi-step) ───────────────────
+    {
+        "id": "coding_4",
+        "domain": "coding",
+        "prompt": (
+            "Write Python to merge two sorted lists without using sorted() on the concatenation."
+        ),
+        "reference": (
+            "def merge_sorted(a, b):\n    i, j, out = 0, 0, []\n    while i < len(a) and j < len(b):\n"
+            "        if a[i] <= b[j]:\n            out.append(a[i]); i += 1\n        else:\n"
+            "            out.append(b[j]); j += 1\n    return out + a[i:] + b[j:]"
+        ),
+    },
+    {
+        "id": "meeting_4",
+        "domain": "meeting",
+        "prompt": (
+            "Summarize risks and owners from:\n"
+            "PM: Launch is in 10 days. QA found regression in checkout.\n"
+            "Eng: Root cause is cache invalidation; fix ETA 48h.\n"
+            "PM: We need a go/no-go Friday. Legal still reviewing updated ToS.\n"
+            "Eng lead: I'll own the cache fix; QA will rerun full regression by Thursday."
+        ),
+        "reference": (
+            "Risk: checkout regression from cache invalidation; fix ETA 48h. "
+            "Legal review of ToS still pending — go/no-go Friday. "
+            "Eng lead owns cache fix; QA owns full regression by Thursday."
+        ),
+    },
+    {
+        "id": "general_5",
+        "domain": "general",
+        "prompt": "Explain fine-tuning vs prompt engineering in 4 sentences.",
+        "reference": (
+            "Fine-tuning updates model weights on domain-specific data so the model internalizes patterns. "
+            "Prompt engineering keeps weights frozen and steers behavior with instructions and examples in the input. "
+            "Fine-tuning costs more upfront but can improve consistency on specialized tasks. "
+            "Prompt engineering is faster to iterate but bounded by context length and base model capability."
+        ),
+    },
+    {
+        "id": "general_6",
+        "domain": "general",
+        "prompt": "What is idempotency in APIs and why does it matter for payments?",
+        "reference": (
+            "An idempotent API produces the same outcome when called multiple times with the same request. "
+            "For payments, retries are common; idempotency keys prevent duplicate charges when a client retries after a timeout."
+        ),
+    },
 ]
 
 
@@ -137,7 +187,7 @@ def call_model(endpoint: str, model: str, prompt: str, api_key: str = "EMPTY") -
             {"role": "system", "content": SYSTEM},
             {"role": "user", "content": prompt},
         ],
-        "max_tokens": 300,
+        "max_tokens": 512,
         "temperature": 0.0,
     }
     r = requests.post(f"{endpoint}/chat/completions", json=payload, headers=headers, timeout=60)
@@ -145,14 +195,20 @@ def call_model(endpoint: str, model: str, prompt: str, api_key: str = "EMPTY") -
     return r.json()["choices"][0]["message"]["content"]
 
 
+def _zero_prf() -> dict:
+    z = {f"rouge{k}_{m}": 0.0 for k in ("1", "2", "L") for m in ("precision", "recall", "f1")}
+    z["rouge1"] = z["rouge2"] = z["rougeL"] = 0.0
+    return z
+
+
 def compute_rouge(prediction: str, reference: str) -> dict:
-    s = rouge_scorer.RougeScorer(["rouge1", "rouge2", "rougeL"], use_stemmer=True)
-    scores = s.score(reference, prediction)
-    return {
-        "rouge1": round(scores["rouge1"].fmeasure * 100, 2),
-        "rouge2": round(scores["rouge2"].fmeasure * 100, 2),
-        "rougeL": round(scores["rougeL"].fmeasure * 100, 2),
-    }
+    if not (prediction or "").strip():
+        return _zero_prf()
+    prf = rouge_single_prf(prediction, reference, use_stemmer=True)
+    prf["rouge1"] = prf["rouge1_f1"]
+    prf["rouge2"] = prf["rouge2_f1"]
+    prf["rougeL"] = prf["rougeL_f1"]
+    return prf
 
 
 def evaluate(endpoint: str, model: str, api_key: str) -> dict:
@@ -167,7 +223,7 @@ def evaluate(endpoint: str, model: str, api_key: str) -> dict:
             error = None
         except Exception as e:
             response = ""
-            rouge = {"rouge1": 0, "rouge2": 0, "rougeL": 0}
+            rouge = _zero_prf()
             error = str(e)
         latency = round(time.time() - start, 2)
 
@@ -178,23 +234,51 @@ def evaluate(endpoint: str, model: str, api_key: str) -> dict:
             "rouge1": rouge["rouge1"],
             "rouge2": rouge["rouge2"],
             "rougeL": rouge["rougeL"],
+            "rouge1_precision": rouge.get("rouge1_precision", 0),
+            "rouge1_recall": rouge.get("rouge1_recall", 0),
+            "rouge1_f1": rouge.get("rouge1_f1", 0),
+            "rougeL_precision": rouge.get("rougeL_precision", 0),
+            "rougeL_recall": rouge.get("rougeL_recall", 0),
+            "rougeL_f1": rouge.get("rougeL_f1", 0),
             "latency": latency,
             "error": error,
         }
         results.append(result)
-        domain_scores[p["domain"]].append(rouge["rougeL"])
+        domain_scores[p["domain"]].append(rouge)
         status = f"ROUGE-L {rouge['rougeL']:.1f}" if not error else f"ERROR: {error}"
         print(f"  {p['id']}: {status} ({latency:.1f}s)")
 
-    def avg(lst): return round(sum(lst) / len(lst), 2) if lst else 0
+    def avg(lst):
+        return round(sum(lst) / len(lst), 2) if lst else 0
+
+    def avg_prf(domain: str, key: str) -> float:
+        lst = domain_scores[domain]
+        if not lst:
+            return 0.0
+        return round(sum(x.get(key, 0) for x in lst) / len(lst), 3)
+
+    all_prf = [domain_scores[d] for d in ("coding", "meeting", "general")]
+    flat = [x for sub in all_prf for x in sub]
+
+    def overall_prf(key: str) -> float:
+        return round(sum(x.get(key, 0) for x in flat) / len(flat), 3) if flat else 0.0
 
     return {
         "model": model,
         "num_prompts": len(PROMPTS),
         "overall_rougeL": avg([r["rougeL"] for r in results]),
-        "coding_rougeL": avg(domain_scores["coding"]),
-        "meeting_rougeL": avg(domain_scores["meeting"]),
-        "general_rougeL": avg(domain_scores["general"]),
+        "coding_rougeL": avg([x["rougeL"] for x in domain_scores["coding"]]),
+        "meeting_rougeL": avg([x["rougeL"] for x in domain_scores["meeting"]]),
+        "general_rougeL": avg([x["rougeL"] for x in domain_scores["general"]]),
+        "overall_rouge1_precision": overall_prf("rouge1_precision"),
+        "overall_rouge1_recall": overall_prf("rouge1_recall"),
+        "overall_rouge1_f1": overall_prf("rouge1_f1"),
+        "overall_rougeL_precision": overall_prf("rougeL_precision"),
+        "overall_rougeL_recall": overall_prf("rougeL_recall"),
+        "overall_rougeL_f1": overall_prf("rougeL_f1"),
+        "coding_rouge1_f1": avg_prf("coding", "rouge1_f1"),
+        "meeting_rouge1_f1": avg_prf("meeting", "rouge1_f1"),
+        "general_rouge1_f1": avg_prf("general", "rouge1_f1"),
         "avg_latency": avg([r["latency"] for r in results]),
         "details": results,
     }
@@ -213,13 +297,17 @@ def main():
 
     print(f"\nEvaluating Main Model: {args.model}")
     print(f"Endpoint: {args.endpoint}")
-    print(f"Prompts: {len(PROMPTS)} (3 coding + 3 meeting + 4 general)\n")
+    print(f"Prompts: {len(PROMPTS)} (orchestration mix: coding + meeting + general)\n")
 
     result = evaluate(args.endpoint, args.model, args.api_key)
 
     print(f"\n{'='*55}")
     print(f"Results for {args.model}")
-    print(f"  Overall ROUGE-L:  {result['overall_rougeL']}")
+    print(f"  Overall ROUGE-L:  {result['overall_rougeL']}  (F1 {result['overall_rougeL_f1']})")
+    print(
+        f"  Overall ROUGE-1:  P {result['overall_rouge1_precision']}  "
+        f"R {result['overall_rouge1_recall']}  F1 {result['overall_rouge1_f1']}"
+    )
     print(f"  Coding ROUGE-L:   {result['coding_rougeL']}")
     print(f"  Meeting ROUGE-L:  {result['meeting_rougeL']}")
     print(f"  General ROUGE-L:  {result['general_rougeL']}")

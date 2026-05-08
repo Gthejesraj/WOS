@@ -1,0 +1,130 @@
+{
+  "model": "qwen/qwen3-32b",
+  "benchmark": "mbpp",
+  "pass_at_1": 5.0,
+  "passed": 1,
+  "total": 20,
+  "avg_latency": 4.55,
+  "details": [
+    {
+      "id": "MBPP/11",
+      "passed": false,
+      "error": "File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpcsvh648q.py\", line 13\n    Let me think. Let's take the example. Original string is \"aaba\", character 'a'. First occurrence is at index 0, last occurrence is index 3. So removing those two, the remaining is \"ab\".\n                                                                                 ^\nSyntaxError: unterminated string literal (detected at line 13)",
+      "latency": 1.55
+    },
+    {
+      "id": "MBPP/12",
+      "passed": false,
+      "error": "File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmplovby8e3.py\", line 15\n    Wait, no. Because sum is a function that takes an iterable. Wait, the key function is applied to each element of the list. For example, if you have a list of numbers and you want to sort by absolute value, you do key=abs. But here, each element is a list. So for each row (a list), the key is sum(row). Therefore, the key should be the sum function. Wait, but sum(row) is the same as applying sum to the row. So the key is sum. Wait, but when you pass key=sum, does that work? Let me think. The sum function takes an iterable and an optional start value. So when you use key=sum, does that mean that each row is passed as the first argument to sum? Because the sorted function's key applies the function to each element. So for each row in the matrix, the key is sum(row). So yes,\n                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        ^\nSyntaxError: unterminated string literal (detected at line 15)",
+      "latency": 1.54
+    },
+    {
+      "id": "MBPP/13",
+      "passed": false,
+      "error": "File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmp7oz_oxac.py\", line 7\n    The problem says to count the most common words in a dictionary. Hmm. So perhaps the input is a dictionary where the keys are words, and the values are their counts? But then what's the task? Or maybe the dictionary is a list of words (like a corpus) and we need to count their frequencies. Wait, maybe there's confusion in the problem statement's wording. Let me re-read.\n                                                                                                                                                                                                                                                                                                                                                             ^\nSyntaxError: unterminated string literal (detected at line 7)",
+      "latency": 1.45
+    },
+    {
+      "id": "MBPP/14",
+      "passed": false,
+      "error": "File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmplko940dr.py\", line 5\n    First, what's the formula for the volume of a triangular prism? Oh right, the volume is the area of the triangular base multiplied by the height (or length) of the prism. So the formula would be (base_area) * height. But how do I get the base area?\n               ^\nSyntaxError: unterminated string literal (detected at line 5)",
+      "latency": 1.87
+    },
+    {
+      "id": "MBPP/15",
+      "passed": false,
+      "error": "File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpw5kg4q3v.py\", line 9\n    Wait, the problem says \"split a string at lowercase letters\". So splitting at each lowercase character. For example, if the input is \"aBcDe\", then splitting at lowercase letters would give [\"\", \"B\", \"D\", \"\"]. Because splitting happens wherever there's a lowercase letter, and those positions are replaced with split points. Wait, but how does that work for letters that are lowercase. Let me think of an example.\n                                                                                                                                                                                                                                                             ^\nSyntaxError: unterminated string literal (detected at line 9)",
+      "latency": 1.7
+    },
+    {
+      "id": "MBPP/16",
+      "passed": false,
+      "error": "File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmppjvhidfa.py\", line 3\n    Okay, I need to write a Python function called text_lowercase_underscore that finds sequences of lowercase letters joined with an underscore. Hmm, let's think about what that means. So the task is to find all occurrences in a given text where there are lowercase letters, then an underscore, then more lowercase letters, possibly repeated. Like, maybe something like \"abc_def_ghi\"?\n                                                                                                                                                          ^\nSyntaxError: unterminated string literal (detected at line 3)",
+      "latency": 1.82
+    },
+    {
+      "id": "MBPP/17",
+      "passed": true,
+      "error": "",
+      "latency": 0.93
+    },
+    {
+      "id": "MBPP/18",
+      "passed": false,
+      "error": "File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpnriodp9t.py\", line 6\n    Then, create a list comprehension that includes each char in s1 if it's not in dirty.\n                                                                         ^\nSyntaxError: unterminated string literal (detected at line 6)",
+      "latency": 11.32
+    },
+    {
+      "id": "MBPP/19",
+      "passed": false,
+      "error": "File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpruspnj8k.py\", line 7\n    This seems like a very concise and efficient solution. However, there's another consideration: for very large arrays, converting to a set might take some time,\n                                                                         ^\nSyntaxError: unterminated string literal (detected at line 7)",
+      "latency": 11.53
+    },
+    {
+      "id": "MBPP/20",
+      "passed": false,
+      "error": "File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpme1xx84u.py\", line 3\n    Okay, I need to write a Python function called is_woodall that checks if a given number is a Woodall number. Hmm, what's a Woodall number again? Oh right, a Woodall number is a number that can be expressed in the form n * 2^n - 1, where n is a positive integer. So my task is to determine for a given number x whether there exists some n such that x equals n*2^n -1.\n                                                                                                                          ^\nSyntaxError: unterminated string literal (detected at line 3)",
+      "latency": 1.29
+    },
+    {
+      "id": "MBPP/21",
+      "passed": false,
+      "error": "File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpi46row9l.py\", line 5\n    So the function should take two parameters, m and n. Wait, wait, wait. Wait, the problem says \"m number of multiples of n\". So the function's parameters are m and n? Like, if m is 3 and n is 5, the function should return [5, 10, 15]?\n                                                                                                                                               ^\nSyntaxError: unterminated string literal (detected at line 5)",
+      "latency": 1.57
+    },
+    {
+      "id": "MBPP/22",
+      "passed": false,
+      "error": "File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmplbl9dr4k.py\", line 3\n    Okay, I need to write a Python function called find_first_duplicate that takes an array of integers and returns the first duplicate element. Hmm, let's think about how to approach this.\n                                                                                                                                                         ^\nSyntaxError: unterminated string literal (detected at line 3)",
+      "latency": 11.61
+    },
+    {
+      "id": "MBPP/23",
+      "passed": false,
+      "error": "File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmprvi9v2eo.py\", line 5\n    But what if the list_of_lists is empty? Well, the problem might not mention that. But assuming that the input is valid as per the problem's constraints. The problem says \"list in a list of lists\", implying that the input is a non-empty list of non-empty lists. So the code should work.\n                                                                                                                                             ^\nSyntaxError: unterminated string literal (detected at line 5)",
+      "latency": 1.14
+    },
+    {
+      "id": "MBPP/24",
+      "passed": false,
+      "error": "File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpslj44m8_.py\", line 7\n    Wait, the problem says \"given binary number\"\u2014so maybe the input is a string of 0s and 1s. Because that's how binary numbers are often passed, since leading zeros can be part of the binary string but in integers they'd be lost. For example, binary string '001' is 1 in decimal, same as '1'.\n                                                ^\nSyntaxError: invalid character '\u2014' (U+2014)",
+      "latency": 11.69
+    },
+    {
+      "id": "MBPP/25",
+      "passed": false,
+      "error": "File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpogvh32x1.py\", line 10\n    Wait, but for the case where there are no unique elements, the product is 1. Which is correct.\n              ^^^\nSyntaxError: invalid syntax",
+      "latency": 1.36
+    },
+    {
+      "id": "MBPP/26",
+      "passed": false,
+      "error": "File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpaci2juev.py\", line 2\n    Wait, but in Python, tuples are immutable. But the problem says \"tuple list\"\u2014maybe the first parameter is a list of tuples. So the function signature would be something like def check_k_elements(tuple_list, k): ... ?\n                                                                                ^\nSyntaxError: invalid character '\u2014' (U+2014)",
+      "latency": 12.49
+    },
+    {
+      "id": "MBPP/27",
+      "passed": false,
+      "error": "File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpmjn10anv.py\", line 5\n    Wait, but what about cases where the string is empty? Well, the code should handle that, since it's just joining an empty list, which would result in an empty string.\n                                                                                                     ^\nSyntaxError: unterminated string literal (detected at line 5)",
+      "latency": 1.64
+    },
+    {
+      "id": "MBPP/28",
+      "passed": false,
+      "error": "File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpd_jukayb.py\", line 3\n    Okay, I need to write a Python function called binomial_Coeff to compute the binomial coefficient. Let's think about how to approach this.\n                                                                                                          ^\nSyntaxError: unterminated string literal (detected at line 3)",
+      "latency": 1.54
+    },
+    {
+      "id": "MBPP/29",
+      "passed": false,
+      "error": "File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpvlmfs72z.py\", line 16\n    Another test case: [5, 4, 5, 4, 5], XOR all: 5^4^5^4^5. Let's compute step by step. 5^4 is 1, then ^5 is 4, ^4 is 0, ^5 is 5. Correct, returns 5.\n                                                               ^\nSyntaxError: unterminated string literal (detected at line 16)",
+      "latency": 11.43
+    },
+    {
+      "id": "MBPP/30",
+      "passed": false,
+      "error": "File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpk3obs05u.py\", line 5\n    So, for a given string, every possible substring that starts and ends with the same character should be counted. For example, if the string is \"abca\", the substrings would be \"a\" (positions 0 and 3?), \"b\", \"c\", and then maybe \"aba\" if that's considered. Wait, maybe I should think of all possible substrings and check their first and last characters.\n                                                                                                                                                                                                                                                   ^\nSyntaxError: unterminated string literal (detected at line 5)",
+      "latency": 1.46
+    }
+  ]
+}

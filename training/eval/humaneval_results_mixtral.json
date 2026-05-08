@@ -1,0 +1,40 @@
+{
+  "model": "mixtral-8x7b-32768",
+  "benchmark": "humaneval",
+  "pass_at_1": 0.0,
+  "passed": 0,
+  "total": 5,
+  "avg_latency": 0.15,
+  "details": [
+    {
+      "id": "HE/0",
+      "passed": false,
+      "error": "400 Client Error: Bad Request for url: https://api.groq.com/openai/v1/chat/completions",
+      "latency": 0.19
+    },
+    {
+      "id": "HE/1",
+      "passed": false,
+      "error": "400 Client Error: Bad Request for url: https://api.groq.com/openai/v1/chat/completions",
+      "latency": 0.11
+    },
+    {
+      "id": "HE/2",
+      "passed": false,
+      "error": "400 Client Error: Bad Request for url: https://api.groq.com/openai/v1/chat/completions",
+      "latency": 0.13
+    },
+    {
+      "id": "HE/3",
+      "passed": false,
+      "error": "400 Client Error: Bad Request for url: https://api.groq.com/openai/v1/chat/completions",
+      "latency": 0.2
+    },
+    {
+      "id": "HE/4",
+      "passed": false,
+      "error": "400 Client Error: Bad Request for url: https://api.groq.com/openai/v1/chat/completions",
+      "latency": 0.12
+    }
+  ]
+}

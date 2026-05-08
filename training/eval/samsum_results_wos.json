@@ -1,0 +1,15 @@
+{
+  "model": "thejesraj/wos-meeting-32b",
+  "dataset": "samsum test",
+  "num_samples": 50,
+  "rouge1_p": 18.43,
+  "rouge1_r": 59.67,
+  "rouge1": 27.24,
+  "rouge2_p": 6.05,
+  "rouge2_r": 20.05,
+  "rouge2": 9.01,
+  "rougeL_p": 13.09,
+  "rougeL_r": 43.25,
+  "rougeL": 19.43,
+  "avg_latency_sec": 12.76
+}

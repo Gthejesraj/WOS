@@ -1,0 +1,130 @@
+{
+  "model": "llama-3.1-8b-instant",
+  "benchmark": "mbpp",
+  "pass_at_1": 45.0,
+  "passed": 9,
+  "total": 20,
+  "avg_latency": 1.4,
+  "details": [
+    {
+      "id": "MBPP/11",
+      "passed": true,
+      "error": "",
+      "latency": 0.37
+    },
+    {
+      "id": "MBPP/12",
+      "passed": true,
+      "error": "",
+      "latency": 0.4
+    },
+    {
+      "id": "MBPP/13",
+      "passed": false,
+      "error": "Traceback (most recent call last):\n  File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpcz_igtp3.py\", line 23, in <module>\n    assert count_common(['red','green','black','pink','black','white','black','eyes','white','black','orange','pink','pink','red','red','white','orange','white',\"black\",'pink','green','green','pink','green','pink','white','orange',\"orange\",'red']) == [('pink', 6), ('black', 5), ('white', 5), ('red', 4)]\n           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpcz_igtp3.py\", line 16, in count_common\n    words = re.findall(r'\\b\\w+\\b', dictionary.lower())\n                                   ^^^^^^^^^^^^^^^^\nAttributeError: 'list' object has no attribute 'lower'",
+      "latency": 0.4
+    },
+    {
+      "id": "MBPP/14",
+      "passed": false,
+      "error": "Traceback (most recent call last):\n  File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmps9gmhye6.py\", line 15, in <module>\n    assert find_Volume(10,8,6) == 240\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError",
+      "latency": 0.35
+    },
+    {
+      "id": "MBPP/15",
+      "passed": false,
+      "error": "Traceback (most recent call last):\n  File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmplpw8zahh.py\", line 15, in <module>\n    assert split_lowerstring(\"AbCd\")==['bC','d']\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError",
+      "latency": 0.35
+    },
+    {
+      "id": "MBPP/16",
+      "passed": false,
+      "error": "Traceback (most recent call last):\n  File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmp67q8_yvi.py\", line 15, in <module>\n    assert text_lowercase_underscore(\"aab_cbbbc\")==('Found a match!')\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError",
+      "latency": 0.4
+    },
+    {
+      "id": "MBPP/17",
+      "passed": true,
+      "error": "",
+      "latency": 0.42
+    },
+    {
+      "id": "MBPP/18",
+      "passed": true,
+      "error": "",
+      "latency": 0.35
+    },
+    {
+      "id": "MBPP/19",
+      "passed": true,
+      "error": "",
+      "latency": 0.36
+    },
+    {
+      "id": "MBPP/20",
+      "passed": false,
+      "error": "Traceback (most recent call last):\n  File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpmejy3fxc.py\", line 22, in <module>\n    assert is_woodall(383) == True\n           ^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError",
+      "latency": 0.52
+    },
+    {
+      "id": "MBPP/21",
+      "passed": false,
+      "error": "Traceback (most recent call last):\n  File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmp614zb97m.py\", line 14, in <module>\n    assert multiples_of_num(4,3)== [3,6,9,12]\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError",
+      "latency": 0.33
+    },
+    {
+      "id": "MBPP/22",
+      "passed": false,
+      "error": "Traceback (most recent call last):\n  File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpq167vje2.py\", line 10, in <module>\n    assert find_first_duplicate([1, 2, 3, 4])==-1\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError",
+      "latency": 10.45
+    },
+    {
+      "id": "MBPP/23",
+      "passed": true,
+      "error": "",
+      "latency": 0.37
+    },
+    {
+      "id": "MBPP/24",
+      "passed": false,
+      "error": "Traceback (most recent call last):\n  File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpv07lgn0t.py\", line 23, in <module>\n    assert binary_to_decimal(100) == 4\n           ~~~~~~~~~~~~~~~~~^^^^^\n  File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpv07lgn0t.py\", line 15, in binary_to_decimal\n    if not set(binary).issubset({'0', '1'}):\n           ~~~^^^^^^^^\nTypeError: 'int' object is not iterable",
+      "latency": 0.53
+    },
+    {
+      "id": "MBPP/25",
+      "passed": false,
+      "error": "Traceback (most recent call last):\n  File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpwemvrtcr.py\", line 20, in <module>\n    assert find_Product([1,1,2,3],4) == 6\n           ~~~~~~~~~~~~^^^^^^^^^^^^^\nTypeError: find_Product() takes 1 positional argument but 2 were given",
+      "latency": 0.4
+    },
+    {
+      "id": "MBPP/26",
+      "passed": false,
+      "error": "Traceback (most recent call last):\n  File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpiwekey_2.py\", line 14, in <module>\n    assert check_k_elements([(4, 4), (4, 4, 4), (4, 4), (4, 4, 4, 4), (4, )], 4) == True\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError",
+      "latency": 0.36
+    },
+    {
+      "id": "MBPP/27",
+      "passed": true,
+      "error": "",
+      "latency": 0.26
+    },
+    {
+      "id": "MBPP/28",
+      "passed": true,
+      "error": "",
+      "latency": 0.45
+    },
+    {
+      "id": "MBPP/29",
+      "passed": false,
+      "error": "Traceback (most recent call last):\n  File \"/var/folders/vl/qlp7mvx55vdbmn70t55y3c200000gn/T/tmpaaehlh11.py\", line 13, in <module>\n    assert get_Odd_Occurrence([1,2,3,1,2,3,1],7) == 1\n           ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^\nTypeError: get_Odd_Occurrence() takes 1 positional argument but 2 were given",
+      "latency": 10.48
+    },
+    {
+      "id": "MBPP/30",
+      "passed": true,
+      "error": "",
+      "latency": 0.36
+    }
+  ]
+}

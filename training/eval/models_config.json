@@ -1,10 +1,10 @@
 {
-  "note": "Fill in endpoint URLs after deploying RunPod Serverless vLLM endpoints",
+  "note": "Per-model api_key for 3 Runpod accounts, or leave EMPTY and set RUNPOD_API_KEY. Baseline: Qwen3-32B (~32.8B params) matches your Qwen specialist scale and supports tool calling — fair for coding/tool metrics; for Gemma-only slides you can add a second baseline row with google/gemma-2-27b-it.",
   "models": [
     {
-      "label": "Baseline (Mixtral untuned)",
-      "endpoint": "https://YOUR_BASELINE_ENDPOINT/v1",
-      "model_id": "mistralai/Mixtral-8x7B-Instruct-v0.1",
+      "label": "Baseline — Qwen3-32B (reference instruct)",
+      "endpoint": "https://YOUR_BASELINE_QWEN3_ENDPOINT/v1",
+      "model_id": "Qwen/Qwen3-32B",
       "api_key": "EMPTY",
       "type": "baseline"
     },

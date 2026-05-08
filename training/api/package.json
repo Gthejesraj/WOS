@@ -1,0 +1,16 @@
+{
+  "name": "wos-gateway",
+  "version": "1.0.0",
+  "description": "Unified OpenAI-compatible gateway for WOS fine-tuned models",
+  "type": "module",
+  "main": "gateway.js",
+  "scripts": {
+    "start": "node gateway.js"
+  },
+  "dependencies": {
+    "express": "^4.19.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

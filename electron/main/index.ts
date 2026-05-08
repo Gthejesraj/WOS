@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, nativeImage } from 'electron'
+import { app, BrowserWindow, globalShortcut, nativeImage, Menu } from 'electron'
 import path from 'node:path'
 import { eq } from 'drizzle-orm'
 import { createWindow } from './window'
@@ -73,6 +73,14 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason) => {
   console.error('[main] unhandledRejection', reason)
 })
+
+// Enable standard Edit menu shortcuts (Cut/Copy/Paste/Select All) in all text inputs.
+Menu.setApplicationMenu(Menu.buildFromTemplate([
+  { role: 'appMenu' },
+  { role: 'editMenu' },
+  { role: 'viewMenu' },
+  { role: 'windowMenu' },
+]))
 
 app.whenReady().then(async () => {
   console.log('[main] app ready')

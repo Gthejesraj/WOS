@@ -179,63 +179,97 @@ Authorization: Bearer <RUNPOD_API_KEY>
 pip install requests datasets rouge-score
 ```
 
-All eval scripts are in `training/eval/`. Results are saved as JSON files.
+All eval scripts live in `training/eval/`. Fill `training/eval/models_config.json` with each Runpod OpenAI base URL (`…/openai/v1`). Use per-row `api_key` for three Runpod accounts, or set one `RUNPOD_API_KEY` and leave row keys as `EMPTY`. **Baseline (default):** `Qwen/Qwen3-32B` (~32.8B) — same scale as your Qwen specialists, strong on code and **tool calling**, used for pass@1 / ROUGE / **tool-use success** / **meeting faithfulness** deltas vs every fine-tuned row. Use a recent `transformers` / vLLM stack that supports Qwen3.
 
-### Coding — HumanEval (5 problems)
+### Full suite + comprehensive HTML (recommended)
+
+Runs **HumanEval (HF, default 80)**, **MBPP (default 50)**, **DialogSum meeting ROUGE (default 72)**, **main/orchestration prompts**, **tool-use probe** (OpenAI `tools` on coding + main + baseline), **meeting faithfulness / hallucination proxies** (meeting + baseline), then the **long-form meeting showcase**. Produces `suite_<UTC>/suite_manifest.json` and raw JSON metrics.
+
+```bash
+cd training/eval
+export RUNPOD_API_KEY=rpa_...   # optional if every row has its own api_key
+export HF_TOKEN=hf_...          # for datasets Hub downloads
+
+python run_wos_evaluation_suite.py --config models_config.json \
+  --humaneval-limit 40 --mbpp-limit 30 --meeting-samples 60
+
+python generate_comprehensive_report.py --manifest suite_<timestamp>/suite_manifest.json
+# Open suite_<timestamp>/WOS_Comprehensive_Report.html
+```
+
+Use `--skip-showcase` on the suite if you only want numbers. Tune limits with `--humaneval-limit`, `--mbpp-limit`, `--meeting-samples`.
+
+### Coding — HumanEval (inline 5 problems or HF split)
+
+`eval_coding.py` also reports **average code token F1** vs the HumanEval **canonical** solution (HF mode only): multiset overlap on identifier-like tokens — complementary to pass@1.
 
 ```bash
 cd training/eval
 
-# Against WOS Coding (RunPod)
-python eval_coding.py \
-  --endpoint https://api.runpod.ai/v2/foc9m29xg2itck/openai/v1 \
-  --model thejesraj/wos-coding-32b \
-  --api_key YOUR_RUNPOD_KEY \
-  --benchmark humaneval \
-  --out coding_results_wos.json
+# Quick smoke (5 curated problems, no datasets)
+python eval_coding.py --endpoint https://api.runpod.ai/v2/<id>/openai/v1 \
+  --model thejesraj/wos-coding-32b --api_key YOUR_KEY --benchmark humaneval
 
-# Against baseline (Groq free API)
-python eval_coding.py \
-  --endpoint https://api.groq.com/openai/v1 \
-  --model llama-3.3-70b-versatile \
-  --api_key YOUR_GROQ_KEY \
-  --benchmark humaneval \
-  --out coding_results_baseline.json
+# Larger slice (downloads OpenAI HumanEval from Hugging Face)
+python eval_coding.py --endpoint https://api.runpod.ai/v2/<id>/openai/v1 \
+  --model thejesraj/wos-coding-32b --api_key YOUR_KEY \
+  --benchmark humaneval --humaneval-source hf --humaneval-limit 40
 ```
 
-### Coding — MBPP (20 problems)
+### Coding — MBPP
+
+MBPP JSON includes **`avg_code_token_f1_vs_reference`** (token F1 vs dataset reference code).
 
 ```bash
-python eval_coding.py \
-  --endpoint https://api.runpod.ai/v2/foc9m29xg2itck/openai/v1 \
-  --model thejesraj/wos-coding-32b \
-  --api_key YOUR_RUNPOD_KEY \
-  --benchmark mbpp \
-  --out mbpp_results_wos.json
+python eval_coding.py --endpoint https://api.runpod.ai/v2/<id>/openai/v1 \
+  --model thejesraj/wos-coding-32b --api_key YOUR_KEY \
+  --benchmark mbpp --mbpp-limit 30
 ```
 
-### Meeting — DialogSum (50 samples)
+### Meeting — DialogSum ROUGE (+ macro precision / recall / F1)
+
+Each JSON run includes **ROUGE-1/2/L** as F1 (legacy `rouge1` keys) plus **`rouge1_precision`**, **`rouge1_recall`**, **`rouge1_f1`**, and the same for ROUGE-2 and ROUGE-L (stemmed macro averages over samples).
 
 ```bash
-python eval_meeting.py \
-  --endpoint https://api.runpod.ai/v2/qzln8txmmtq7jg/openai/v1 \
-  --model thejesraj/wos-meeting-32b \
-  --api_key YOUR_RUNPOD_KEY \
-  --dataset dialogsum \
-  --out meeting_results_wos.json
+python eval_meeting.py --endpoint https://api.runpod.ai/v2/<id>/openai/v1 \
+  --model thejesraj/wos-meeting-32b --api_key YOUR_KEY \
+  --max-samples 80 --max-tokens 512
 ```
 
-### Generate the HTML Report
+### Main / orchestration — mixed-domain ROUGE
 
-Once all JSON result files exist:
+```bash
+python eval_main.py --endpoint https://api.runpod.ai/v2/<id>/openai/v1 \
+  --model thejesraj/wos-main-32b --api_key YOUR_KEY
+```
+
+### Long meeting showcase only
+
+```bash
+python meeting_long_showcase.py --config models_config.json --out showcase_meeting_long.json
+```
+
+### Tool-use only (OpenAI `tools` in request)
+
+```bash
+python eval_tool_use.py --endpoint https://api.runpod.ai/v2/<id>/openai/v1 \
+  --model Qwen/Qwen3-32B --api_key YOUR_KEY --out tool_use_baseline.json
+```
+
+### Meeting faithfulness / hallucination proxies only
+
+```bash
+python eval_meeting_faithfulness.py --endpoint https://api.runpod.ai/v2/<id>/openai/v1 \
+  --model thejesraj/wos-meeting-gemma --api_key YOUR_KEY
+```
+
+### Legacy story report (static loss curves + older JSON names)
 
 ```bash
 cd training/eval
 python generate_thejes_report.py
 # Output: training/eval/WOS_Full_Report.html
 ```
-
-Open `WOS_Full_Report.html` in any browser — fully self-contained, no internet required.
 
 ---
 
