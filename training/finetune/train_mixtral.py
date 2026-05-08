@@ -14,12 +14,16 @@ Run:
 
 # ── workspace redirect — MUST be before all other imports ────────────────────
 import os, sys
-os.environ["HOME"]               = "/workspace"
-os.environ["HF_HOME"]            = "/workspace/hf_cache"
-os.environ["TRANSFORMERS_CACHE"] = "/workspace/hf_cache"
-os.environ["HUGGINGFACE_HUB_CACHE"] = "/workspace/hf_cache"
-os.makedirs("/workspace/hf_cache", exist_ok=True)
-os.makedirs("/workspace/.huggingface", exist_ok=True)
+for _d in ["/workspace/hf_cache", "/workspace/tmp", "/workspace/.huggingface"]:
+    os.makedirs(_d, exist_ok=True)
+os.environ["HOME"]                    = "/workspace"
+os.environ["HF_HOME"]                 = "/workspace/hf_cache"
+os.environ["TRANSFORMERS_CACHE"]      = "/workspace/hf_cache"
+os.environ["HUGGINGFACE_HUB_CACHE"]   = "/workspace/hf_cache"
+os.environ["TMPDIR"]                  = "/workspace/tmp"
+os.environ["TEMP"]                    = "/workspace/tmp"
+os.environ["TMP"]                     = "/workspace/tmp"
+os.environ["HF_HUB_DISABLE_XET"]      = "1"   # use standard download, respects HF_HOME
 
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
 if not HF_TOKEN:
