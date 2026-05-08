@@ -46,9 +46,11 @@ print(f"GPU: {torch.cuda.get_device_name(0)} — {torch.cuda.get_device_properti
 
 BASE_MODEL = "google/gemma-2-27b"
 MAX_SEQ_LENGTH = 1024
+FAST_SEQ_MEETING = 768
+FAST_SEQ_MAIN = 512  # shorter context = fewer tokens/step for main demo runs
 CAP_CODING = 10000
 CAP_MEETING = 8000
-CAP_MAIN = 12000
+CAP_MAIN = 8000  # smaller cap speeds main without affecting vLLM deploy (merged weights format unchanged)
 JOBS = [
     {"task": "coding",  "repo": "thejesraj/wos-coding-gemma"},
     {"task": "meeting", "repo": "thejesraj/wos-meeting-gemma"},
@@ -153,7 +155,11 @@ def train(task, repo):
     print(f"Training: {task} → {repo}")
     print(f"{'='*60}")
 
-    WORK = f"/dev/shm/wos_{task}"
+    work_root = os.environ.get("WOS_WORK_ROOT") or (
+        "/workspace/wos_gemma" if os.path.isdir("/workspace") else "/dev/shm"
+    )
+    os.makedirs(work_root, exist_ok=True)
+    WORK = os.path.join(work_root, f"wos_{task}")
     MERGED = f"{WORK}/merged"
     for d in [WORK, MERGED]:
         shutil.rmtree(d, ignore_errors=True); os.makedirs(d)
@@ -189,8 +195,18 @@ def train(task, repo):
     model = get_peft_model(model, lora)
     model.print_trainable_parameters()
 
+    # Meeting/main: shorter context + no grad checkpointing = faster runs (vLLM max_model_len unaffected).
+    if task == "meeting":
+        seq_len = FAST_SEQ_MEETING
+    elif task == "main":
+        seq_len = FAST_SEQ_MAIN
+    else:
+        seq_len = MAX_SEQ_LENGTH
+    per_device_bs = 4 if task in ("meeting", "main") else 2
+    grad_accum = 6 if task == "main" else (8 if task == "meeting" else 16)
+
     def tokenize_batch(batch):
-        out = tok(batch["text"], truncation=True, max_length=MAX_SEQ_LENGTH, padding="max_length")
+        out = tok(batch["text"], truncation=True, max_length=seq_len, padding="max_length")
         out["labels"] = [
             [tid if tid != tok.pad_token_id else -100 for tid in ids]
             for ids in out["input_ids"]
@@ -201,8 +217,8 @@ def train(task, repo):
     args = TrainingArguments(
         output_dir=f"{WORK}/adapter",
         num_train_epochs=1,
-        per_device_train_batch_size=2,
-        gradient_accumulation_steps=16,
+        per_device_train_batch_size=per_device_bs,
+        gradient_accumulation_steps=grad_accum,
         learning_rate=2e-4,
         bf16=True,
         fp16=False,
@@ -211,7 +227,8 @@ def train(task, repo):
         warmup_ratio=0.03,
         lr_scheduler_type="cosine",
         optim="adamw_torch",
-        gradient_checkpointing=True,
+        # Main uses shorter seq; skip checkpointing for speed. Meeting/coding keep checkpointing for VRAM.
+        gradient_checkpointing=(task != "main"),
         report_to=[],
         remove_unused_columns=False,
     )
@@ -240,8 +257,12 @@ def train(task, repo):
     print(f"  Model export verified: {len(shards) if shards else 1} safetensor file(s) ✓")
 
     print(f"Uploading to {repo}...")
-    merged.push_to_hub(repo, safe_serialization=True, max_shard_size="4GB",
-                       token=HF_TOKEN, commit_message="WOS fine-tune (bfloat16, vLLM-ready)")
+    # transformers/peft hubs: omit safe_serialization (not accepted on PushToHubMixin.push_to_hub in some versions)
+    merged.push_to_hub(
+        repo,
+        token=HF_TOKEN,
+        commit_message="WOS fine-tune (bfloat16, vLLM-ready)",
+    )
     tok.push_to_hub(repo, token=HF_TOKEN)
     print(f"Done: https://huggingface.co/{repo}")
 

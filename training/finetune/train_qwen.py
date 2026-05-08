@@ -44,15 +44,13 @@ if not torch.cuda.is_available():
     sys.exit(1)
 print(f"GPU: {torch.cuda.get_device_name(0)} — {torch.cuda.get_device_properties(0).total_memory/1e9:.0f}GB")
 
-BASE_MODEL = "Qwen/Qwen2.5-32B"
+BASE_MODEL = "Qwen/Qwen3-32B"
 MAX_SEQ_LENGTH = 1024
 CAP_CODING = 10000
 CAP_MEETING = 8000
 CAP_MAIN = 12000
 JOBS = [
-    {"task": "coding",  "repo": "thejesraj/wos-coding"},
-    {"task": "meeting", "repo": "thejesraj/wos-meeting"},
-    {"task": "main",    "repo": "thejesraj/wos-main"},
+    {"task": "main", "repo": "thejesraj/wos-main-qwen3"},
 ]
 
 # ── dataset builders ──────────────────────────────────────────────────────────
@@ -255,8 +253,11 @@ def train(task, repo):
 
     # push
     print(f"Uploading to {repo}...")
-    merged.push_to_hub(repo, safe_serialization=True, max_shard_size="4GB",
-                       token=HF_TOKEN, commit_message="WOS fine-tune (bfloat16, vLLM-ready)")
+    merged.push_to_hub(
+        repo,
+        token=HF_TOKEN,
+        commit_message="WOS fine-tune (bfloat16, vLLM-ready)",
+    )
     tok.push_to_hub(repo, token=HF_TOKEN)
     print(f"Done: https://huggingface.co/{repo}")
 

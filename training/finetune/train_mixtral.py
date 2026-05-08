@@ -240,8 +240,11 @@ def train(task, repo):
     print(f"  Model export verified: {len(shards) if shards else 1} safetensor file(s) ✓")
 
     print(f"Uploading to {repo}...")
-    merged.push_to_hub(repo, safe_serialization=True, max_shard_size="4GB",
-                       token=HF_TOKEN, commit_message="WOS fine-tune (bfloat16, vLLM-ready)")
+    merged.push_to_hub(
+        repo,
+        token=HF_TOKEN,
+        commit_message="WOS fine-tune (bfloat16, vLLM-ready)",
+    )
     tok.push_to_hub(repo, token=HF_TOKEN)
     print(f"Done: https://huggingface.co/{repo}")
 
