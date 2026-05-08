@@ -58,18 +58,26 @@ else:
     print("WARNING: HF_TOKEN not set — gated models will fail. Set HF_TOKEN env var.")
     sys.exit(1)
 
+# ── redirect HF cache to /workspace to avoid root quota limits ────────────────
+HF_CACHE = "/workspace/hf_cache"
+os.makedirs(HF_CACHE, exist_ok=True)
+os.environ["HF_HOME"] = HF_CACHE
+os.environ["TRANSFORMERS_CACHE"] = HF_CACHE
+os.environ["HUGGINGFACE_HUB_CACHE"] = HF_CACHE
+print(f"HF cache → {HF_CACHE}")
+
 # ── disk cleanup ──────────────────────────────────────────────────────────────
 
-def check_disk(path="/", min_gb=80):
+def check_disk(path="/workspace", min_gb=80):
     free_gb = shutil.disk_usage(path).free / 1e9
-    print(f"\nDisk: {free_gb:.1f} GB free")
+    print(f"\nDisk: {free_gb:.1f} GB free on {path}")
     if free_gb < min_gb:
         print("  Low disk — clearing HF cache...")
-        hf_cache = os.path.expanduser("~/.cache/huggingface/hub")
+        hf_cache = HF_CACHE
         if os.path.exists(hf_cache):
             shutil.rmtree(hf_cache)
             print(f"  Cleared {hf_cache}")
-        for d in ["/tmp/wos_adapter", "/tmp/wos_merged", "/tmp/wos_data"]:
+        for d in ["/workspace/wos_adapter", "/workspace/wos_merged", "/workspace/wos_data"]:
             if os.path.exists(d):
                 shutil.rmtree(d)
         free_gb = shutil.disk_usage(path).free / 1e9
@@ -78,11 +86,11 @@ def check_disk(path="/", min_gb=80):
         print("ERROR: Less than 40 GB free — aborting.")
         sys.exit(1)
 
-check_disk("/", min_gb=80)
+check_disk("/workspace", min_gb=80)
 
-ADAPTER_DIR = "/tmp/wos_adapter"
-MERGED_DIR  = "/tmp/wos_merged"
-DATA_DIR    = "/tmp/wos_data"
+ADAPTER_DIR = "/workspace/wos_adapter"
+MERGED_DIR  = "/workspace/wos_merged"
+DATA_DIR    = "/workspace/wos_data"
 for d in [ADAPTER_DIR, MERGED_DIR, DATA_DIR]:
     shutil.rmtree(d, ignore_errors=True)
     os.makedirs(d)
@@ -258,7 +266,7 @@ with open(data_path, "w") as f:
 ds_train = Dataset.from_json(data_path)
 print(f"Loaded into HF Dataset: {len(ds_train)} rows")
 
-check_disk("/", min_gb=60)
+check_disk("/workspace", min_gb=60)
 
 # ── tokenizer ─────────────────────────────────────────────────────────────────
 
@@ -368,5 +376,5 @@ print(f"Done: https://huggingface.co/{args.repo}")
 
 for d in [MERGED_DIR, ADAPTER_DIR, DATA_DIR]:
     shutil.rmtree(d, ignore_errors=True)
-print(f"Free disk: {shutil.disk_usage('/').free/1e9:.1f} GB")
+print(f"Free disk: {shutil.disk_usage('/workspace').free/1e9:.1f} GB")
 print("\nAll done!")
