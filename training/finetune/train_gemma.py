@@ -45,6 +45,10 @@ if not torch.cuda.is_available():
 print(f"GPU: {torch.cuda.get_device_name(0)} — {torch.cuda.get_device_properties(0).total_memory/1e9:.0f}GB")
 
 BASE_MODEL = "google/gemma-2-27b"
+MAX_SEQ_LENGTH = 1024
+CAP_CODING = 10000
+CAP_MEETING = 8000
+CAP_MAIN = 12000
 JOBS = [
     {"task": "coding",  "repo": "thejesraj/wos-coding-gemma"},
     {"task": "meeting", "repo": "thejesraj/wos-meeting-gemma"},
@@ -81,7 +85,7 @@ def build_coding():
             if c>=8000: break
     except: pass
     random.shuffle(samples)
-    return samples[:60000]
+    return samples[:CAP_CODING]
 
 def build_meeting():
     SYSTEM = ("You are WOS Meeting, an expert meeting intelligence assistant. "
@@ -115,7 +119,7 @@ def build_meeting():
                 samples.append(fmt(f"TRANSCRIPT:\n{m}\n\n{'QUESTION: '+q if q else 'Summarize.'}", a))
     except: pass
     random.shuffle(samples)
-    return samples
+    return samples[:CAP_MEETING]
 
 def build_main():
     def fmt(sys, h, g): return f"<|system|>\n{sys}\n<|user|>\n{h}\n<|assistant|>\n{g}"
@@ -140,7 +144,7 @@ def build_main():
             if c>=20000: break
     except: pass
     random.shuffle(samples)
-    return samples[:80000]
+    return samples[:CAP_MAIN]
 
 # ── train one model ───────────────────────────────────────────────────────────
 
@@ -186,7 +190,7 @@ def train(task, repo):
     model.print_trainable_parameters()
 
     def tokenize_batch(batch):
-        out = tok(batch["text"], truncation=True, max_length=2048, padding="max_length")
+        out = tok(batch["text"], truncation=True, max_length=MAX_SEQ_LENGTH, padding="max_length")
         out["labels"] = [
             [tid if tid != tok.pad_token_id else -100 for tid in ids]
             for ids in out["input_ids"]
