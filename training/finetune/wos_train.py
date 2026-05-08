@@ -288,7 +288,7 @@ model = AutoModelForCausalLM.from_pretrained(
     args.base,
     device_map="auto",
     trust_remote_code=True,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
     attn_implementation=attn_impl,
 )
 model.config.use_cache = False
@@ -313,7 +313,6 @@ sft_cfg = SFTConfig(
     gradient_accumulation_steps=args.gas,
     learning_rate=args.lr,
     bf16=True, fp16=False,
-    max_seq_length=args.maxlen,
     dataset_text_field="text",
     logging_steps=50,
     save_strategy="no",
@@ -330,6 +329,7 @@ trainer = SFTTrainer(
     train_dataset=ds_train,
     peft_config=lora_cfg,
     tokenizer=tok,
+    max_seq_length=args.maxlen,
 )
 
 print("\nStarting training...")
