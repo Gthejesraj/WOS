@@ -22,8 +22,9 @@ Usage (one command per RunPod pod):
   HF_TOKEN=hf_... python3 wos_train.py --task meeting --base Qwen/Qwen2.5-32B --repo thejesraj/wos-meeting
   HF_TOKEN=hf_... python3 wos_train.py --task main    --base Qwen/Qwen2.5-32B --repo thejesraj/wos-main
 
-Install:
+Install (H200 SXM):
   pip install transformers peft trl datasets bitsandbytes accelerate safetensors huggingface_hub tqdm -q
+  pip install flash-attn --no-build-isolation -q
 """
 
 import os, sys, shutil, argparse, json, random
@@ -39,7 +40,7 @@ parser.add_argument("--base",   required=True, help="HF base model id")
 parser.add_argument("--repo",   required=True, help="HF output repo to push to")
 parser.add_argument("--epochs", type=int,   default=1)
 parser.add_argument("--lr",     type=float, default=2e-4)
-parser.add_argument("--bs",     type=int,   default=2)
+parser.add_argument("--bs",     type=int,   default=4)   # H200 has 141GB VRAM
 parser.add_argument("--gas",    type=int,   default=8)
 parser.add_argument("--maxlen", type=int,   default=2048)
 parser.add_argument("--lora_r", type=int,   default=16)
@@ -280,13 +281,23 @@ bnb_cfg = BitsAndBytesConfig(
     bnb_4bit_compute_dtype=torch.bfloat16,
     bnb_4bit_use_double_quant=True,
 )
+
+# Use flash_attention_2 if installed (H200/H100), fall back to sdpa
+try:
+    import flash_attn  # noqa: F401
+    attn_impl = "flash_attention_2"
+    print("  flash-attn found — using flash_attention_2")
+except ImportError:
+    attn_impl = "sdpa"
+    print("  flash-attn not found — using sdpa (still fast on H200)")
+
 model = AutoModelForCausalLM.from_pretrained(
     args.base,
     quantization_config=bnb_cfg,
     device_map="auto",
     trust_remote_code=True,
     torch_dtype=torch.bfloat16,
-    attn_implementation="flash_attention_2",
+    attn_implementation=attn_impl,
 )
 model = prepare_model_for_kbit_training(model)
 model.config.use_cache = False
