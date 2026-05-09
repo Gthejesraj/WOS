@@ -13,6 +13,7 @@ import { cn } from '../../../lib/utils'
 import { toast } from 'sonner'
 import { MicButton } from './MicButton'
 import { MODEL_LIST, ModelPickerModal } from './ModelPickerModal'
+import { FancyBriefingTable, tryParseGFMTable } from './FancyBriefingTable'
 
 const MODES = [
   { id: 'default', label: 'Default', icon: Shield, description: 'Asks for permission on each action' },
@@ -103,12 +104,19 @@ function MarkdownContent({ content }: { content: string }) {
 
   const renderInline = (str: string, pk: string): React.ReactNode => {
     if (typeof str !== 'string') return null
-    const parts = str.split(/(\*\*[^*]+\*\*|`[^`]+`|\[([^\]]+)\]\(([^)]+)\))/g).filter(
+    const parts = str.split(/(\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|`[^`]+`|\[([^\]]+)\]\(([^)]+)\))/g).filter(
       (p): p is string => typeof p === 'string' && p.length > 0
     )
     return (
       <span key={pk}>
         {parts.map((p, i) => {
+          if (p.startsWith('***') && p.endsWith('***') && p.length > 6) {
+            return (
+              <strong key={i} className="font-semibold" style={{ color: '#f0abfc', textShadow: '0 0 12px rgba(236,72,153,0.35)' }}>
+                {p.slice(3, -3)}
+              </strong>
+            )
+          }
           if (p.startsWith('**') && p.endsWith('**')) {
             return <strong key={i} style={{ color: 'var(--foreground)' }}>{p.slice(2, -2)}</strong>
           }
@@ -123,8 +131,26 @@ function MarkdownContent({ content }: { content: string }) {
           const linkMatch = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(p)
           if (linkMatch) {
             return (
-              <a key={i} href={linkMatch[2]} target="_blank" rel="noreferrer"
-                style={{ color: 'var(--primary)' }} className="hover:underline">
+              <a
+                key={i}
+                href={linkMatch[2]}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center rounded-md px-1.5 py-0.5 -mx-0.5 text-[12px] font-medium transition-all duration-150 hover:underline hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/60"
+                style={{
+                  color: '#c4b5fd',
+                  background: 'rgba(139,92,246,0.12)',
+                  border: '1px solid transparent',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.borderColor = 'rgba(167,139,250,0.45)'
+                  e.currentTarget.style.background = 'rgba(139,92,246,0.22)'
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.borderColor = 'transparent'
+                  e.currentTarget.style.background = 'rgba(139,92,246,0.12)'
+                }}
+              >
                 {linkMatch[1]}
               </a>
             )
@@ -138,6 +164,15 @@ function MarkdownContent({ content }: { content: string }) {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
 
+    const gfm = tryParseGFMTable(lines, i)
+    if (gfm) {
+      result.push(
+        <FancyBriefingTable key={key()} headers={gfm.table.headers} rows={gfm.table.rows} />
+      )
+      i = gfm.endExclusive - 1
+      continue
+    }
+
     if (line.startsWith('```')) {
       if (inCode) {
         result.push(<InlineCodeBlock key={key()} code={codeLines.join('\n')} lang={codeLang} />)
@@ -150,33 +185,76 @@ function MarkdownContent({ content }: { content: string }) {
     if (inCode) { codeLines.push(line); continue }
 
     if (line.startsWith('# ')) {
-      result.push(<h1 key={key()} className="font-semibold mb-2 mt-4" style={{ color: 'var(--foreground)', fontSize: '16px' }}>{renderInline(line.slice(2), key())}</h1>)
+      result.push(
+        <div
+          key={key()}
+          className="mb-2 mt-4 rounded-xl px-3 py-2.5 transition-all duration-200 hover:bg-white/[0.04] hover:shadow-[inset_0_0_0_1px_rgba(167,139,250,0.25)]"
+          style={{ borderLeft: '3px solid rgba(196,181,253,0.85)', background: 'linear-gradient(90deg, rgba(88,28,135,0.15), transparent)' }}
+        >
+          <h1 className="font-semibold" style={{ color: 'var(--foreground)', fontSize: '16px' }}>{renderInline(line.slice(2), key())}</h1>
+        </div>
+      )
     } else if (line.startsWith('## ')) {
-      result.push(<h2 key={key()} className="font-semibold mb-1.5 mt-3" style={{ color: 'var(--foreground)', fontSize: '14px' }}>{renderInline(line.slice(3), key())}</h2>)
+      result.push(
+        <div
+          key={key()}
+          className="mb-2 mt-3 rounded-lg px-3 py-2 transition-all duration-200 hover:bg-white/[0.04] hover:shadow-[inset_0_0_0_1px_rgba(236,72,153,0.2)]"
+          style={{ borderLeft: '3px solid rgba(244,114,182,0.75)', background: 'linear-gradient(90deg, rgba(157,23,77,0.12), transparent)' }}
+        >
+          <h2 className="font-semibold" style={{ color: 'var(--foreground)', fontSize: '14px' }}>{renderInline(line.slice(3), key())}</h2>
+        </div>
+      )
     } else if (line.startsWith('### ')) {
-      result.push(<h3 key={key()} className="font-medium mb-1 mt-2" style={{ color: 'var(--secondary-foreground)', fontSize: '13px' }}>{renderInline(line.slice(4), key())}</h3>)
+      result.push(
+        <div
+          key={key()}
+          className="mb-1.5 mt-2 rounded-lg px-2.5 py-1.5 transition-all duration-200 hover:bg-white/[0.035]"
+          style={{ borderLeft: '2px solid rgba(34,211,238,0.55)' }}
+        >
+          <h3 className="font-medium" style={{ color: 'var(--secondary-foreground)', fontSize: '13px' }}>{renderInline(line.slice(4), key())}</h3>
+        </div>
+      )
     } else if (line.startsWith('- ') || line.startsWith('* ')) {
       result.push(
-        <div key={key()} className="flex gap-2 mb-1 ml-1">
-          <span className="mt-0.5 shrink-0" style={{ color: 'var(--border-strong)', fontSize: '11px' }}>•</span>
-          <span style={{ color: 'var(--muted-foreground)', fontSize: '13px', lineHeight: '1.65' }}>{renderInline(line.slice(2), key())}</span>
+        <div
+          key={key()}
+          className="group flex gap-2.5 mb-1 rounded-lg px-2 py-1.5 -mx-0.5 transition-all duration-150 hover:bg-white/[0.05] hover:shadow-[0_1px_0_rgba(255,255,255,0.04)_inset] cursor-default select-text"
+        >
+          <span className="mt-0.5 shrink-0 w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold transition-colors group-hover:bg-fuchsia-500/25 group-hover:text-fuchsia-200" style={{ color: 'var(--border-strong)', background: 'rgba(148,163,184,0.08)' }}>•</span>
+          <span className="min-w-0 flex-1" style={{ color: 'var(--muted-foreground)', fontSize: '13px', lineHeight: '1.65' }}>{renderInline(line.slice(2), key())}</span>
         </div>
       )
     } else if (/^\d+\. /.test(line)) {
       const [num, ...rest] = line.split('. ')
       result.push(
-        <div key={key()} className="flex gap-2 mb-1 ml-1">
-          <span className="shrink-0" style={{ color: 'var(--border-strong)', fontSize: '12px' }}>{num}.</span>
-          <span style={{ color: 'var(--muted-foreground)', fontSize: '13px', lineHeight: '1.65' }}>{renderInline(rest.join('. '), key())}</span>
+        <div
+          key={key()}
+          className="group flex gap-2.5 mb-1 rounded-lg px-2 py-1.5 -mx-0.5 transition-all duration-150 hover:bg-white/[0.05] hover:shadow-[0_1px_0_rgba(255,255,255,0.04)_inset] cursor-default select-text"
+        >
+          <span className="shrink-0 w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-semibold transition-colors group-hover:bg-cyan-500/20 group-hover:text-cyan-100" style={{ color: 'var(--border-strong)', background: 'rgba(148,163,184,0.08)' }}>{num}</span>
+          <span className="min-w-0 flex-1" style={{ color: 'var(--muted-foreground)', fontSize: '13px', lineHeight: '1.65' }}>{renderInline(rest.join('. '), key())}</span>
         </div>
       )
-    } else if (line.startsWith('---') || line.startsWith('***')) {
-      result.push(<hr key={key()} className="my-3" style={{ borderColor: 'var(--border)' }} />)
+    } else if (/^(\*{3,}|-{3,})\s*$/.test(line.trim())) {
+      result.push(
+        <div
+          key={key()}
+          className="my-4 h-px rounded-full opacity-90"
+          style={{
+            background: 'linear-gradient(90deg, transparent, rgba(168,85,247,0.55), rgba(236,72,153,0.5), rgba(245,158,11,0.45), transparent)',
+          }}
+          aria-hidden
+        />
+      )
     } else if (line.trim() === '') {
       result.push(<div key={key()} className="h-2" />)
     } else {
       result.push(
-        <p key={key()} className="mb-1" style={{ color: 'var(--muted-foreground)', fontSize: '13px', lineHeight: '1.7' }}>
+        <p
+          key={key()}
+          className="mb-1 rounded-lg px-2 py-1.5 -mx-0.5 transition-all duration-150 hover:bg-white/[0.04] cursor-text select-text"
+          style={{ color: 'var(--muted-foreground)', fontSize: '13px', lineHeight: '1.7' }}
+        >
           {renderInline(line, key())}
         </p>
       )
@@ -187,13 +265,20 @@ function MarkdownContent({ content }: { content: string }) {
     result.push(<InlineCodeBlock key={key()} code={codeLines.join('\n')} lang={codeLang} />)
   }
 
-  return <>{result}</>
+  return (
+    <div className="space-y-0.5 select-text -mx-0.5 px-0.5 rounded-xl py-0.5" style={{ background: 'linear-gradient(180deg, rgba(99,102,241,0.04), transparent 60%)' }}>
+      {result}
+    </div>
+  )
 }
 
 function InlineCodeBlock({ code, lang }: { code: string; lang: string }) {
   const [copied, setCopied] = useState(false)
   return (
-    <div className="my-3 rounded-lg overflow-hidden" style={{ background: 'var(--background)', border: '1px solid var(--border)' }}>
+    <div
+      className="my-3 rounded-xl overflow-hidden transition-all duration-200 hover:shadow-[0_0_0_1px_rgba(99,102,241,0.35)] hover:bg-white/[0.02]"
+      style={{ background: 'var(--background)', border: '1px solid var(--border)' }}
+    >
       {lang && (
         <div className="flex items-center justify-between px-3 py-1.5" style={{ background: 'var(--sidebar)', borderBottom: '1px solid var(--border)' }}>
           <span style={{ color: 'var(--border-strong)', fontSize: '10px' }}>{lang}</span>

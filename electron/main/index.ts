@@ -1,6 +1,9 @@
 import { app, BrowserWindow, globalShortcut, nativeImage, Menu } from 'electron'
 import path from 'node:path'
+import { loadLocalEnvEarly } from './load-env'
 import { eq } from 'drizzle-orm'
+
+loadLocalEnvEarly()
 import { createWindow } from './window'
 import { setupTray } from './tray'
 import { setupAutoUpdater } from './updater'
@@ -14,6 +17,22 @@ import { scanSkills } from './skills/manager'
 import { scanRules } from './rules/manager'
 import { disconnectAll } from './mcp/manager'
 import { startContextScheduler, stopContextScheduler } from './context/scheduler'
+
+function seedDevApiKeyOnce(provider: 'openai' | 'anthropic' | 'hf' | 'together', raw: string | undefined): void {
+  if (!raw?.trim()) return
+  try {
+    const db = getDb()
+    const existing = db.select().from(schema.apiKeys).where(eq(schema.apiKeys.provider, provider)).get()
+    if (existing) return
+    const { encrypted, iv } = encryptApiKey(raw.trim())
+    const now = new Date()
+    db.insert(schema.apiKeys).values({ provider, encryptedKey: encrypted, iv, createdAt: now, updatedAt: now }).run()
+    notifyWrite()
+    console.log('[main] seeded', provider, 'key from env (demo/dev)')
+  } catch (err) {
+    console.warn('[main] API key seed failed for', provider, err)
+  }
+}
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string
 declare const MAIN_WINDOW_VITE_NAME: string
@@ -116,22 +135,11 @@ app.whenReady().then(async () => {
       console.log('[main] WOS_E2E exposed __wos_db helper')
     }
 
-    // Dev-only: seed OpenAI API key from env so E2E runs work out of the box.
-    if (process.env.WOS_DEV_OPENAI_KEY) {
-      try {
-        const db = getDb()
-        const existing = db.select().from(schema.apiKeys).where(eq(schema.apiKeys.provider, 'openai')).get()
-        if (!existing) {
-          const { encrypted, iv } = encryptApiKey(process.env.WOS_DEV_OPENAI_KEY)
-          const now = new Date()
-          db.insert(schema.apiKeys).values({ provider: 'openai', encryptedKey: encrypted, iv, createdAt: now, updatedAt: now }).run()
-          notifyWrite()
-          console.log('[main] seeded OpenAI API key from WOS_DEV_OPENAI_KEY')
-        }
-      } catch (err) {
-        console.warn('[main] API key seed failed', err)
-      }
-    }
+    // Dev/demo: optionally seed Settings API keys from env (never commit `.env`).
+    seedDevApiKeyOnce('openai', process.env.WOS_DEV_OPENAI_KEY)
+    seedDevApiKeyOnce('anthropic', process.env.WOS_DEV_ANTHROPIC_KEY)
+    seedDevApiKeyOnce('hf', process.env.WOS_DEV_HF_KEY)
+    seedDevApiKeyOnce('together', process.env.WOS_DEV_TOGETHER_KEY)
   } catch (err) {
     console.error('[main] database init failed:', err)
     // Continue without DB in dev — show window anyway

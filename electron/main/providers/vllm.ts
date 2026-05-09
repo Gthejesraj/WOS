@@ -1,29 +1,37 @@
 /**
  * Provider for WOS fine-tuned models.
- * Supports three backend types, configurable per model:
  *
- *   runpod    — RunPod Serverless vLLM (OpenAI-compatible, scales to zero)
- *               Env: WOS_VLLM_CODING_URL, WOS_VLLM_MEETING_URL, WOS_VLLM_BASE_URL
- *               Key: stored 'hf' key slot (RunPod API key)
+ * Primary path is an OpenAI-compatible URL (typically RunPod) that serves the HF
+ * model IDs in HF_MODEL_IDS (e.g. thejesraj/wos-coding-32b).
  *
- *   openai    — Standard OpenAI API or any OpenAI-compatible endpoint
- *               Key: stored 'openai' key slot
- *               Fallback model: WOS_OPENAI_FALLBACK_MODEL (default: gpt-4o-mini)
+ * Optional same-model mirrors — when the primary fails (HTTP 410/404/503/502/504,
+ * timeouts, obvious network errors), WOS retries **the same modelId** against a
+ * second OpenAI-compatible base if you configure it (e.g. Hugging Face Space,
+ * RunPod standby, LAN vLLM). This keeps behavior honest: logs show when a mirror
+ * is used (`console.warn`); there is no “fake fine-tuned” path.
  *
- *   anthropic — Anthropic Claude (fallback when RunPod endpoint is down/deleted)
- *               Key: stored 'anthropic' key slot
- *               Fallback model: WOS_ANTHROPIC_FALLBACK_MODEL (default: claude-haiku-4-5-20251001)
+ * Env (mirror / failover, optional):
+ *   Per-slot: WOS_VLLM_CODING_MIRROR_URL, … (see OPENAI_COMPAT_MIRRORS below)
+ *   Global (used when per-slot unset): WOS_VLLM_GLOBAL_MIRROR_URL — same OpenAI /v1 root for all wos-* tries
+ * Primary URLs still use: WOS_VLLM_CODING_URL, WOS_VLLM_MEETING_URL, WOS_VLLM_BASE_URL
  *
- * Priority: if RunPod returns 410/404/503, automatically falls back to
- * Anthropic (if key present) then OpenAI (if key present).
+ * API key order for primary + mirrors: prefers stored `hf` token, then RunPod (`runpod` / legacy `hf` slot).
+ *
+ * Further chain (different models — only after mirrors exhausted or absent):
+ *   Anthropic (WOS_ANTHROPIC_FALLBACK_MODEL) → OpenAI (WOS_OPENAI_FALLBACK_MODEL)
  *
  * Override backend globally: WOS_VLLM_BACKEND=runpod|openai|anthropic
  */
 
 import OpenAI from 'openai'
-import Anthropic from '@anthropic-ai/sdk'
+import { setTimeout as sleep } from 'node:timers/promises'
 import type { ModelProvider, ModelRequest, StreamEvent, ModelInfo } from './types'
 import { getDecryptedApiKeyOrNull } from './keystore'
+import {
+  streamAnthropicToolCalls,
+  streamOpenAICompatToolCalls,
+} from './chat-completion-streams'
+import { streamHostedLastResort } from './hosted-fallback'
 
 type Backend = 'runpod' | 'openai' | 'anthropic'
 
@@ -54,6 +62,20 @@ const RUNPOD_ENDPOINTS: Record<string, string> = {
   'wos-main-qwen35':     EP.MAIN_QWEN35,
 }
 
+/** Optional OpenAI-compatible bases that serve the **same** HF_MODEL_IDS payload (second try only). */
+const OPENAI_COMPAT_MIRRORS: Partial<Record<string, string>> = {
+  'wos-coding':          process.env.WOS_VLLM_CODING_MIRROR_URL,
+  'wos-meeting':         process.env.WOS_VLLM_MEETING_MIRROR_URL,
+  'wos-main':            process.env.WOS_VLLM_BASE_MIRROR_URL,
+  'wos-coding-mixtral':  process.env.WOS_VLLM_CODING_MIXTRAL_MIRROR_URL,
+  'wos-meeting-mixtral': process.env.WOS_VLLM_MEETING_MIXTRAL_MIRROR_URL,
+  'wos-main-mixtral':    process.env.WOS_VLLM_MAIN_MIXTRAL_MIRROR_URL,
+  'wos-coding-gemma':    process.env.WOS_VLLM_CODING_GEMMA_MIRROR_URL,
+  'wos-meeting-gemma':   process.env.WOS_VLLM_MEETING_GEMMA_MIRROR_URL,
+  'wos-main-gemma':      process.env.WOS_VLLM_MAIN_GEMMA_MIRROR_URL,
+  'wos-main-qwen35':     process.env.WOS_VLLM_MAIN_QWEN35_MIRROR_URL,
+}
+
 // HuggingFace model IDs passed in the request body to the vLLM server
 const HF_MODEL_IDS: Record<string, string> = {
   'wos-coding':          'thejesraj/wos-coding-32b',
@@ -75,6 +97,10 @@ const OPENAI_FALLBACK     = process.env.WOS_OPENAI_FALLBACK_MODEL    ?? 'gpt-4o-
 const OPENAI_FALLBACK_URL = 'https://api.openai.com/v1'
 const TOGETHER_URL        = 'https://api.together.xyz/v1'
 
+/** Extra same-key attempts after 502/503 (serverless cold boot). Env 0 disables. */
+const PRIMARY_COLD_RETRY_MS = Number(process.env.WOS_PRIMARY_COLD_RETRY_MS ?? 4500)
+const PRIMARY_COLD_RETRY_EXTRA = Math.max(0, Math.min(4, Number(process.env.WOS_PRIMARY_COLD_RETRY_COUNT ?? 1)))
+
 export const WOS_FINE_TUNED_MODELS: ModelInfo[] = [
   // Qwen 2.5-32B
   { id: 'wos-coding',          name: 'WOS Coding (Qwen 2.5-32B)',   provider: 'wos' as any },
@@ -93,183 +119,104 @@ export const WOS_FINE_TUNED_MODELS: ModelInfo[] = [
   { id: 'qwen-baseline',       name: 'Qwen2.5-32B Instruct (Baseline)', provider: 'wos' as any },
 ]
 
-// Errors that indicate the endpoint is permanently or temporarily gone.
+function openAIHttpStatus(err: unknown): number | undefined {
+  if (err instanceof OpenAI.APIError && typeof err.status === 'number') return err.status
+  return undefined
+}
+
+// Errors that indicate the endpoint is permanently or temporarily gone / overloaded.
 function isEndpointDown(err: unknown): boolean {
+  const s = openAIHttpStatus(err)
+  if (s === 404 || s === 410 || s === 503) return true
   if (!(err instanceof Error)) return false
   const msg = err.message.toLowerCase()
-  // 410 Gone, 404 Not Found, 503 Service Unavailable
   return msg.includes('410') || msg.includes('404') || msg.includes('503') ||
     msg.includes('not found') || msg.includes('gone') || msg.includes('service unavailable')
 }
 
-export class VLLMProvider implements ModelProvider {
+/** Primary failed in a way that may succeed on another host with the same model id — skip auth/wrong-key paths. */
+function shouldAttemptSameModelMirror(err: unknown): boolean {
+  const s = openAIHttpStatus(err)
+  if (s === 401 || s === 403) return false
+  if (s === 408 || s === 429) return true
+  if (typeof s === 'number' && s >= 500 && s <= 599) return true
+  if (isEndpointDown(err)) return true
+  if (!(err instanceof Error)) return false
+  const msg = err.message.toLowerCase()
+  return (
+    msg.includes('500') || msg.includes('502') || msg.includes('504') ||
+    msg.includes('520') || msg.includes('524') ||
+    msg.includes('timeout') || msg.includes('timed out') ||
+    msg.includes('econnrefused') || msg.includes('econnreset') || msg.includes('etimedout') ||
+    msg.includes('fetch failed') || msg.includes('network error') ||
+    msg.includes('rate limit') || msg.includes('overload') ||
+    msg.includes('service unavailable') || msg.includes('bad gateway')
+  )
+}
 
-  // ── RunPod / OpenAI-compatible streaming ─────────────────────────────────
+/** True when outages / transport issues warrant Hosted (Claude/GPT) last resort — excludes auth. */
+export function shouldAttemptHostedFallback(err: unknown): boolean {
+  const s = openAIHttpStatus(err)
+  if (s === 401 || s === 403) return false
+  return shouldAttemptSameModelMirror(err) || isEndpointDown(err)
+}
 
-  private async *streamOpenAICompatible(
-    request: ModelRequest,
-    baseURL: string,
-    apiKey: string,
-    modelId: string,
-  ): AsyncGenerator<StreamEvent> {
-    const client = new OpenAI({ baseURL, apiKey })
+function mirrorUrlFor(modelKey: string): string | undefined {
+  const per = OPENAI_COMPAT_MIRRORS[modelKey]?.trim()
+  if (per) return per
+  return process.env.WOS_VLLM_GLOBAL_MIRROR_URL?.trim()
+}
 
-    const messages: OpenAI.ChatCompletionMessageParam[] = []
-    if (request.systemPrompt) {
-      messages.push({ role: 'system', content: request.systemPrompt })
-    }
-    messages.push(...request.messages.map(m => ({
-      role: m.role as 'user' | 'assistant' | 'system',
-      content: typeof m.content === 'string'
-        ? m.content
-        : (m.content as Array<{ type: string; text?: string }>)
-            .filter(b => b.type === 'text' && b.text)
-            .map(b => b.text!)
-            .join('\n'),
-    })))
+function isColdStartHttp(err: unknown): boolean {
+  const s = openAIHttpStatus(err)
+  return s === 502 || s === 503
+}
 
-    const tools: OpenAI.ChatCompletionTool[] = request.tools.map(t => ({
-      type: 'function' as const,
-      function: { name: t.name, description: t.description, parameters: t.inputSchema as Record<string, unknown> },
-    }))
+/**
+ * Tries each API key with optional 502/503 cold-boot delays, then rotates keys on failure.
+ */
+export async function* streamOpenAICompatWithColdKeys(
+  request: ModelRequest,
+  baseURL: string,
+  keysToTry: string[],
+  modelId: string,
+): AsyncGenerator<StreamEvent> {
+  const delayMs = PRIMARY_COLD_RETRY_MS
+  const maxExtra = PRIMARY_COLD_RETRY_EXTRA
 
-    const toolCallArgs: Record<string, string> = {}
-    const toolCallNames: Record<string, string> = {}
-
-    const stream = await client.chat.completions.create({
-      model: modelId,
-      messages,
-      tools: tools.length > 0 ? tools : undefined,
-      stream: true,
-      max_tokens: request.maxTokens ?? 4096,
-      temperature: 0.7,
-      stream_options: { include_usage: true },
-    }, { signal: request.signal })
-
-    let inputTokens = 0
-    let outputTokens = 0
-
-    for await (const chunk of stream) {
-      const delta = chunk.choices[0]?.delta
-      if (!delta) {
-        if (chunk.usage) {
-          inputTokens = chunk.usage.prompt_tokens
-          outputTokens = chunk.usage.completion_tokens
+  for (let ki = 0; ki < keysToTry.length; ki++) {
+    try {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          yield* streamOpenAICompatToolCalls(request, baseURL, keysToTry[ki], modelId)
+          return
+        } catch (e) {
+          if ((request.signal as AbortSignal)?.aborted) return
+          if (
+            attempt < maxExtra &&
+            delayMs > 0 &&
+            isColdStartHttp(e)
+          ) {
+            await sleep(delayMs)
+            continue
+          }
+          throw e
         }
+      }
+    } catch (e) {
+      if ((request.signal as AbortSignal)?.aborted) return
+      if (ki < keysToTry.length - 1) {
+        console.warn(
+          `[wos:vllm] OpenAI-compat call failed (${e instanceof Error ? e.message : String(e)}); trying next stored key.`,
+        )
         continue
       }
-
-      if (delta.content) yield { type: 'text_delta', content: delta.content }
-
-      for (const tc of delta.tool_calls ?? []) {
-        const id = tc.id ?? String(tc.index)
-        if (tc.function?.name) {
-          toolCallNames[id] = tc.function.name
-          toolCallArgs[id] = ''
-          yield { type: 'tool_preparing', id, name: tc.function.name }
-        }
-        if (tc.function?.arguments) {
-          toolCallArgs[id] = (toolCallArgs[id] ?? '') + tc.function.arguments
-          yield { type: 'tool_arg_delta', id, delta: tc.function.arguments }
-        }
-      }
-
-      const finishReason = chunk.choices[0]?.finish_reason
-      if (finishReason === 'tool_calls') {
-        for (const [id, args] of Object.entries(toolCallArgs)) {
-          let parsedInput: unknown = {}
-          try { parsedInput = JSON.parse(args) } catch { parsedInput = {} }
-          yield { type: 'tool_use_start', id, name: toolCallNames[id] ?? 'unknown', input: parsedInput }
-        }
-      }
-    }
-
-    const hasToolCalls = Object.keys(toolCallNames).length > 0
-    yield {
-      type: 'message_stop',
-      stopReason: hasToolCalls ? 'tool_use' : 'end_turn',
-      usage: { inputTokens, outputTokens },
+      throw e
     }
   }
+}
 
-  // ── Anthropic streaming ───────────────────────────────────────────────────
-
-  private async *streamAnthropic(
-    request: ModelRequest,
-    apiKey: string,
-    model: string,
-  ): AsyncGenerator<StreamEvent> {
-    const client = new Anthropic({ apiKey })
-
-    const messages: Anthropic.MessageParam[] = request.messages.map(m => ({
-      role: m.role as 'user' | 'assistant',
-      content: typeof m.content === 'string' ? m.content : m.content as Anthropic.ContentBlockParam[],
-    }))
-
-    const tools: Anthropic.Tool[] = request.tools.map(t => ({
-      name: t.name,
-      description: t.description,
-      input_schema: t.inputSchema as Anthropic.Tool['input_schema'],
-    }))
-
-    const toolAccumulators = new Map<number, string>()
-    const toolInfo = new Map<number, { id: string; name: string }>()
-    let inputTokens = 0
-    let outputTokens = 0
-
-    const stream = client.messages.stream({
-      model,
-      system: request.systemPrompt || undefined,
-      messages,
-      tools: tools.length > 0 ? tools : undefined,
-      max_tokens: request.maxTokens ?? 4096,
-    }, { signal: request.signal })
-
-    for await (const event of stream) {
-      switch (event.type) {
-        case 'message_start':
-          inputTokens = event.message.usage.input_tokens
-          break
-        case 'content_block_start':
-          if (event.content_block.type === 'tool_use') {
-            toolInfo.set(event.index, { id: event.content_block.id, name: event.content_block.name })
-            toolAccumulators.set(event.index, '')
-            yield { type: 'tool_preparing', id: event.content_block.id, name: event.content_block.name }
-          }
-          break
-        case 'content_block_delta':
-          if (event.delta.type === 'text_delta') {
-            yield { type: 'text_delta', content: event.delta.text }
-          } else if (event.delta.type === 'input_json_delta') {
-            const cur = toolAccumulators.get(event.index) ?? ''
-            toolAccumulators.set(event.index, cur + event.delta.partial_json)
-            const info = toolInfo.get(event.index)
-            if (info) yield { type: 'tool_arg_delta', id: info.id, delta: event.delta.partial_json }
-          }
-          break
-        case 'content_block_stop': {
-          const info = toolInfo.get(event.index)
-          if (info) {
-            const jsonStr = toolAccumulators.get(event.index) ?? '{}'
-            let parsedInput: unknown = {}
-            try { parsedInput = JSON.parse(jsonStr) } catch { parsedInput = {} }
-            yield { type: 'tool_use_start', id: info.id, name: info.name, input: parsedInput }
-          }
-          break
-        }
-        case 'message_delta':
-          if (typeof event.usage?.output_tokens === 'number') outputTokens = event.usage.output_tokens
-          if (event.delta?.stop_reason) {
-            yield {
-              type: 'message_stop',
-              stopReason: event.delta.stop_reason === 'tool_use' ? 'tool_use' : 'end_turn',
-              usage: { inputTokens, outputTokens },
-            }
-          }
-          break
-      }
-    }
-  }
+export class VLLMProvider implements ModelProvider {
 
   // ── Main stream dispatcher ────────────────────────────────────────────────
 
@@ -278,11 +225,20 @@ export class VLLMProvider implements ModelProvider {
 
     const modelKey = request.model
 
-    // qwen-baseline always routes to Together AI (OpenAI-compatible)
+    // qwen-baseline routes to Together AI; on outage, same hosted last-resort chain as WOS models.
     if (modelKey === 'qwen-baseline') {
       const apiKey = (await getDecryptedApiKeyOrNull('together')) ?? 'EMPTY'
-      yield* this.streamOpenAICompatible(request, TOGETHER_URL, apiKey, HF_MODEL_IDS['qwen-baseline'])
-      return
+      try {
+        yield* streamOpenAICompatToolCalls(request, TOGETHER_URL, apiKey, HF_MODEL_IDS['qwen-baseline'])
+        return
+      } catch (err) {
+        if ((request.signal as AbortSignal)?.aborted) return
+        if (shouldAttemptHostedFallback(err)) {
+          yield* streamHostedLastResort(request)
+          return
+        }
+        throw err
+      }
     }
 
     const backend: Backend = GLOBAL_BACKEND ?? 'runpod'
@@ -297,48 +253,55 @@ export class VLLMProvider implements ModelProvider {
       return
     }
 
-    // RunPod first, then auto-fallback on 410/404/503
+    const modelId = HF_MODEL_IDS[modelKey] ?? modelKey
+    const primaryEndpoint = RUNPOD_ENDPOINTS[modelKey] ?? RUNPOD_ENDPOINTS['wos-coding']
+    const mirrorEndpoint = mirrorUrlFor(modelKey)
+
+    const hfKey = await getDecryptedApiKeyOrNull('hf')
+    const rpKey = await getDecryptedApiKeyOrNull('runpod' as any)
+    const keyOrder = [...new Set([hfKey, rpKey].filter(Boolean))] as string[]
+    const keysToTry = keyOrder.length ? keyOrder : ['EMPTY']
+
+    let err: unknown
     try {
-      const runpodKey = (await getDecryptedApiKeyOrNull('runpod' as any))
-        ?? (await getDecryptedApiKeyOrNull('hf'))
-        ?? 'EMPTY'
-      const endpoint = RUNPOD_ENDPOINTS[modelKey] ?? RUNPOD_ENDPOINTS['wos-coding']
-      const modelId  = HF_MODEL_IDS[modelKey] ?? modelKey
-      yield* this.streamOpenAICompatible(request, endpoint, runpodKey, modelId)
-    } catch (err) {
-      if ((request.signal as AbortSignal)?.aborted) return
-      if (!isEndpointDown(err)) throw err
-
-      // RunPod is down — try Anthropic, then OpenAI
-      const anthropicKey = await getDecryptedApiKeyOrNull('anthropic')
-      if (anthropicKey) {
-        yield* this.streamAnthropic(request, anthropicKey, ANTHROPIC_FALLBACK)
-        return
-      }
-
-      const openaiKey = await getDecryptedApiKeyOrNull('openai')
-      if (openaiKey) {
-        yield* this.streamOpenAICompatible(request, OPENAI_FALLBACK_URL, openaiKey, OPENAI_FALLBACK)
-        return
-      }
-
-      throw new Error(
-        `WOS endpoint unavailable (${(err as Error).message}). ` +
-        'Add an Anthropic or OpenAI API key in Settings to enable automatic fallback.'
-      )
+      yield* streamOpenAICompatWithColdKeys(request, primaryEndpoint, keysToTry, modelId)
+      return
+    } catch (e) {
+      err = e
     }
+
+    // Same HF model ID on mirror / global mirror URL
+    if (mirrorEndpoint && shouldAttemptSameModelMirror(err)) {
+      console.warn(
+        `[wos:vllm] Primary failed (${err instanceof Error ? err.message : String(err)}); ` +
+          `retrying model ${modelId} on mirror URL.`,
+      )
+      try {
+        yield* streamOpenAICompatWithColdKeys(request, mirrorEndpoint, keysToTry, modelId)
+        return
+      } catch (eM) {
+        err = eM
+        console.warn(
+          `[wos:vllm] Mirror failed (${err instanceof Error ? err.message : String(err)}); using hosted fallback if configured.`,
+        )
+      }
+    }
+
+    if (!shouldAttemptHostedFallback(err)) throw err
+
+    yield* streamHostedLastResort(request)
   }
 
   private async *tryAnthropic(request: ModelRequest): AsyncGenerator<StreamEvent> {
     const key = (await getDecryptedApiKeyOrNull('anthropic')) ?? request.apiKeyOverride
     if (!key) throw new Error('No Anthropic API key configured. Add one in Settings → API Keys.')
-    yield* this.streamAnthropic(request, key, ANTHROPIC_FALLBACK)
+    yield* streamAnthropicToolCalls(request, key, ANTHROPIC_FALLBACK)
   }
 
   private async *tryOpenAI(request: ModelRequest): AsyncGenerator<StreamEvent> {
     const key = await getDecryptedApiKeyOrNull('openai')
     if (!key) throw new Error('No OpenAI API key configured. Add one in Settings → API Keys.')
-    yield* this.streamOpenAICompatible(request, OPENAI_FALLBACK_URL, key, OPENAI_FALLBACK)
+    yield* streamOpenAICompatToolCalls(request, OPENAI_FALLBACK_URL, key, OPENAI_FALLBACK)
   }
 
   async fetchModels(): Promise<ModelInfo[]> {

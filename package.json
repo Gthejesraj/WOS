@@ -7,7 +7,8 @@
   "scripts": {
     "start": "env -u ELECTRON_RUN_AS_NODE electron-forge start -- --no-deprecation",
     "predev": "electron-rebuild -f -w better-sqlite3",
-    "dev": "env -u ELECTRON_RUN_AS_NODE electron-forge start -- --no-deprecation",
+    "dev": "node scripts/run-dev.mjs",
+    "demo": "node scripts/run-dev.mjs",
     "package": "env -u ELECTRON_RUN_AS_NODE electron-forge package",
     "make": "env -u ELECTRON_RUN_AS_NODE electron-forge make",
     "lint": "tsc --noEmit",

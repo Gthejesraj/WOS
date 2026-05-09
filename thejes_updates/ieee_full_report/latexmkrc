@@ -1,0 +1,3 @@
+# Ensure graphics and aux files resolve relative to this paper folder (fixes missing images
+# when the editor invokes latexmk from the repo root).
+$do_cd = 1;

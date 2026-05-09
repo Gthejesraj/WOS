@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft, Key, Settings as SettingsIcon, Info, CheckCircle2, XCircle, Loader2, RefreshCw,
   ChevronDown, Eye, Brain, Folder, Trash2, Plus, Sparkles, ScrollText, Sun, Moon, Monitor,
-  Link, BarChart2, Activity,
+  Link, BarChart2, Activity, Copy,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { ModelInfo, AgentMode } from '../../../types'
@@ -1362,6 +1362,30 @@ function RunPodAccountRow({
   const [newUrl, setNewUrl] = useState('')
   const [adding, setAdding] = useState(false)
 
+  const toastKeyCopied = () => {
+    toast.success('RunPod API key copied to clipboard', { duration: 4000 })
+  }
+
+  const copyKeyFromField = async () => {
+    const t = keyValue.trim()
+    if (!t) return
+    try {
+      await navigator.clipboard.writeText(t)
+      toastKeyCopied()
+    } catch {
+      toast.error('Could not copy — select the key and use ⌘C / Ctrl+C')
+    }
+  }
+
+  const copyEndpointUrl = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url)
+      toast.success('Endpoint URL copied', { duration: 3500 })
+    } catch {
+      toast.error('Could not copy URL')
+    }
+  }
+
   const saveKey = async () => {
     if (!keyValue.trim()) return
     setKeyState('testing'); setKeyError(null)
@@ -1377,7 +1401,10 @@ function RunPodAccountRow({
 
     setKeyState('ok')
     setKeyValue('')
-    toast.success(`API key saved for ${account.name}. Syncing endpoints…`)
+    toast.success(`API key saved for ${account.name}`, {
+      description: 'Syncing endpoints in the background…',
+      duration: 5000,
+    })
     onChange()
 
     // Sync in background — failures here surface as warnings only
@@ -1470,14 +1497,27 @@ function RunPodAccountRow({
           type="password"
           value={keyValue}
           onChange={e => setKeyValue(e.target.value)}
+          onCopy={() => {
+            toastKeyCopied()
+          }}
           placeholder={account.hasApiKey ? '••••••••  (paste to replace)' : 'Paste RunPod API key (rpa_...)'}
           className="flex-1 px-3 py-1.5 rounded-md outline-none"
           style={{ background: 'var(--input)', border: '1px solid var(--border)', color: 'var(--foreground)', fontSize: '12px' }}
         />
         <button
+          type="button"
+          onClick={copyKeyFromField}
+          disabled={!keyValue.trim()}
+          title="Copy key from field"
+          className="px-2.5 py-1.5 rounded-md disabled:opacity-30 transition-colors flex items-center gap-1 shrink-0"
+          style={{ background: 'var(--card)', color: 'var(--foreground)', border: '1px solid var(--border)', fontSize: '11px' }}
+        >
+          <Copy size={12} /> Copy
+        </button>
+        <button
           onClick={saveKey}
           disabled={!keyValue.trim() || keyState === 'testing'}
-          className="px-3 py-1.5 rounded-md disabled:opacity-30 transition-colors"
+          className="px-3 py-1.5 rounded-md disabled:opacity-30 transition-colors shrink-0"
           style={{ background: 'var(--surface-strong)', color: 'var(--amber)', border: '1px solid var(--surface-stronger)', fontSize: '12px' }}
         >
           {keyState === 'testing' ? <Loader2 size={12} className="animate-spin" /> : 'Save & Sync'}
@@ -1515,13 +1555,25 @@ function RunPodAccountRow({
                 {ep.url}
               </div>
             </div>
-            <button
-              onClick={() => removeEndpoint(ep.id)}
-              style={{ color: 'var(--muted-foreground)' }}
-              className="hover:text-red-400 shrink-0"
-            >
-              <Trash2 size={12} />
-            </button>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => void copyEndpointUrl(ep.url)}
+                title="Copy endpoint URL"
+                style={{ color: 'var(--muted-foreground)' }}
+                className="hover:text-foreground p-1 rounded"
+              >
+                <Copy size={12} />
+              </button>
+              <button
+                type="button"
+                onClick={() => removeEndpoint(ep.id)}
+                style={{ color: 'var(--muted-foreground)' }}
+                className="hover:text-red-400 p-1 rounded"
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
           </div>
         ))}
 

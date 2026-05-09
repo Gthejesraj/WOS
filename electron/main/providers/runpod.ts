@@ -10,11 +10,12 @@
  * format `runpod:<endpointId>` to route to the correct URL.
  */
 
-import OpenAI from 'openai'
 import { eq } from 'drizzle-orm'
 import type { ModelProvider, ModelRequest, StreamEvent, ModelInfo } from './types'
 import { getDb, schema } from '../db'
 import { encryptApiKey, decryptApiKey } from '../crypto'
+import { streamHostedLastResort } from './hosted-fallback'
+import { shouldAttemptHostedFallback, streamOpenAICompatWithColdKeys } from './vllm'
 
 export interface RunPodEndpoint {
   id: string         // stable UUID for routing — used as model ID suffix
@@ -65,19 +66,19 @@ const DEFAULT_CONFIG: RunPodConfig = {
         {
           id: 'ep_qwen_main',
           url: 'https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1',
-          modelId: 'thejesraj/wos-main-32b',
+          modelId: 'thejesraj/wos-main-qwen35',
           label: 'WOS Main (Qwen 2.5-32B)',
         },
         {
           id: 'ep_qwen_meeting',
           url: 'https://api.runpod.ai/v2/g593dspndb13v2/openai/v1',
-          modelId: 'thejesraj/wos-meeting-32b',
+          modelId: 'thejesraj/wos-meeting',
           label: 'WOS Meeting (Qwen 2.5-32B)',
         },
         {
           id: 'ep_qwen_coding',
           url: 'https://api.runpod.ai/v2/zlqrwvers5t4pr/openai/v1',
-          modelId: 'thejesraj/wos-coding-32b',
+          modelId: 'thejesraj/wos-coding',
           label: 'WOS Coding (Qwen 2.5-32B)',
         },
       ],
@@ -269,87 +270,16 @@ export class RunPodProvider implements ModelProvider {
       )
     }
 
-    const client = new OpenAI({ baseURL: endpoint.url, apiKey })
-
-    const messages: OpenAI.ChatCompletionMessageParam[] = []
-    if (request.systemPrompt) {
-      messages.push({ role: 'system', content: request.systemPrompt })
-    }
-    messages.push(...request.messages.map(m => ({
-      role: m.role as 'user' | 'assistant' | 'system',
-      content: typeof m.content === 'string'
-        ? m.content
-        : (m.content as Array<{ type: string; text?: string }>)
-            .filter(b => b.type === 'text' && b.text)
-            .map(b => b.text!)
-            .join('\n'),
-    })))
-
-    const tools: OpenAI.ChatCompletionTool[] = request.tools.map(t => ({
-      type: 'function' as const,
-      function: {
-        name: t.name,
-        description: t.description,
-        parameters: t.inputSchema as Record<string, unknown>,
-      },
-    }))
-
-    const toolCallArgs: Record<string, string> = {}
-    const toolCallNames: Record<string, string> = {}
-
-    const stream = await client.chat.completions.create({
-      model: endpoint.modelId,
-      messages,
-      tools: tools.length > 0 ? tools : undefined,
-      stream: true,
-      max_tokens: request.maxTokens ?? 4096,
-      temperature: 0.7,
-      stream_options: { include_usage: true },
-    }, { signal: request.signal })
-
-    let inputTokens = 0
-    let outputTokens = 0
-
-    for await (const chunk of stream) {
-      const delta = chunk.choices[0]?.delta
-      if (!delta) {
-        if (chunk.usage) {
-          inputTokens = chunk.usage.prompt_tokens
-          outputTokens = chunk.usage.completion_tokens
-        }
-        continue
-      }
-
-      if (delta.content) yield { type: 'text_delta', content: delta.content }
-
-      for (const tc of delta.tool_calls ?? []) {
-        const id = tc.id ?? String(tc.index)
-        if (tc.function?.name) {
-          toolCallNames[id] = tc.function.name
-          toolCallArgs[id] = ''
-          yield { type: 'tool_preparing', id, name: tc.function.name }
-        }
-        if (tc.function?.arguments) {
-          toolCallArgs[id] = (toolCallArgs[id] ?? '') + tc.function.arguments
-          yield { type: 'tool_arg_delta', id, delta: tc.function.arguments }
-        }
-      }
-
-      const finishReason = chunk.choices[0]?.finish_reason
-      if (finishReason === 'tool_calls') {
-        for (const [id, args] of Object.entries(toolCallArgs)) {
-          let parsedInput: unknown = {}
-          try { parsedInput = JSON.parse(args) } catch { parsedInput = {} }
-          yield { type: 'tool_use_start', id, name: toolCallNames[id] ?? 'unknown', input: parsedInput }
-        }
-      }
-    }
-
-    const hasToolCalls = Object.keys(toolCallNames).length > 0
-    yield {
-      type: 'message_stop',
-      stopReason: hasToolCalls ? 'tool_use' : 'end_turn',
-      usage: { inputTokens, outputTokens },
+    try {
+      yield* streamOpenAICompatWithColdKeys(request, endpoint.url, [apiKey], endpoint.modelId)
+    } catch (e) {
+      if ((request.signal as AbortSignal)?.aborted) return
+      if (!shouldAttemptHostedFallback(e)) throw e
+      console.warn(
+        `[runpod] OpenAI-compat call failed (${e instanceof Error ? e.message : String(e)}); ` +
+          `using Claude/GPT last-resort (not the RunPod HF checkpoint).`,
+      )
+      yield* streamHostedLastResort(request)
     }
   }
 
