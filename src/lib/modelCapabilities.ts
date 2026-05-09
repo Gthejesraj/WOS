@@ -1,7 +1,7 @@
 // Model capability inference. Provider /models endpoints do not expose all
 // structured capability metadata, so these rules stay conservative.
 
-export type ModelProviderId = 'openai' | 'anthropic'
+export type ModelProviderId = 'openai' | 'anthropic' | 'wos' | 'runpod'
 
 export function modelSupportsReasoning(id: string): boolean {
   const s = id.toLowerCase()

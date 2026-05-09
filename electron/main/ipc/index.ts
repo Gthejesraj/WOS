@@ -2,6 +2,7 @@ import { BrowserWindow } from 'electron'
 import { registerAgentHandlers } from './agent'
 import { registerWorkspaceHandlers } from './workspace'
 import { registerSettingsHandlers } from './settings'
+import { registerRunPodHandlers } from './runpod'
 import { registerDbHandlers } from './db'
 import { registerAppsHandlers } from './apps'
 import { registerMcpHandlers } from './mcp'
@@ -21,6 +22,7 @@ export function registerIpcHandlers(win: BrowserWindow) {
   registerAgentHandlers(win)
   registerWorkspaceHandlers()
   registerSettingsHandlers()
+  registerRunPodHandlers()
   registerDbHandlers()
   registerAppsHandlers()
   registerMcpHandlers()

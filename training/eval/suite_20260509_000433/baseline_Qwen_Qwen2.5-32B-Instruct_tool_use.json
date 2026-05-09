@@ -1,0 +1,46 @@
+{
+  "model": "Qwen/Qwen2.5-32B-Instruct",
+  "benchmark": "tool_use",
+  "tasks": 4,
+  "tool_call_rate_pct": 0.0,
+  "tool_plus_args_rate_pct": 0.0,
+  "avg_latency_sec": 120.08,
+  "details": [
+    {
+      "id": "weather_boston",
+      "latency_sec": 120.09,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=120)",
+      "tool_success": false,
+      "args_match": false,
+      "tools_called": [],
+      "raw_tool_calls": 0
+    },
+    {
+      "id": "calendar_range",
+      "latency_sec": 120.05,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=120)",
+      "tool_success": false,
+      "args_match": false,
+      "tools_called": [],
+      "raw_tool_calls": 0
+    },
+    {
+      "id": "ticket_high",
+      "latency_sec": 120.08,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=120)",
+      "tool_success": false,
+      "args_match": false,
+      "tools_called": [],
+      "raw_tool_calls": 0
+    },
+    {
+      "id": "weather_refuse_invent",
+      "latency_sec": 120.11,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=120)",
+      "tool_success": false,
+      "args_match": false,
+      "tools_called": [],
+      "raw_tool_calls": 0
+    }
+  ]
+}

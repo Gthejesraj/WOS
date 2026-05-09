@@ -46,6 +46,20 @@ interface WosAPI {
   fetchSavedModels: () => Promise<{ success: boolean; models: import('./index').ModelInfo[]; errors?: Array<{ provider: string; error?: string }> }>
   getFallbackModels: () => Promise<import('./index').ModelInfo[]>
 
+  runpod: {
+    getConfig: () => Promise<{ accounts: Array<{ id: string; name: string; hasApiKey: boolean; endpoints: Array<{ id: string; url: string; modelId: string; label: string; fetchedAt?: number }> }> }>
+    saveAccountKey: (accountId: string, apiKey: string) => Promise<{ success: boolean; error?: string }>
+    testAccountKey: (accountId: string, apiKey: string) => Promise<{ ok: boolean; modelId?: string; endpointUrl?: string; error?: string }>
+    addAccount: (name: string) => Promise<{ success: boolean; accountId?: string; error?: string }>
+    renameAccount: (accountId: string, name: string) => Promise<{ success: boolean; error?: string }>
+    deleteAccount: (accountId: string) => Promise<{ success: boolean; error?: string }>
+    addEndpoint: (accountId: string, url: string, apiKey?: string, label?: string) => Promise<{ success: boolean; endpoint?: { id: string; url: string; modelId: string; label: string }; probeError?: string; error?: string }>
+    removeEndpoint: (accountId: string, endpointId: string) => Promise<{ success: boolean; error?: string }>
+    probeEndpoint: (url: string, apiKey: string) => Promise<{ ok: boolean; modelId?: string; error?: string }>
+    syncAccount: (accountId: string) => Promise<{ success: boolean; results?: Array<{ endpointId: string; ok: boolean; modelId?: string; error?: string }>; error?: string }>
+    getModels: () => Promise<import('./index').ModelInfo[]>
+  }
+
   getConversations: () => Promise<import('./index').Conversation[]>
   getConversation: (id: string) => Promise<import('./index').Conversation | null>
   getMessages: (conversationId: string) => Promise<Array<{ id: string; role: string; blocks: unknown; createdAt: string; branchGroupId?: string | null; branchIndex?: number | null }>>

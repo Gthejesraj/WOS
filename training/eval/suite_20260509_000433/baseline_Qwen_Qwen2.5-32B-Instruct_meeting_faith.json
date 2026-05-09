@@ -1,0 +1,40 @@
+{
+  "model": "Qwen/Qwen2.5-32B-Instruct",
+  "benchmark": "meeting_faithfulness",
+  "avg_coverage_keyword_pct": 0.0,
+  "total_forbidden_hits": 0,
+  "total_possible_invented_names": 0,
+  "hallucination_proxy_lower_is_better": 100.0,
+  "details": [
+    {
+      "id": "adv_budget",
+      "latency_sec": 120.08,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=120)",
+      "coverage_keyword_pct": 0.0,
+      "forbidden_hits": 0,
+      "forbidden_detail": [],
+      "possible_invented_names": 0,
+      "summary_preview": ""
+    },
+    {
+      "id": "adv_timeline",
+      "latency_sec": 120.07,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=120)",
+      "coverage_keyword_pct": 0.0,
+      "forbidden_hits": 0,
+      "forbidden_detail": [],
+      "possible_invented_names": 0,
+      "summary_preview": ""
+    },
+    {
+      "id": "coverage_rich",
+      "latency_sec": 120.05,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=120)",
+      "coverage_keyword_pct": 0.0,
+      "forbidden_hits": 0,
+      "forbidden_detail": [],
+      "possible_invented_names": 0,
+      "summary_preview": ""
+    }
+  ]
+}

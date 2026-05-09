@@ -1,0 +1,463 @@
+{
+  "model": "Qwen/Qwen2.5-32B-Instruct",
+  "benchmark": "humaneval",
+  "pass_at_1": 0.0,
+  "passed": 0,
+  "total": 50,
+  "precision": 0.0,
+  "recall": 0.0,
+  "avg_code_token_f1_vs_canonical": 0.0,
+  "avg_latency": 71.98,
+  "details": [
+    {
+      "id": "HumanEval/0",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 0.68,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/1",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 0.29,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/2",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 5.2,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/3",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 0.33,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/4",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 5.17,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/5",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 0.34,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/6",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 5.16,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/7",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 0.29,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/8",
+      "passed": false,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=180)",
+      "latency": 180.07,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/9",
+      "passed": false,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=180)",
+      "latency": 180.04,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/10",
+      "passed": false,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=180)",
+      "latency": 180.11,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/11",
+      "passed": false,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=180)",
+      "latency": 180.06,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/12",
+      "passed": false,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=180)",
+      "latency": 180.11,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/13",
+      "passed": false,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=180)",
+      "latency": 180.15,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/14",
+      "passed": false,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=180)",
+      "latency": 180.06,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/15",
+      "passed": false,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=180)",
+      "latency": 180.08,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/16",
+      "passed": false,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=180)",
+      "latency": 180.11,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/17",
+      "passed": false,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=180)",
+      "latency": 180.12,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/18",
+      "passed": false,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=180)",
+      "latency": 180.07,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/19",
+      "passed": false,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=180)",
+      "latency": 180.06,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/20",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 43.61,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/21",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 1.03,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/22",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 0.85,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/23",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 0.95,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/24",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 0.96,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/25",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 0.97,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/26",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 0.91,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/27",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 0.88,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/28",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 0.99,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/29",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 0.88,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/30",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 1.01,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/31",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 0.9,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/32",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 0.91,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/33",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 96.48,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/34",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 1.02,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/35",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 1.09,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/36",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 1.0,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/37",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 0.89,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/38",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 1.03,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/39",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 0.94,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/40",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 0.9,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/41",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 0.96,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/42",
+      "passed": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1/chat/completions",
+      "latency": 0.9,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/43",
+      "passed": false,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=180)",
+      "latency": 180.06,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/44",
+      "passed": false,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=180)",
+      "latency": 180.07,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/45",
+      "passed": false,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=180)",
+      "latency": 180.08,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/46",
+      "passed": false,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=180)",
+      "latency": 180.05,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/47",
+      "passed": false,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=180)",
+      "latency": 180.09,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/48",
+      "passed": false,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=180)",
+      "latency": 180.09,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    },
+    {
+      "id": "HumanEval/49",
+      "passed": false,
+      "error": "HTTPSConnectionPool(host='api.runpod.ai', port=443): Read timed out. (read timeout=180)",
+      "latency": 180.07,
+      "token_precision": 0.0,
+      "token_recall": 0.0,
+      "token_f1_vs_canonical": 0.0
+    }
+  ]
+}

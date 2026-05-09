@@ -123,7 +123,10 @@ export async function resolveAgent(agentKey: AgentKey): Promise<AgentRuntimeSett
 
   if (!model) model = defaults.model
   const provider = getProviderNameForModel(model)
-  const keystoreProvider = provider === 'wos' ? null : provider
+  // RunPod and WOS providers manage their own keys (per-account / per-model
+  // routing). Only OpenAI / Anthropic agent overrides flow through here.
+  const keystoreProvider: 'openai' | 'anthropic' | null =
+    provider === 'openai' || provider === 'anthropic' ? provider : null
   const agentKeyDecrypted = keystoreProvider ? decryptAgentKey(config, keystoreProvider) : undefined
   const apiKeyOverride = agentKeyDecrypted ?? (keystoreProvider ? await getDecryptedApiKeyOrNull(keystoreProvider) : null) ?? undefined
 

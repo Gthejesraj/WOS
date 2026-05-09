@@ -59,6 +59,8 @@ if not torch.cuda.is_available():
 print(f"GPU: {torch.cuda.get_device_name(0)} — {torch.cuda.get_device_properties(0).total_memory/1e9:.0f}GB")
 
 BASE_MODEL = "google/gemma-2-27b"
+# Base Gemma tokenizer often has no `chat_template`; OpenAI chat + vLLM need one (transformers>=4.44).
+CHAT_TEMPLATE_FALLBACK_REPO = "google/gemma-2-27b-it"
 MAX_SEQ_LENGTH = 1024
 FAST_SEQ_MEETING = 768
 FAST_SEQ_MAIN = 512  # shorter context = fewer tokens/step for main demo runs
@@ -256,7 +258,21 @@ def train(task, repo):
     merged.config.torch_dtype = torch.bfloat16
     merged.config.use_cache = True
     merged.save_pretrained(MERGED, safe_serialization=True, max_shard_size="4GB")
+
+    # vLLM / chat completions: require explicit chat template on tokenizer (no HF default since v4.44).
+    if not getattr(tok, "chat_template", None):
+        print(f"  Loading chat_template from {CHAT_TEMPLATE_FALLBACK_REPO} for vLLM/OpenAI chat...")
+        _ctok = AutoTokenizer.from_pretrained(
+            CHAT_TEMPLATE_FALLBACK_REPO, trust_remote_code=True, token=HF_TOKEN
+        )
+        tok.chat_template = _ctok.chat_template
     tok.save_pretrained(MERGED)
+    tpl = getattr(tok, "chat_template", None)
+    if isinstance(tpl, str) and tpl.strip():
+        p_jinja = os.path.join(MERGED, "chat_template.jinja")
+        with open(p_jinja, "w", encoding="utf-8") as jf:
+            jf.write(tpl)
+        print(f"  Wrote {p_jinja} for optional vLLM --chat-template")
 
     files = os.listdir(MERGED)
     shards = [f for f in files if f.startswith("model-") and f.endswith(".safetensors")]
@@ -268,6 +284,12 @@ def train(task, repo):
     for rf in required:
         assert rf in files, f"Missing required file: {rf}"
     assert any(f in files for f in optional_tokenizer), "Missing tokenizer file"
+    with open(os.path.join(MERGED, "tokenizer_config.json"), encoding="utf-8") as f:
+        _tc = json.load(f)
+    if not (_tc.get("chat_template") or "").strip():
+        print("  WARN: tokenizer_config.json missing chat_template — redeploy or pass vLLM --chat-template")
+    else:
+        print("  tokenizer chat_template present (OpenAI /chat/completions OK) ✓")
     print(f"  Model export verified: {len(shards) if shards else 1} safetensor file(s) ✓")
 
     # Upload via huggingface_hub only (MERGED already has model + tokenizer; avoids

@@ -101,6 +101,29 @@ contextBridge.exposeInMainWorld('wos', {
   fetchSavedModels: () => ipcRenderer.invoke('models:fetch-saved'),
   getFallbackModels: () => ipcRenderer.invoke('models:fallback'),
 
+  // RunPod provider
+  runpod: {
+    getConfig: () => ipcRenderer.invoke('runpod:get-config'),
+    saveAccountKey: (accountId: string, apiKey: string) =>
+      ipcRenderer.invoke('runpod:save-account-key', { accountId, apiKey }),
+    testAccountKey: (accountId: string, apiKey: string) =>
+      ipcRenderer.invoke('runpod:test-account-key', { accountId, apiKey }),
+    addAccount: (name: string) => ipcRenderer.invoke('runpod:add-account', { name }),
+    renameAccount: (accountId: string, name: string) =>
+      ipcRenderer.invoke('runpod:rename-account', { accountId, name }),
+    deleteAccount: (accountId: string) =>
+      ipcRenderer.invoke('runpod:delete-account', { accountId }),
+    addEndpoint: (accountId: string, url: string, apiKey?: string, label?: string) =>
+      ipcRenderer.invoke('runpod:add-endpoint', { accountId, url, apiKey, label }),
+    removeEndpoint: (accountId: string, endpointId: string) =>
+      ipcRenderer.invoke('runpod:remove-endpoint', { accountId, endpointId }),
+    probeEndpoint: (url: string, apiKey: string) =>
+      ipcRenderer.invoke('runpod:probe-endpoint', { url, apiKey }),
+    syncAccount: (accountId: string) =>
+      ipcRenderer.invoke('runpod:sync-account', { accountId }),
+    getModels: () => ipcRenderer.invoke('runpod:get-models'),
+  },
+
   // Database
   getConversations: () => ipcRenderer.invoke('db:conversations:list'),
   getConversation: (id: string) => ipcRenderer.invoke('db:conversations:get', id),

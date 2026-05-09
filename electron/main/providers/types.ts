@@ -47,7 +47,7 @@ export interface TokenUsage {
 export interface ModelInfo {
   id: string
   name: string
-  provider: 'openai' | 'anthropic'
+  provider: 'openai' | 'anthropic' | 'wos' | 'runpod'
   contextWindow?: number
   supportsReasoning?: boolean
   supportsVision?: boolean

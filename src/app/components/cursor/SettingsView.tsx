@@ -321,6 +321,8 @@ function ConnectionsSection() {
     <div className="space-y-8">
       <SectionHeader title="Connections" subtitle="API keys and external integrations" />
       <ApiKeysSection />
+      <div style={{ height: '1px', background: 'var(--border)' }} />
+      <RunPodSection />
     </div>
   )
 }
@@ -1273,6 +1275,276 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
       <label className="block" style={{ color: 'var(--secondary-foreground)', fontSize: '12px' }}>{label}</label>
       {children}
       {hint && <div style={{ color: 'var(--muted-foreground)', fontSize: '11px' }}>{hint}</div>}
+    </div>
+  )
+}
+
+// ---------------- RunPod ----------------
+
+type RunPodEndpointUI = { id: string; url: string; modelId: string; label: string; fetchedAt?: number }
+type RunPodAccountUI = { id: string; name: string; hasApiKey: boolean; endpoints: RunPodEndpointUI[] }
+
+function RunPodSection() {
+  const [accounts, setAccounts] = useState<RunPodAccountUI[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const refresh = async () => {
+    setLoading(true)
+    try {
+      const cfg = await window.wos.runpod.getConfig()
+      setAccounts(cfg.accounts ?? [])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { void refresh() }, [])
+
+  const addAccount = async () => {
+    const name = prompt('RunPod account name:', 'New RunPod Account')
+    if (!name) return
+    const r = await window.wos.runpod.addAccount(name)
+    if (!r.success) toast.error(r.error ?? 'Failed to add account')
+    else await refresh()
+  }
+
+  const deleteAccount = async (id: string, name: string) => {
+    if (!confirm(`Delete account "${name}"? Endpoints and stored API key will be removed.`)) return
+    const r = await window.wos.runpod.deleteAccount(id)
+    if (!r.success) toast.error(r.error ?? 'Failed')
+    else { toast.success('Account deleted'); await refresh() }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <SectionHeader
+          title="RunPod"
+          subtitle="One API key per RunPod account; each endpoint URL maps to a fine-tuned model"
+        />
+        <button
+          onClick={addAccount}
+          className="px-3 py-1.5 rounded-md text-xs flex items-center gap-1"
+          style={{ background: 'var(--card)', color: 'var(--foreground)', border: '1px solid var(--border)' }}
+        >
+          <Plus size={12} /> Add account
+        </button>
+      </div>
+
+      {loading && (
+        <div style={{ color: 'var(--muted-foreground)', fontSize: '12px' }}>Loading…</div>
+      )}
+
+      {!loading && accounts.length === 0 && (
+        <div style={{ color: 'var(--muted-foreground)', fontSize: '12px' }}>
+          No RunPod accounts configured.
+        </div>
+      )}
+
+      {accounts.map(acc => (
+        <RunPodAccountRow
+          key={acc.id}
+          account={acc}
+          onChange={refresh}
+          onDelete={() => deleteAccount(acc.id, acc.name)}
+        />
+      ))}
+    </div>
+  )
+}
+
+function RunPodAccountRow({
+  account, onChange, onDelete,
+}: { account: RunPodAccountUI; onChange: () => void; onDelete: () => void }) {
+  const [keyValue, setKeyValue] = useState('')
+  const [keyState, setKeyState] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle')
+  const [keyError, setKeyError] = useState<string | null>(null)
+  const [newUrl, setNewUrl] = useState('')
+  const [adding, setAdding] = useState(false)
+
+  const saveKey = async () => {
+    if (!keyValue.trim()) return
+    setKeyState('testing'); setKeyError(null)
+
+    // Save first — never gate on probe success. RunPod endpoints can take
+    // 1-3min to cold-start; failing the save would lose the key.
+    const r = await window.wos.runpod.saveAccountKey(account.id, keyValue)
+    if (!r.success) {
+      setKeyState('error')
+      setKeyError(r.error ?? 'Failed to save')
+      return
+    }
+
+    setKeyState('ok')
+    setKeyValue('')
+    toast.success(`API key saved for ${account.name}. Syncing endpoints…`)
+    onChange()
+
+    // Sync in background — failures here surface as warnings only
+    void window.wos.runpod.syncAccount(account.id).then(syncRes => {
+      if (!syncRes.success) {
+        toast.warning(`Sync failed: ${syncRes.error ?? 'unknown'}. Models may show "unknown" until you click Sync again.`)
+      } else {
+        const failed = (syncRes.results ?? []).filter(x => !x.ok).length
+        const ok = (syncRes.results ?? []).filter(x => x.ok).length
+        if (failed === 0) toast.success(`Synced ${ok} endpoint(s)`)
+        else if (ok > 0) toast.warning(`${ok} synced, ${failed} timed out (cold-start). Click Sync again in a minute.`)
+        else toast.warning(`All ${failed} endpoints timed out. They're cold-starting — click Sync again in 1-2 min.`)
+        onChange()
+      }
+    })
+  }
+
+  const addEndpoint = async () => {
+    if (!newUrl.trim()) return
+    setAdding(true)
+    try {
+      const r = await window.wos.runpod.addEndpoint(account.id, newUrl)
+      if (!r.success) {
+        toast.error(r.error ?? 'Failed to add endpoint')
+      } else {
+        if (r.probeError) toast.warning(`Endpoint added but probe failed: ${r.probeError}. Save the API key, then sync.`)
+        else toast.success(`Endpoint added: ${r.endpoint?.modelId ?? 'unknown model'}`)
+        setNewUrl('')
+        onChange()
+      }
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  const removeEndpoint = async (epId: string) => {
+    if (!confirm('Remove this endpoint?')) return
+    const r = await window.wos.runpod.removeEndpoint(account.id, epId)
+    if (!r.success) toast.error(r.error ?? 'Failed')
+    else onChange()
+  }
+
+  const sync = async () => {
+    const r = await window.wos.runpod.syncAccount(account.id)
+    if (!r.success) toast.error(r.error ?? 'Sync failed')
+    else {
+      const failed = (r.results ?? []).filter(x => !x.ok).length
+      if (failed === 0) toast.success(`Synced ${r.results?.length ?? 0} endpoint(s)`)
+      else toast.warning(`${failed} endpoint(s) failed to sync`)
+      onChange()
+    }
+  }
+
+  return (
+    <div
+      className="space-y-3 rounded-lg p-4"
+      style={{ background: 'var(--card)', border: '1px solid var(--border)' }}
+    >
+      <div className="flex items-center justify-between">
+        <div>
+          <div style={{ color: 'var(--foreground)', fontSize: '13px', fontWeight: 600 }}>{account.name}</div>
+          <div style={{ color: 'var(--muted-foreground)', fontSize: '11px' }}>
+            {account.hasApiKey ? '✓ API key configured' : 'No API key — endpoints inactive'}
+            {account.endpoints.length > 0 && ` · ${account.endpoints.length} endpoint${account.endpoints.length === 1 ? '' : 's'}`}
+          </div>
+        </div>
+        <div className="flex gap-2">
+          {account.hasApiKey && account.endpoints.length > 0 && (
+            <button
+              onClick={sync}
+              className="px-2.5 py-1 rounded-md text-[11px] flex items-center gap-1"
+              style={{ background: 'var(--surface-base)', color: 'var(--foreground)', border: '1px solid var(--border)' }}
+            >
+              <RefreshCw size={11} /> Sync
+            </button>
+          )}
+          <button
+            onClick={onDelete}
+            className="px-2.5 py-1 rounded-md text-[11px] flex items-center gap-1"
+            style={{ background: 'var(--surface-base)', color: '#ef4444', border: '1px solid var(--border)' }}
+          >
+            <Trash2 size={11} /> Delete
+          </button>
+        </div>
+      </div>
+
+      {/* API key field */}
+      <div className="flex items-center gap-2">
+        <input
+          type="password"
+          value={keyValue}
+          onChange={e => setKeyValue(e.target.value)}
+          placeholder={account.hasApiKey ? '••••••••  (paste to replace)' : 'Paste RunPod API key (rpa_...)'}
+          className="flex-1 px-3 py-1.5 rounded-md outline-none"
+          style={{ background: 'var(--input)', border: '1px solid var(--border)', color: 'var(--foreground)', fontSize: '12px' }}
+        />
+        <button
+          onClick={saveKey}
+          disabled={!keyValue.trim() || keyState === 'testing'}
+          className="px-3 py-1.5 rounded-md disabled:opacity-30 transition-colors"
+          style={{ background: 'var(--surface-strong)', color: 'var(--amber)', border: '1px solid var(--surface-stronger)', fontSize: '12px' }}
+        >
+          {keyState === 'testing' ? <Loader2 size={12} className="animate-spin" /> : 'Save & Sync'}
+        </button>
+      </div>
+      {keyState === 'ok' && (
+        <div className="flex items-center gap-1 text-emerald-400" style={{ fontSize: '11px' }}>
+          <CheckCircle2 size={12} /> Saved. Models will appear in the model picker.
+        </div>
+      )}
+      {keyState === 'error' && keyError && (
+        <div className="flex items-center gap-1 text-red-400" style={{ fontSize: '11px' }}>
+          <XCircle size={12} /> {keyError}
+        </div>
+      )}
+
+      {/* Endpoints */}
+      <div className="space-y-2 pt-2">
+        <div style={{ color: 'var(--secondary-foreground)', fontSize: '11px', fontWeight: 600 }}>Endpoints</div>
+        {account.endpoints.length === 0 && (
+          <div style={{ color: 'var(--muted-foreground)', fontSize: '11px' }}>No endpoints configured.</div>
+        )}
+        {account.endpoints.map(ep => (
+          <div
+            key={ep.id}
+            className="flex items-start justify-between gap-2 px-3 py-2 rounded-md"
+            style={{ background: 'var(--surface-base)', border: '1px solid var(--border)' }}
+          >
+            <div className="min-w-0 flex-1">
+              <div style={{ color: 'var(--foreground)', fontSize: '12px', fontWeight: 500 }}>{ep.label}</div>
+              <div style={{ color: 'var(--muted-foreground)', fontSize: '10px', wordBreak: 'break-all' }}>
+                {ep.modelId !== 'unknown/model' ? ep.modelId : '⚠ Model unknown — sync to fetch'}
+              </div>
+              <div style={{ color: 'var(--muted-foreground)', fontSize: '10px', wordBreak: 'break-all', opacity: 0.7 }}>
+                {ep.url}
+              </div>
+            </div>
+            <button
+              onClick={() => removeEndpoint(ep.id)}
+              style={{ color: 'var(--muted-foreground)' }}
+              className="hover:text-red-400 shrink-0"
+            >
+              <Trash2 size={12} />
+            </button>
+          </div>
+        ))}
+
+        {/* Add endpoint */}
+        <div className="flex items-center gap-2 pt-1">
+          <input
+            type="text"
+            value={newUrl}
+            onChange={e => setNewUrl(e.target.value)}
+            placeholder="https://api.runpod.ai/v2/<endpoint-id>/openai/v1"
+            className="flex-1 px-3 py-1.5 rounded-md outline-none"
+            style={{ background: 'var(--input)', border: '1px solid var(--border)', color: 'var(--foreground)', fontSize: '11px', fontFamily: 'ui-monospace, monospace' }}
+          />
+          <button
+            onClick={addEndpoint}
+            disabled={!newUrl.trim() || adding}
+            className="px-3 py-1.5 rounded-md disabled:opacity-30 transition-colors flex items-center gap-1"
+            style={{ background: 'var(--card)', color: 'var(--foreground)', border: '1px solid var(--border)', fontSize: '11px' }}
+          >
+            {adding ? <Loader2 size={11} className="animate-spin" /> : <><Plus size={11} /> Add</>}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

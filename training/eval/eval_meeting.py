@@ -74,9 +74,12 @@ def evaluate(
     ds = load_dataset("knkarthick/dialogsum", split="test")
     samples = list(ds)[:max_samples]
 
+    from eval_metrics_common import rouge_single_prf
+
     predictions = []
     references = []
     latencies = []
+    sample_details = []
 
     for i, row in enumerate(samples):
         transcript = row["dialogue"]
@@ -93,6 +96,15 @@ def evaluate(
         predictions.append(pred)
         references.append(reference)
         latencies.append(latency)
+        prf = rouge_single_prf(pred, reference)
+        sample_details.append({
+            "sample_id": i,
+            "rougeL_f1": prf["rougeL_f1"],
+            "rouge1_f1": prf["rouge1_f1"],
+            "rouge1_precision": prf["rouge1_precision"],
+            "rouge1_recall": prf["rouge1_recall"],
+            "latency": round(latency, 2),
+        })
         if (i + 1) % 10 == 0:
             print(f"  Evaluated {i+1}/{len(samples)} samples...")
 
@@ -117,6 +129,7 @@ def evaluate(
         "rougeL_recall": rouge["rougeL_recall"],
         "rougeL_f1": rouge["rougeL_f1"],
         "avg_latency_sec": round(avg_latency, 2),
+        "details": sample_details,
     }
 
 

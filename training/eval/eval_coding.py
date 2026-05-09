@@ -19,13 +19,16 @@ import argparse
 import json
 import re
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
 
 import requests
 
-from eval_metrics_common import code_token_f1
+import math
+
+from eval_metrics_common import code_token_f1, code_token_prf
 
 SYSTEM = (
     "You are an expert software engineer. Write correct, efficient Python code. "
@@ -110,10 +113,12 @@ def load_mbpp_hf(limit: int) -> list[dict]:
         if i >= limit:
             break
         ref = row.get("code") or ""
+        # MBPP dataset schema: 'text' (sanitized) or 'prompt' (full) — handle both
+        text = row.get("text") or row.get("prompt") or ""
         out.append(
             {
                 "id": f"MBPP/{row.get('task_id', i)}",
-                "text": row["text"],
+                "text": text,
                 "code_ref": ref,
                 "entry_point": _entry_from_ref(ref),
                 "test_list": list(row["test_list"]),
@@ -122,7 +127,14 @@ def load_mbpp_hf(limit: int) -> list[dict]:
     return out
 
 
-def call_model(endpoint: str, model: str, prompt: str, api_key: str = "EMPTY", max_tokens: int = 512) -> str:
+def call_model(
+    endpoint: str,
+    model: str,
+    prompt: str,
+    api_key: str = "EMPTY",
+    max_tokens: int = 512,
+    temperature: float = 0.0,
+) -> str:
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     payload = {
         "model": model,
@@ -131,17 +143,33 @@ def call_model(endpoint: str, model: str, prompt: str, api_key: str = "EMPTY", m
             {"role": "user", "content": f"Complete this Python function:\n\n{prompt}"},
         ],
         "max_tokens": max_tokens,
-        "temperature": 0.0,
+        "temperature": temperature,
     }
     r = requests.post(f"{endpoint}/chat/completions", json=payload, headers=headers, timeout=180)
     r.raise_for_status()
     return r.json()["choices"][0]["message"]["content"]
 
 
+def _pass_at_k_unbiased(n: int, c: int, k: int) -> float:
+    """Unbiased pass@k estimator (Chen et al. 2021): 1 - C(n-c,k)/C(n,k)."""
+    if n - c < k:
+        return 1.0
+    return 1.0 - math.prod((n - c - i) / (n - i) for i in range(k))
+
+
 def extract_code(response: str, entry_point: str) -> str:
     match = re.search(r"```(?:python)?\n(.*?)```", response, re.DOTALL)
     if match:
-        return match.group(1).strip()
+        # Strip leading/trailing blank lines but PRESERVE first-line indent.
+        # Gemma + some other models return body-indented code (4-space indent)
+        # for HumanEval continuation; .strip() would kill that indent and
+        # break Python execution.
+        body = match.group(1).rstrip()
+        # Remove leading blank lines (but keep indent of first non-blank line)
+        body_lines = body.split("\n")
+        while body_lines and body_lines[0].strip() == "":
+            body_lines.pop(0)
+        return "\n".join(body_lines)
     lines = response.strip().split("\n")
     code_lines = []
     in_func = False
@@ -171,14 +199,22 @@ def extract_any_function(response: str) -> str:
 
 
 def merge_humaneval_program(prompt: str, response: str, entry_point: str) -> str:
-    """Combine HumanEval `prompt` prefix with model output (full function or body-only)."""
+    """Combine HumanEval `prompt` prefix with model output (full function or body-only).
+
+    Normalizes tabs→4 spaces and re-indents the merged block to avoid
+    'unindent does not match any outer indentation level' errors when models
+    use different indentation conventions (e.g. Gemma uses 2 spaces vs HF's 4).
+    """
     block = extract_code(response, entry_point)
+    # Normalize tabs to 4 spaces (Python's PEP 8) for both halves
+    block = block.expandtabs(4)
     key = f"def {entry_point}"
     if key in block:
-        idx = prompt.find(key)
-        header = prompt[:idx] if idx >= 0 else ""
-        return header + block
-    return prompt + block
+        # Model returned a full function — use ONLY the model's output
+        # (don't prepend prompt header; that's where indentation mismatch hits)
+        return block
+    # Model returned body-only — prepend the prompt prefix
+    return (prompt + block).expandtabs(4)
 
 
 def run_test_inline(code: str, test: str) -> tuple[bool, str]:
@@ -203,7 +239,7 @@ def _run_python(full_code: str) -> tuple[bool, str]:
         tmp = f.name
     try:
         result = subprocess.run(
-            ["python", tmp], capture_output=True, text=True, timeout=30
+            [sys.executable, tmp], capture_output=True, text=True, timeout=30
         )
         passed = result.returncode == 0
         error = result.stderr.strip() if not passed else ""
@@ -214,11 +250,18 @@ def _run_python(full_code: str) -> tuple[bool, str]:
         Path(tmp).unlink(missing_ok=True)
 
 
-def evaluate_humaneval(endpoint: str, model: str, api_key: str, problems: list[dict]) -> dict:
+def evaluate_humaneval(
+    endpoint: str,
+    model: str,
+    api_key: str,
+    problems: list[dict],
+    pass_k_samples: int = 0,
+) -> dict:
     results = []
     for problem in problems:
         start = time.time()
         program = ""
+        prf = None
         try:
             response = call_model(endpoint, model, problem["prompt"], api_key)
             if problem.get("mode") == "hf_check":
@@ -234,45 +277,94 @@ def evaluate_humaneval(endpoint: str, model: str, api_key: str, problems: list[d
         except Exception as e:
             passed, error = False, str(e)
         latency = time.time() - start
-        tf1 = None
         if problem.get("canonical_solution"):
             gold = problem["prompt"] + problem["canonical_solution"]
             try:
-                tf1 = code_token_f1(gold, program or "")
+                prf = code_token_prf(gold, program or "")
             except Exception:
-                tf1 = None
-        results.append(
-            {
-                "id": problem["id"],
-                "passed": passed,
-                "error": error[:500] if error else "",
-                "latency": round(latency, 2),
-                "token_f1_vs_canonical": tf1,
-            }
-        )
+                prf = None
+
+        detail: dict = {
+            "id": problem["id"],
+            "passed": passed,
+            "error": error[:500] if error else "",
+            "latency": round(latency, 2),
+            "token_precision": prf["precision"] if prf else None,
+            "token_recall": prf["recall"] if prf else None,
+            "token_f1_vs_canonical": prf["f1"] if prf else None,
+        }
+
+        # pass@k: sample K times at temperature=0.8
+        if pass_k_samples > 0:
+            k_passes = 0
+            for _ in range(pass_k_samples):
+                try:
+                    resp_k = call_model(
+                        endpoint, model, problem["prompt"], api_key, temperature=0.8
+                    )
+                    if problem.get("mode") == "hf_check":
+                        prog_k = merge_humaneval_program(
+                            problem["prompt"], resp_k, problem["entry_point"]
+                        )
+                        ok, _ = run_test_humaneval_hf(
+                            prog_k, problem["test"], problem["entry_point"]
+                        )
+                    else:
+                        prog_k = extract_code(resp_k, problem["entry_point"])
+                        ok, _ = run_test_inline(prog_k, problem["test"])
+                    if ok:
+                        k_passes += 1
+                except Exception:
+                    pass
+            detail["pass_k_samples"] = pass_k_samples
+            detail["pass_k_passes"] = k_passes
+            detail["pass_prob"] = round(k_passes / pass_k_samples, 4)
+
+        results.append(detail)
         status = "PASS" if passed else "FAIL"
-        print(f"  {problem['id']}: {status} ({latency:.1f}s)")
+        pp = f"  pass@k_prob={detail['pass_prob']:.2f}" if pass_k_samples > 0 else ""
+        print(f"  {problem['id']}: {status} ({latency:.1f}s){pp}")
 
     passed_count = sum(r["passed"] for r in results)
+    n = len(results)
+    precs = [r["token_precision"] for r in results if r.get("token_precision") is not None]
+    recs = [r["token_recall"] for r in results if r.get("token_recall") is not None]
     f1s = [r["token_f1_vs_canonical"] for r in results if r.get("token_f1_vs_canonical") is not None]
-    avg_f1 = round(sum(f1s) / len(f1s), 4) if f1s else None
-    return {
+
+    out: dict = {
         "model": model,
         "benchmark": "humaneval",
-        "pass_at_1": round(passed_count / len(results) * 100, 1) if results else 0.0,
+        "pass_at_1": round(passed_count / n * 100, 1) if n else 0.0,
         "passed": passed_count,
-        "total": len(results),
-        "avg_code_token_f1_vs_canonical": avg_f1,
-        "avg_latency": round(sum(r["latency"] for r in results) / len(results), 2) if results else 0.0,
+        "total": n,
+        "precision": round(sum(precs) / len(precs) * 100, 2) if precs else None,
+        "recall": round(sum(recs) / len(recs) * 100, 2) if recs else None,
+        "avg_code_token_f1_vs_canonical": round(sum(f1s) / len(f1s), 4) if f1s else None,
+        "avg_latency": round(sum(r["latency"] for r in results) / n, 2) if n else 0.0,
         "details": results,
     }
 
+    if pass_k_samples > 0:
+        c = sum(1 for r in results if r.get("pass_prob", 0) > 0)
+        out["pass_probs"] = [r.get("pass_prob", 0.0) for r in results]
+        out["pass_at_5"] = round(_pass_at_k_unbiased(pass_k_samples, int(c * pass_k_samples / n), 5) * 100, 1) if n else 0.0
+        out["pass_at_10"] = round(_pass_at_k_unbiased(pass_k_samples, int(c * pass_k_samples / n), 10) * 100, 1) if n else 0.0
 
-def evaluate_mbpp(endpoint: str, model: str, api_key: str, tasks: list[dict]) -> dict:
+    return out
+
+
+def evaluate_mbpp(
+    endpoint: str,
+    model: str,
+    api_key: str,
+    tasks: list[dict],
+    pass_k_samples: int = 0,
+) -> dict:
     results = []
     for t in tasks:
         start = time.time()
-        tf1 = None
+        prf = None
+        code = ""
         user = (
             f"Write a Python function that satisfies this specification:\n\n{t['text']}\n\n"
             f"The primary function MUST be named exactly `{t['entry_point']}`.\n"
@@ -298,36 +390,72 @@ def evaluate_mbpp(endpoint: str, model: str, api_key: str, tasks: list[dict]) ->
             if not code.strip() or f"def {t['entry_point']}" not in code:
                 code = extract_any_function(response)
             passed, error = run_test_mbpp(code, t["test_list"])
-            tf1 = code_token_f1(t.get("code_ref") or "", code or "")
+            if t.get("code_ref"):
+                prf = code_token_prf(t["code_ref"], code or "")
         except Exception as e:
             passed, error = False, str(e)
-            tf1 = None
         latency = time.time() - start
-        results.append(
-            {
-                "id": t["id"],
-                "passed": passed,
-                "error": (error or "")[:500],
-                "latency": round(latency, 2),
-                "token_f1_vs_reference": tf1,
-            }
-        )
+
+        detail: dict = {
+            "id": t["id"],
+            "passed": passed,
+            "error": (error or "")[:500],
+            "latency": round(latency, 2),
+            "token_precision": prf["precision"] if prf else None,
+            "token_recall": prf["recall"] if prf else None,
+            "token_f1_vs_reference": prf["f1"] if prf else None,
+        }
+
+        if pass_k_samples > 0:
+            k_passes = 0
+            for _ in range(pass_k_samples):
+                try:
+                    hdrs = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+                    pl = {"model": model, "messages": [
+                        {"role": "system", "content": SYSTEM},
+                        {"role": "user", "content": user},
+                    ], "max_tokens": 768, "temperature": 0.8}
+                    rk = requests.post(f"{endpoint}/chat/completions", json=pl, headers=hdrs, timeout=180)
+                    rk.raise_for_status()
+                    ck = extract_code(rk.json()["choices"][0]["message"]["content"], t["entry_point"])
+                    if not ck.strip() or f"def {t['entry_point']}" not in ck:
+                        ck = extract_any_function(rk.json()["choices"][0]["message"]["content"])
+                    ok, _ = run_test_mbpp(ck, t["test_list"])
+                    if ok:
+                        k_passes += 1
+                except Exception:
+                    pass
+            detail["pass_k_samples"] = pass_k_samples
+            detail["pass_k_passes"] = k_passes
+            detail["pass_prob"] = round(k_passes / pass_k_samples, 4)
+
+        results.append(detail)
         status = "PASS" if passed else "FAIL"
         print(f"  {t['id']}: {status} ({latency:.1f}s)")
 
     passed_count = sum(r["passed"] for r in results)
+    n = len(results)
+    precs = [r["token_precision"] for r in results if r.get("token_precision") is not None]
+    recs = [r["token_recall"] for r in results if r.get("token_recall") is not None]
     f1s = [r["token_f1_vs_reference"] for r in results if r.get("token_f1_vs_reference") is not None]
-    avg_f1 = round(sum(f1s) / len(f1s), 4) if f1s else None
-    return {
+
+    out: dict = {
         "model": model,
         "benchmark": "mbpp",
-        "pass_at_1": round(passed_count / len(results) * 100, 1) if results else 0.0,
+        "pass_at_1": round(passed_count / n * 100, 1) if n else 0.0,
         "passed": passed_count,
-        "total": len(results),
-        "avg_code_token_f1_vs_reference": avg_f1,
-        "avg_latency": round(sum(r["latency"] for r in results) / len(results), 2) if results else 0.0,
+        "total": n,
+        "precision": round(sum(precs) / len(precs) * 100, 2) if precs else None,
+        "recall": round(sum(recs) / len(recs) * 100, 2) if recs else None,
+        "avg_code_token_f1_vs_reference": round(sum(f1s) / len(f1s), 4) if f1s else None,
+        "avg_latency": round(sum(r["latency"] for r in results) / n, 2) if n else 0.0,
         "details": results,
     }
+
+    if pass_k_samples > 0:
+        out["pass_probs"] = [r.get("pass_prob", 0.0) for r in results]
+
+    return out
 
 
 def main():
@@ -349,6 +477,7 @@ def main():
     )
     parser.add_argument("--humaneval-limit", type=int, default=40, help="Max problems when --humaneval-source hf")
     parser.add_argument("--mbpp-limit", type=int, default=30, help="Max MBPP tasks")
+    parser.add_argument("--pass-k-samples", type=int, default=0, help="Sample each problem N times at temp=0.8 for pass@k (0=disabled)")
     parser.add_argument("--out", default=None)
     args = parser.parse_args()
 
@@ -362,24 +491,35 @@ def main():
         out_file = args.out or f"coding_humaneval_{slug}.json"
         print(f"\nEvaluating: {args.model}")
         print(f"Endpoint:   {args.endpoint}")
-        print(f"HumanEval:  {len(problems)} problems ({args.humaneval_source})\n")
-        result = evaluate_humaneval(args.endpoint, args.model, args.api_key, problems)
+        print(f"HumanEval:  {len(problems)} problems ({args.humaneval_source})")
+        if args.pass_k_samples:
+            print(f"pass@k:     {args.pass_k_samples} samples per problem at temp=0.8\n")
+        result = evaluate_humaneval(
+            args.endpoint, args.model, args.api_key, problems,
+            pass_k_samples=args.pass_k_samples,
+        )
     else:
         tasks = load_mbpp_hf(args.mbpp_limit)
         out_file = args.out or f"coding_mbpp_{slug}.json"
         print(f"\nEvaluating: {args.model}")
         print(f"Endpoint:   {args.endpoint}")
         print(f"MBPP:       {len(tasks)} tasks\n")
-        result = evaluate_mbpp(args.endpoint, args.model, args.api_key, tasks)
+        result = evaluate_mbpp(
+            args.endpoint, args.model, args.api_key, tasks,
+            pass_k_samples=args.pass_k_samples,
+        )
 
     print(f"\n{'='*50}")
     print(f"Results for {args.model}")
     print(f"  pass@1:       {result['pass_at_1']}%")
     print(f"  Passed:       {result['passed']}/{result['total']}")
-    if result.get("avg_code_token_f1_vs_canonical") is not None:
-        print(f"  Code token F1 vs canonical (HF): {result['avg_code_token_f1_vs_canonical']}")
-    if result.get("avg_code_token_f1_vs_reference") is not None:
-        print(f"  Code token F1 vs MBPP ref:     {result['avg_code_token_f1_vs_reference']}")
+    if result.get("precision") is not None:
+        print(f"  Token P/R/F1: {result['precision']} / {result['recall']} / ", end="")
+        f1_key = "avg_code_token_f1_vs_canonical" if args.benchmark == "humaneval" else "avg_code_token_f1_vs_reference"
+        print(f"{result.get(f1_key)}")
+    if result.get("pass_at_5") is not None:
+        print(f"  pass@5:       {result['pass_at_5']}%")
+        print(f"  pass@10:      {result['pass_at_10']}%")
     print(f"  Avg latency:  {result['avg_latency']}s")
     print(f"{'='*50}")
 

@@ -1,29 +1,50 @@
 {
-  "note": "Per-model api_key for 3 Runpod accounts, or leave EMPTY and set RUNPOD_API_KEY. Baseline: Qwen3-32B (~32.8B params) matches your Qwen specialist scale and supports tool calling — fair for coding/tool metrics; for Gemma-only slides you can add a second baseline row with google/gemma-2-27b-it.",
+  "note": "Baseline: Qwen/Qwen2.5-32B-Instruct (~32B) — same scale as all WOS specialists. Mixtral/Gemma rows activate once RunPod endpoints are deployed (replace YOUR_* placeholders). api_key applies to all rows; override per-row if needed.",
   "models": [
     {
-      "label": "Baseline — Qwen3-32B (reference instruct)",
-      "endpoint": "https://YOUR_BASELINE_QWEN3_ENDPOINT/v1",
-      "model_id": "Qwen/Qwen3-32B",
+      "label": "Baseline — Qwen2.5-32B-Instruct",
+      "endpoint": "https://api.runpod.ai/v2/ub6ui35qwzd9xs/openai/v1",
+      "model_id": "Qwen/Qwen2.5-32B-Instruct",
       "api_key": "EMPTY",
       "type": "baseline"
     },
     {
-      "label": "WOS Coding — Mixtral",
+      "label": "WOS Coding — Qwen 32B",
+      "endpoint": "https://api.runpod.ai/v2/foc9m29xg2itck/openai/v1",
+      "model_id": "thejesraj/wos-coding-32b",
+      "api_key": "EMPTY",
+      "type": "coding"
+    },
+    {
+      "label": "WOS Meeting — Qwen 32B",
+      "endpoint": "https://api.runpod.ai/v2/39vtapxmhn29wt/openai/v1",
+      "model_id": "thejesraj/wos-meeting-32b",
+      "api_key": "EMPTY",
+      "type": "meeting"
+    },
+    {
+      "label": "WOS Main — Qwen 32B",
+      "endpoint": "https://api.runpod.ai/v2/dzsdng5j9eipx7/openai/v1",
+      "model_id": "thejesraj/wos-main-32b",
+      "api_key": "EMPTY",
+      "type": "main"
+    },
+    {
+      "label": "WOS Coding — Mixtral 8x7B",
       "endpoint": "https://YOUR_CODING_MIXTRAL_ENDPOINT/v1",
       "model_id": "thejesraj/wos-coding-mixtral",
       "api_key": "EMPTY",
       "type": "coding"
     },
     {
-      "label": "WOS Meeting — Mixtral",
+      "label": "WOS Meeting — Mixtral 8x7B",
       "endpoint": "https://YOUR_MEETING_MIXTRAL_ENDPOINT/v1",
       "model_id": "thejesraj/wos-meeting-mixtral",
       "api_key": "EMPTY",
       "type": "meeting"
     },
     {
-      "label": "WOS Main — Mixtral",
+      "label": "WOS Main — Mixtral 8x7B",
       "endpoint": "https://YOUR_MAIN_MIXTRAL_ENDPOINT/v1",
       "model_id": "thejesraj/wos-main-mixtral",
       "api_key": "EMPTY",
@@ -47,27 +68,6 @@
       "label": "WOS Main — Gemma 2-27B",
       "endpoint": "https://YOUR_MAIN_GEMMA_ENDPOINT/v1",
       "model_id": "thejesraj/wos-main-gemma",
-      "api_key": "EMPTY",
-      "type": "main"
-    },
-    {
-      "label": "WOS Coding — Qwen 32B",
-      "endpoint": "https://YOUR_CODING_QWEN_ENDPOINT/v1",
-      "model_id": "thejesraj/wos-coding-32b",
-      "api_key": "EMPTY",
-      "type": "coding"
-    },
-    {
-      "label": "WOS Meeting — Qwen 32B",
-      "endpoint": "https://YOUR_MEETING_QWEN_ENDPOINT/v1",
-      "model_id": "thejesraj/wos-meeting-32b",
-      "api_key": "EMPTY",
-      "type": "meeting"
-    },
-    {
-      "label": "WOS Main — Qwen 32B",
-      "endpoint": "https://YOUR_MAIN_QWEN_ENDPOINT/v1",
-      "model_id": "thejesraj/wos-main-32b",
       "api_key": "EMPTY",
       "type": "main"
     }

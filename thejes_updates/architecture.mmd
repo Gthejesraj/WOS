@@ -1,0 +1,115 @@
+flowchart TD
+    %% ── User ──────────────────────────────────────────────────────────────
+    USER["👤 User / Developer"]
+
+    %% ── Electron Desktop App ──────────────────────────────────────────────
+    subgraph ELECTRON["🖥️  Electron Desktop App  (React + TypeScript + Vite)"]
+        direction LR
+        MEET["📋 Meeting Intelligence\n──────────────────\n• Live transcript capture\n• Auto summarisation\n• Action item extraction"]
+        CODE["💻 Coding Assistant\n──────────────────\n• Code completion\n• Inline suggestions\n• Debugging help"]
+        PROJ["📁 Projects & Tasks\n──────────────────\n• Task management\n• Decisions tracker\n• Risk log"]
+        AUTO["⚙️ Automation System\n──────────────────\n• Jira integration\n• Google Calendar\n• Slack notifications"]
+    end
+
+    %% ── App Core ──────────────────────────────────────────────────────────
+    subgraph CORE["⚙️  Electron Main Process  (Node.js)"]
+        direction LR
+        IPC["IPC Bridge\nipcMain / ipcRenderer\nContext Isolation"]
+        VLLM["vLLM Provider\nvllm.ts\nOpenAI-compat /v1 API\nPer-model endpoint routing"]
+        KEYS["Keystore\nEncrypted API key storage\nHF Token · Together AI"]
+    end
+
+    subgraph INTEGRATIONS["🔗  External Integrations"]
+        direction LR
+        JIRA["Jira API\nOAuth 2.0"]
+        GCAL["Google Calendar\nOAuth 2.0"]
+        SLACK["Slack API\nWebhooks"]
+    end
+
+    %% ── Model Router ──────────────────────────────────────────────────────
+    ROUTER["🧠  Model Router — Main Orchestrator\nClassifies task type → routes to specialist model"]
+
+    %% ── 9 Fine-tuned Models ───────────────────────────────────────────────
+    subgraph MODELS["🤖  9 Fine-tuned WOS Models  (QLoRA 4-bit NF4)"]
+        direction LR
+        subgraph CODING_M["Coding Specialists  (×3)"]
+            C1["wos-coding-32b\nQwen 2.5-32B"]
+            C2["wos-coding-gemma\nGemma 2-27B"]
+            C3["wos-coding-mixtral\nMixtral 8x7B"]
+        end
+        subgraph MEETING_M["Meeting Specialists  (×3)"]
+            M1["wos-meeting-32b\nQwen 2.5-32B"]
+            M2["wos-meeting-gemma\nGemma 2-27B"]
+            M3["wos-meeting-mixtral\nMixtral 8x7B"]
+        end
+        subgraph MAIN_M["Main Orchestrators  (×3)"]
+            O1["wos-main-32b\nQwen 2.5-32B"]
+            O2["wos-main-gemma\nGemma 2-27B"]
+            O3["wos-main-mixtral\nMixtral 8x7B"]
+        end
+    end
+
+    %% ── HuggingFace ───────────────────────────────────────────────────────
+    HF["🤗  HuggingFace\nModel Storage + Inference Endpoints\nhuggingface.co/thejesraj  ·  9 repos\nScales to zero when idle"]
+
+    %% ── Training Pipeline ─────────────────────────────────────────────────
+    subgraph TRAINING["🏋️  Training Pipeline  (RunPod)"]
+        direction LR
+        GPU["RunPod H100 80GB\nQLoRA 4-bit NF4\nLoRA r=16 (task) · r=32 (main)\npaged_adamw_8bit · cosine LR\n1 epoch · eff. batch size 16"]
+        UPLOAD["Auto merge + upload\nLoRA adapter → merged model\nhuggingface-cli upload"]
+    end
+
+    %% ── Datasets ──────────────────────────────────────────────────────────
+    subgraph DATASETS["📦  Training Datasets"]
+        direction LR
+        DS_CODE["Coding  (60k samples)\nCodeFeedback 40k\nCodeAlpaca 12k\nPython18k"]
+        DS_MEET["Meeting  (22k samples)\nDialogSum\nMeetingBank\nQMSum"]
+        DS_MAIN["Main  (25k samples)\nOpenHermes 20k\n+ Coding 2.5k\n+ Meeting 2.5k"]
+    end
+
+    %% ── Evaluation Pipeline ───────────────────────────────────────────────
+    subgraph EVAL["📊  Evaluation Pipeline"]
+        direction LR
+        EVAL_C["eval_coding.py\nHumanEval 164 problems\npass@1 · pass@5 · BLEU\nSyntax Error Rate"]
+        EVAL_M["eval_meeting.py\nROUGE-1/2/L\nBERTScore F1\nAction Item F1"]
+        EVAL_X["eval_compare.py\nCross-model tradeoff\nSpecialisation analysis\n→ comparison_report.html"]
+    end
+
+    %% ── Connections ───────────────────────────────────────────────────────
+    USER --> ELECTRON
+    ELECTRON --> CORE
+    AUTO --> INTEGRATIONS
+    CORE --> ROUTER
+    ROUTER -->|"task = coding"| CODING_M
+    ROUTER -->|"task = meeting"| MEETING_M
+    ROUTER -->|"task = general"| MAIN_M
+    MODELS --> HF
+    DATASETS --> TRAINING
+    TRAINING -->|"upload merged model"| HF
+    HF -->|"inference endpoints"| EVAL
+
+    %% ── Styles ────────────────────────────────────────────────────────────
+    classDef user     fill:#1e3a5f,stroke:#3b82f6,color:#fff
+    classDef appbox   fill:#1e3a8a,stroke:#3b82f6,color:#fff
+    classDef core     fill:#1e293b,stroke:#475569,color:#fff
+    classDef router   fill:#065f46,stroke:#10b981,color:#fff
+    classDef coding   fill:#1d4ed8,stroke:#60a5fa,color:#fff
+    classDef meeting  fill:#065f46,stroke:#34d399,color:#fff
+    classDef main     fill:#4c1d95,stroke:#a78bfa,color:#fff
+    classDef hf       fill:#92400e,stroke:#f59e0b,color:#fff
+    classDef training fill:#7f1d1d,stroke:#ef4444,color:#fff
+    classDef dataset  fill:#1f2937,stroke:#6b7280,color:#fff
+    classDef eval     fill:#164e63,stroke:#06b6d4,color:#fff
+
+    class USER user
+    class MEET,CODE,PROJ,AUTO appbox
+    class IPC,VLLM,KEYS core
+    class JIRA,GCAL,SLACK core
+    class ROUTER router
+    class C1,C2,C3 coding
+    class M1,M2,M3 meeting
+    class O1,O2,O3 main
+    class HF hf
+    class GPU,UPLOAD training
+    class DS_CODE,DS_MEET,DS_MAIN dataset
+    class EVAL_C,EVAL_M,EVAL_X eval

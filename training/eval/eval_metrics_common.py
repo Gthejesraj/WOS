@@ -33,22 +33,26 @@ def rouge_macro_prf(
 
 def code_token_f1(reference: str, hypothesis: str) -> float:
     """Multiset token F1 over alphanumeric tokens (case-insensitive)."""
+    return code_token_prf(reference, hypothesis)["f1"]
+
+
+def code_token_prf(reference: str, hypothesis: str) -> dict[str, float]:
+    """Multiset token precision, recall, F1 over alphanumeric tokens (case-insensitive)."""
 
     def toks(s: str) -> list[str]:
         return re.findall(r"[A-Za-z_]\w*", s.lower())
 
     rt, ht = toks(reference), toks(hypothesis)
     if not rt and not ht:
-        return 1.0
+        return {"precision": 1.0, "recall": 1.0, "f1": 1.0}
     if not rt or not ht:
-        return 0.0
+        return {"precision": 0.0, "recall": 0.0, "f1": 0.0}
     rc, hc = Counter(rt), Counter(ht)
     inter = sum((rc & hc).values())
-    prec = inter / max(1, sum(hc.values()))
-    rec = inter / max(1, sum(rc.values()))
-    if prec + rec < 1e-9:
-        return 0.0
-    return round(2.0 * prec * rec / (prec + rec), 4)
+    prec = round(inter / max(1, sum(hc.values())), 4)
+    rec = round(inter / max(1, sum(rc.values())), 4)
+    f1 = round(2.0 * prec * rec / (prec + rec), 4) if prec + rec > 1e-9 else 0.0
+    return {"precision": prec, "recall": rec, "f1": f1}
 
 
 def rouge_single_prf(prediction: str, reference: str, use_stemmer: bool = True) -> dict[str, float]:

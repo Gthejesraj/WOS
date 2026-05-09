@@ -163,6 +163,13 @@ Min workers: 0  ← important: scales to zero, $0 when idle
 Max workers: 1
 ```
 
+**Use latest Hugging Face weights (fix bad / stale revision pins):** If vLLM logs show `revision=9021cf...` (or any commit hash) for `MODEL_NAME`, workers download **that commit only**. A partial or bad upload pinned there causes Gemma load errors (`start + length exceeds dimension size`). **Remove the pin** so workers track **`main`**:
+
+1. RunPod → **Serverless** → your endpoint → **Edit**.
+2. Find **`revision` / `HF_REVISION` / `HUGGINGFACE_HUB_REVISION`** in **Environment variables** — **delete** them **or** set to `main`.
+3. In **Container start command** / **Extra args** / **`VLLM_ARGS`**, remove **`--revision ...`** or **`--hf-revision ...`** (exact flag depends on template).
+4. **Save** → wait for **rollout** → optional: lower **max workers** to `0` briefly then restore to force new downloads.
+
 The endpoint exposes an OpenAI-compatible API:
 ```
 POST https://api.runpod.ai/v2/{endpoint_id}/openai/v1/chat/completions

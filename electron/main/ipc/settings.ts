@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm'
 import { encryptApiKey, decryptApiKey } from '../crypto'
 import { getProviderByName, FALLBACK_MODELS } from '../providers'
 import { WOS_FINE_TUNED_MODELS } from '../providers/vllm'
+import { getAllRunPodModels } from '../providers/runpod'
 import { getDecryptedApiKeyOrNull } from '../providers/keystore'
 import { resolveAgent, redactAgentConfig, type AgentConfig } from '../agent/settings'
 
@@ -190,10 +191,19 @@ export function registerSettingsHandlers() {
       }
     }
     const merged = results.flatMap(r => r.models as Array<{ id: string }>)
+    const runpodModels = getAllRunPodModels()
     if (merged.length === 0) {
-      return { success: false, models: FALLBACK_MODELS, errors: results.filter(r => r.error) }
+      return {
+        success: runpodModels.length > 0,
+        models: [...FALLBACK_MODELS, ...runpodModels],
+        errors: results.filter(r => r.error),
+      }
     }
-    return { success: true, models: [...merged, ...WOS_FINE_TUNED_MODELS], errors: results.filter(r => r.error) }
+    return {
+      success: true,
+      models: [...merged, ...WOS_FINE_TUNED_MODELS, ...runpodModels],
+      errors: results.filter(r => r.error),
+    }
   })
 
   ipcMain.handle('app:version', () => app.getVersion())

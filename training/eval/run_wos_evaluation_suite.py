@@ -244,6 +244,26 @@ def main():
             if rc != 0:
                 print(f"WARN: Main eval failed for {label} (rc={rc})")
 
+        if mtype in ("meeting", "main", "baseline"):
+            ai_path = str(out / f"{base}_action_items.json")
+            rc = run_py(
+                [
+                    str(HERE / "eval_action_items.py"),
+                    "--endpoint",
+                    endpoint,
+                    "--model",
+                    model_id,
+                    "--api_key",
+                    api_key,
+                    "--out-dir",
+                    str(out),
+                ],
+                HERE,
+            )
+            record(ai_path, label=label, benchmark="action_items", rc=rc)
+            if rc != 0:
+                print(f"WARN: Action items eval failed for {label} (rc={rc})")
+
     showcase_path = out / "showcase_meeting_long.json"
     if not args.skip_showcase:
         env = os.environ.copy()

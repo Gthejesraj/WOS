@@ -1,0 +1,122 @@
+graph TB
+    %% ── Layer 0: User ─────────────────────────────────────────────────────
+    USER(["👤 User / Developer"])
+
+    %% ── Layer 1: Frontend ─────────────────────────────────────────────────
+    subgraph FRONTEND["  Frontend Layer  —  Electron + React + TypeScript  "]
+        direction LR
+        UI_MEET["📋 Meeting\nIntelligence"]
+        UI_CODE["💻 Coding\nAssistant"]
+        UI_PROJ["📁 Projects\n& Tasks"]
+        UI_AUTO["⚙️ Automation\nSystem"]
+    end
+
+    %% ── Layer 2: Application Core ─────────────────────────────────────────
+    subgraph APPCORE["  Application Core  —  Electron Main Process  (Node.js)  "]
+        direction LR
+        IPC(["IPC Bridge\nipcMain / ipcRenderer"])
+        PROVIDER["vLLM Provider\nvllm.ts\nOpenAI-compat /v1"]
+        KEYSTORE[("Keystore\nEncrypted\nAPI Keys")]
+    end
+
+    %% ── Layer 3: External APIs ────────────────────────────────────────────
+    subgraph EXTERNAL["  External Services  "]
+        direction LR
+        JIRA["🔧 Jira\nREST API\nOAuth 2.0"]
+        GCAL["📅 Google\nCalendar API\nOAuth 2.0"]
+        SLACK["💬 Slack\nWebhook API"]
+    end
+
+    %% ── Layer 4: ML Routing ───────────────────────────────────────────────
+    ROUTER[["🧠 Orchestrator — Model Router\nClassifies task type → routes to specialist"]]
+
+    %% ── Layer 5: Model Groups ─────────────────────────────────────────────
+    subgraph MLMODELS["  ML Model Layer  —  9 QLoRA Fine-tuned Models  (4-bit NF4)  "]
+        direction LR
+        subgraph GRP_CODE["Coding Specialists"]
+            MC1["wos-coding-32b\nQwen 2.5-32B"]
+            MC2["wos-coding-gemma\nGemma 2-27B"]
+            MC3["wos-coding-mixtral\nMixtral 8x7B"]
+        end
+        subgraph GRP_MEET["Meeting Specialists"]
+            MM1["wos-meeting-32b\nQwen 2.5-32B"]
+            MM2["wos-meeting-gemma\nGemma 2-27B"]
+            MM3["wos-meeting-mixtral\nMixtral 8x7B"]
+        end
+        subgraph GRP_MAIN["Main Orchestrators"]
+            MO1["wos-main-32b\nQwen 2.5-32B"]
+            MO2["wos-main-gemma\nGemma 2-27B"]
+            MO3["wos-main-mixtral\nMixtral 8x7B"]
+        end
+    end
+
+    %% ── Layer 6: Infrastructure ───────────────────────────────────────────
+    subgraph INFRA["  Infrastructure Layer  "]
+        direction LR
+        HF[("🤗 HuggingFace\nModel Registry\n9 repos\nhuggingface.co/thejesraj")]
+        ENDPOINTS["Inference Endpoints\nOpenAI-compat /v1\nScales to zero"]
+        RUNPOD["🖥️ RunPod\nH100 80GB\nTraining Compute"]
+    end
+
+    %% ── Layer 7: Data ─────────────────────────────────────────────────────
+    subgraph DATA["  Data Layer  "]
+        direction LR
+        DS_C[("Coding Dataset\n60k samples\nCodeFeedback + CodeAlpaca\n+ Python18k")]
+        DS_M[("Meeting Dataset\n22k samples\nDialogSum + MeetingBank\n+ QMSum")]
+        DS_G[("Main Dataset\n25k samples\nOpenHermes 20k\n+ task-mixed 5k")]
+    end
+
+    %% ── Eval Pipeline (side) ──────────────────────────────────────────────
+    subgraph EVAL["  Evaluation Pipeline  "]
+        direction TB
+        EV1["eval_coding.py\nHumanEval pass@1\nBLEU · Syntax Error"]
+        EV2["eval_meeting.py\nROUGE-1/2/L\nBERTScore · Action F1"]
+        EV3["eval_compare.py\nCross-model tradeoff\n→ HTML Report"]
+    end
+
+    %% ── Connections ───────────────────────────────────────────────────────
+    USER --> FRONTEND
+
+    FRONTEND --> APPCORE
+    UI_AUTO --> EXTERNAL
+
+    APPCORE --> ROUTER
+
+    ROUTER -->|coding task| GRP_CODE
+    ROUTER -->|meeting task| GRP_MEET
+    ROUTER -->|general task| GRP_MAIN
+
+    MLMODELS <-->|"served via"| ENDPOINTS
+    ENDPOINTS <-->|"hosted on"| HF
+
+    DATA -->|"train on"| RUNPOD
+    RUNPOD -->|"upload merged model"| HF
+
+    ENDPOINTS -->|"run inference"| EVAL
+
+    %% ── Styles ────────────────────────────────────────────────────────────
+    classDef user      fill:#1e3a5f,stroke:#3b82f6,stroke-width:2px,color:#fff
+    classDef frontend  fill:#1e3a8a,stroke:#60a5fa,color:#fff
+    classDef appcore   fill:#1e293b,stroke:#475569,color:#fff
+    classDef external  fill:#374151,stroke:#6b7280,color:#fff
+    classDef router    fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#fff
+    classDef coding    fill:#1d4ed8,stroke:#93c5fd,color:#fff
+    classDef meeting   fill:#065f46,stroke:#6ee7b7,color:#fff
+    classDef mainmodel fill:#4c1d95,stroke:#c4b5fd,color:#fff
+    classDef hf        fill:#92400e,stroke:#fcd34d,color:#fff
+    classDef infra     fill:#1c1917,stroke:#78716c,color:#fff
+    classDef data      fill:#1f2937,stroke:#6b7280,color:#fff
+    classDef eval      fill:#164e63,stroke:#67e8f9,color:#fff
+
+    class USER user
+    class UI_MEET,UI_CODE,UI_PROJ,UI_AUTO frontend
+    class IPC,PROVIDER,KEYSTORE appcore
+    class JIRA,GCAL,SLACK external
+    class ROUTER router
+    class MC1,MC2,MC3 coding
+    class MM1,MM2,MM3 meeting
+    class MO1,MO2,MO3 mainmodel
+    class HF,ENDPOINTS hf
+    class RUNPOD infra
+    class DS_C,DS_M,DS_G data
+    class EV1,EV2,EV3 eval

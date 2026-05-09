@@ -1,0 +1,159 @@
+WOS Model Training Log — Thejes — May 5-6, 2026
+=======================================================
+
+SUMMARY
+-------
+Completed training all 3 main/orchestrator models and uploaded them to HuggingFace.
+All 9 fine-tuned WOS models are now live on HuggingFace.
+
+
+MODELS TRAINED TODAY
+--------------------
+1. wos-main-gemma  (completed overnight from May 4-5)
+   Base model  : Google — Gemma 2-27B Instruct
+   Train steps : 521/521
+   Train loss  : 0.8565
+   Train time  : 7721s (~2.15 hrs)
+   HuggingFace : huggingface.co/thejesraj/wos-main-gemma
+   Status      : DONE — uploaded successfully
+
+2. wos-main-32b  (Qwen 2.5-32B)
+   Base model  : Qwen/Qwen2.5-32B-Instruct
+   Train steps : 532/532
+   Train loss  : 0.7133
+   Train time  : 7847s (~2.18 hrs)
+   HuggingFace : huggingface.co/thejesraj/wos-main-32b
+   Status      : DONE — uploaded successfully (22.3GB)
+
+3. wos-main-mixtral  (Mixtral 8x7B)
+   Base model  : mistralai/Mixtral-8x7B-Instruct-v0.1
+   Train steps : 587/587
+   Train loss  : 0.7053
+   Train time  : 5239s (~1.45 hrs)
+   HuggingFace : huggingface.co/thejesraj/wos-main-mixtral
+   Status      : DONE — uploaded successfully
+
+
+ALL 9 MODELS NOW ON HUGGINGFACE
+---------------------------------
+Coding Specialists:
+  - thejesraj/wos-coding-32b       (Qwen 2.5-32B)
+  - thejesraj/wos-coding-gemma     (Gemma 2-27B)
+  - thejesraj/wos-coding-mixtral   (Mixtral 8x7B)
+
+Meeting Specialists:
+  - thejesraj/wos-meeting-32b      (Qwen 2.5-32B)
+  - thejesraj/wos-meeting-gemma    (Gemma 2-27B)
+  - thejesraj/wos-meeting-mixtral  (Mixtral 8x7B)
+
+Main Orchestrators:
+  - thejesraj/wos-main-32b         (Qwen 2.5-32B)   — loss: 0.7133
+  - thejesraj/wos-main-gemma       (Gemma 2-27B)    — loss: 0.8565
+  - thejesraj/wos-main-mixtral     (Mixtral 8x7B)   — loss: 0.7053
+
+
+TRAINING LOSSES (all known)
+----------------------------
+wos-coding-mixtral   : 0.5019  (177 steps,  ~24 min)
+wos-meeting-mixtral  : 1.7773  (~31 min)
+wos-main-gemma       : 0.8565  (521 steps,  ~2.15 hrs)
+wos-main-32b         : 0.7133  (532 steps,  ~2.18 hrs)
+wos-main-mixtral     : 0.7053  (587 steps,  ~1.45 hrs)
+wos-coding-gemma     : not recorded (trained overnight May 4-5)
+wos-meeting-gemma    : not recorded (trained overnight May 4-5)
+wos-coding-32b       : not recorded (trained earlier)
+wos-meeting-32b      : not recorded (trained earlier)
+
+
+ISSUES SOLVED TODAY
+-------------------
+1. Disk full during Qwen main checkpoint save (step 500/683)
+   Fix: Cleaned Gemma HF cache (~50GB freed), deleted corrupted
+        checkpoint, restarted training with HF_HOME=/workspace/hf_cache
+
+2. Corrupted checkpoint auto-resume loop (checkpoint-500)
+   Fix: rm -rf /workspace/WOS/training/checkpoints/wos-main-qwen/
+        (checkpoint was at wrong path — finetune/ vs training/ dir)
+
+3. Mixtral download failed (disk full, only 1GB free)
+   Fix: Freed Qwen HF cache after upload, gave 110GB free
+
+4. Qwen push_to_hub failed (disk full during merge)
+   Fix: rm -rf hf_cache/hub/models--Qwen*, then used
+        huggingface-cli upload from saved merged directory
+
+5. Mixtral connection lost at 51% (step 300/587)
+   Fix: Auto-resume found checkpoint-200, but PyTorch 2.6 RNG
+        incompatibility on new pod — deleted checkpoint, retrained
+        from scratch (~1.5 hrs)
+
+6. Mixtral merge failed (disk full after training)
+   Fix: rm -rf hf_cache/hub/models--mistralai*, then used
+        sed -i 's/^ //' to fix indentation in merge.py,
+        ran manual merge + huggingface-cli upload
+
+7. tmux not installed on new pod
+   Fix: apt-get update && apt-get install -y tmux
+
+8. transformers not installed on new pod (after reconnect)
+   Fix: bash training/setup_runpod.sh
+
+
+OTHER WORK DONE TODAY
+---------------------
+1. Gantt Chart
+   - Created thejes_updates/gantt_chart.py
+   - Dark-themed project schedule Sep 2025 → May 2026
+   - 7 phases, all tasks, today marker at May 5
+   - Run: python3 thejes_updates/gantt_chart.py → gantt_chart.png
+
+2. Eval Report (comparison_report.html) — updated for rubric coverage
+   - Added Model Design & Innovation section (3 architecture cards,
+     selection rationale, specialization strategy, QLoRA innovation)
+   - Added 9-Model Comparison Overview table (all models side by side)
+   - Added Evaluation Metrics Reference (definitions + citations for
+     every metric: pass@1, ROUGE-1/2/L, BERTScore, Action F1, BLEU)
+   - Updated header + footer to reflect all 3 base models
+
+3. System Architecture Diagrams
+   - thejes_updates/architecture_diagram.py  (matplotlib, 8-layer)
+   - thejes_updates/architecture.mmd         (Mermaid flowchart)
+   - thejes_updates/architecture_system.mmd  (Mermaid system architecture)
+   - View at mermaid.live by pasting .mmd file contents
+
+4. Literature Survey — 25 real citable papers identified:
+   - QLoRA (2305.14314), LoRA (2106.09685)
+   - Mixtral (2401.04088), Gemma 2 (2408.00118), Qwen2.5 (2412.15115)
+   - HumanEval (2107.03374), DialogSum (2105.06762), QMSum (2104.05938)
+   - MeetingBank (2305.17529), ROUGE (Lin 2004), BERTScore (1904.09675)
+   - ReAct (2210.03629), InstructGPT (2203.02155), FLAN (2109.01652)
+   - Full list in conversation history
+
+5. main_train.sh updated — Gemma section commented out (already done)
+
+
+NEXT STEPS
+----------
+1. Set up HuggingFace Inference Endpoints for all 9 models
+   - Go to huggingface.co → Inference Endpoints → New Endpoint
+   - Point each at thejesraj/<model-repo>
+   - GPU: A100 80GB for 27B/32B models, A100 40GB for Mixtral
+   - Collect all 9 endpoint URLs
+
+2. Update app with endpoint URLs
+   - electron/main/providers/vllm.ts → update wos-coding, wos-meeting,
+     wos-main URLs with Qwen 32B endpoints (best performing)
+
+3. Update models_config.json with all 9 URLs for eval scripts
+
+4. Run evaluation scripts
+   - python eval_coding.py  --endpoint <url> --model thejesraj/wos-coding-32b
+   - python eval_meeting.py --endpoint <url> --model thejesraj/wos-meeting-32b
+   - python eval_main.py    --endpoint <url> --model thejesraj/wos-main-32b
+   - python eval_compare.py (cross-model comparison)
+   - python generate_report.py (rebuild HTML report with real results)
+
+5. Demo prep
+   - Wire endpoints into app
+   - Test meeting intelligence + coding assistant with live models
+   - Record demo video
